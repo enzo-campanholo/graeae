@@ -7,6 +7,7 @@
   import X from '@lucide/svelte/icons/x'
   import Eye from '@lucide/svelte/icons/eye'
   import Headphones from '@lucide/svelte/icons/headphones'
+  import Expand from '@lucide/svelte/icons/expand'
   import { Button } from '$lib/components/ui/button'
   import FakeVideo from './FakeVideo.svelte'
   import { ME, proto, title, unwatch, focus, solo, stopShare, watchersOf, type Share } from './state.svelte'
@@ -16,12 +17,16 @@
   const w = $derived(proto.watched[share.id])
   const own = $derived(share.memberId === ME)
   const focused = $derived(proto.focused === share.id)
+  let el: HTMLDivElement
+  // real browser fullscreen; double-click does the same, as on any video player
+  const fullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen()).catch(() => {})
 </script>
 
 <div
   class="group @container relative min-h-0 overflow-hidden rounded-lg border bg-black {cls}"
   style="container-type: size"
-  ondblclick={() => !own && focus(share.id)}
+  bind:this={el}
+  ondblclick={() => !own && fullscreen()}
   role="presentation"
 >
   <FakeVideo {share} />
@@ -65,6 +70,7 @@
       <Button size="icon-xs" variant="ghost" title={focused ? 'Back to grid' : 'Focus'} onclick={() => focus(share.id)}>
         {#if focused}<Minimize />{:else}<Maximize />{/if}
       </Button>
+      <Button size="icon-xs" variant="ghost" title="Fullscreen (or double-click)" onclick={fullscreen}><Expand /></Button>
       <Button size="icon-xs" variant="ghost" title="Stop watching" onclick={() => unwatch(share.id)}><X /></Button>
     </div>
   {/if}

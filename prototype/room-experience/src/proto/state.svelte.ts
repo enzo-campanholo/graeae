@@ -19,8 +19,8 @@ export const ME = 'me'
 const q = new URLSearchParams(location.search)
 
 export const VARIANTS = [
+  { key: 'D', name: 'People sidebar (new)' },
   { key: 'A', name: 'Sidebar and grid' },
-  { key: 'B', name: 'Wall of shares' },
   { key: 'C', name: 'Stage and dock' },
 ]
 
@@ -45,7 +45,7 @@ const CATALOG: Record<string, Share[]> = {
 export const catalog = CATALOG
 
 export const proto = $state({
-  variant: q.get('variant') ?? 'A',
+  variant: q.get('variant') ?? 'D',
   rooms: Number(q.get('rooms') ?? 1), // 1 or 3: how many rooms this member has access to
   browser: (q.get('browser') ?? 'chromium') as 'chromium' | 'firefox',
   flow: (q.get('flow') ?? 'dialog') as 'dialog' | 'direct', // share flow: graeae dialog first, or straight to the browser picker

@@ -6,6 +6,7 @@
   import VariantA from './proto/VariantA.svelte'
   import VariantB from './proto/VariantB.svelte'
   import VariantC from './proto/VariantC.svelte'
+  import VariantD from './proto/VariantD.svelte'
   import { ROOMS, proto } from './proto/state.svelte'
 
   const room = $derived(ROOMS.find((r) => r.id === proto.room))
@@ -32,7 +33,8 @@
         <ArrowLeft />Rooms
       </Button>
     {/if}
-    {#if proto.variant === 'B'}<VariantB roomName={room.name} />
+    {#if proto.variant === 'D'}<VariantD roomName={room.name} />
+    {:else if proto.variant === 'B'}<VariantB roomName={room.name} />
     {:else if proto.variant === 'C'}<VariantC roomName={room.name} />
     {:else}<VariantA roomName={room.name} />{/if}
   </div>
