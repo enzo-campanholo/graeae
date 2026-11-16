@@ -156,8 +156,8 @@ export function gridCols(n: number) {
 
 // Clicking a name goes to that member: it replaces what I watch with everything they share.
 export function switchTo(memberId: string) {
+  // clicking the name of the member I already watch alone changes nothing
   const ids = sharesOf(memberId).map((s) => s.id)
-  const only = ids.length === Object.keys(proto.watched).length && ids.every(isWatched)
-  watchNone()
-  if (!only) ids.forEach(watch)
+  for (const id of Object.keys(proto.watched)) if (!ids.includes(id)) unwatch(id)
+  ids.forEach(watch)
 }
