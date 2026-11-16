@@ -1,25 +1,25 @@
 <script lang="ts">
-  // The two share buttons plus the share dialog and a FAKE browser picker.
-  // Prototype rule: one screen share and one webcam share per member at a time.
+  // The two share buttons, the first-time tips, and a FAKE browser picker.
+  // Rule: one screen share and one webcam share per member at a time.
   import Monitor from '@lucide/svelte/icons/monitor'
   import Video from '@lucide/svelte/icons/video'
   import AppWindow from '@lucide/svelte/icons/app-window'
   import PanelTop from '@lucide/svelte/icons/panel-top'
   import { Button } from '$lib/components/ui/button'
-  import { Switch } from '$lib/components/ui/switch'
   import * as Dialog from '$lib/components/ui/dialog'
   import { ME, mine, proto, startShare, stopShare, type Surface } from './state.svelte'
 
   let { size = 'default', labels = true }: { size?: 'default' | 'sm' | 'lg'; labels?: boolean } = $props()
 
-  let dialog = $state(false)
+  let tips = $state(false)
   let picker = $state(false)
-  let audioOn = $state(true)
+  let audioOn = $state(true) // the browser picker's own checkbox, pre-ticked by graeae
   let picked = $state<Surface>('window')
 
   const screen = $derived(mine().find((s) => s.kind === 'screen'))
   const webcam = $derived(mine().find((s) => s.kind === 'webcam'))
   const firefox = $derived(proto.browser === 'firefox')
+  const canAudio = $derived(!firefox && picked !== 'screen')
 
   const SURFACES: { key: Surface; label: string; what: string; icon: typeof Monitor }[] = [
     { key: 'tab', label: 'Browser tab', what: 'YouTube', icon: PanelTop },
@@ -29,7 +29,8 @@
 
   function clickScreen() {
     if (screen) return stopShare(screen.id)
-    if (proto.flow === 'dialog') dialog = true
+    // 'dialog' flow shows the tips every time; 'direct' shows them once per device
+    if (proto.flow === 'dialog' || !proto.tipsSeen) tips = true
     else picker = true
   }
   function clickWebcam() {
@@ -38,53 +39,42 @@
   }
   function confirmPicker() {
     const s = SURFACES.find((x) => x.key === picked)!
-    const audio = !firefox && audioOn && picked !== 'screen'
+    const audio = canAudio && audioOn
     const notice = firefox
-      ? 'Video only from Firefox, and possibly less smooth. A Chromium browser does better.'
+      ? 'Video only from Firefox. A Chromium browser sends audio too.'
       : picked === 'screen'
         ? 'Video only: a whole-screen share carries no audio. Share the game window or a tab to include its sound.'
-        : !audioOn
-          ? 'Sharing silently.'
-          : undefined
-    startShare({ id: 'me-screen', memberId: ME, kind: 'screen', label: s.what, surface: picked, audio, notice })
+        : undefined
+    startShare({ id: 'me-screen', memberId: ME, kind: 'screen', label: s.what, surface: picked, audio, silenced: canAudio && !audioOn, notice })
     picker = false
   }
 </script>
 
-<Button {size} variant={screen ? 'destructive' : 'default'} onclick={clickScreen}>
+<Button {size} variant={screen ? 'destructive' : 'default'} onclick={clickScreen} title={screen ? 'Stop screen' : 'Share screen'}>
   <Monitor />{#if labels}{screen ? 'Stop screen' : 'Share screen'}{/if}
 </Button>
-<Button {size} variant={webcam ? 'destructive' : 'secondary'} onclick={clickWebcam}>
+<Button {size} variant={webcam ? 'destructive' : 'secondary'} onclick={clickWebcam} title={webcam ? 'Stop webcam' : 'Share webcam'}>
   <Video />{#if labels}{webcam ? 'Stop webcam' : 'Share webcam'}{/if}
 </Button>
 
-<Dialog.Root bind:open={dialog}>
+<Dialog.Root bind:open={tips}>
   <Dialog.Content class="sm:max-w-md">
     <Dialog.Header>
-      <Dialog.Title>Share your screen</Dialog.Title>
-      <Dialog.Description>Next, your browser asks what to share: a tab, a window or the whole screen.</Dialog.Description>
+      <Dialog.Title>Before your first screen share</Dialog.Title>
+      <Dialog.Description>
+        {proto.flow === 'direct' ? 'You will see this once on this device.' : 'Shown every time in this flow.'}
+      </Dialog.Description>
     </Dialog.Header>
-    <div class="space-y-3 text-sm">
+    <ul class="list-disc space-y-2 pl-5 text-sm">
       {#if firefox}
-        <p class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-          From Firefox a screen share is video only and may be less smooth. A Chromium browser does better.
-        </p>
+        <li>From Firefox a screen share is video only and may be less smooth. A Chromium browser does better.</li>
       {:else}
-        <label class="flex items-center justify-between gap-4 rounded-md border p-3">
-          <span>
-            <span class="font-medium">Include its audio</span>
-            <span class="block text-xs text-muted-foreground">
-              A tab's sound, or one application's sound. A whole-screen share is always video only.
-            </span>
-          </span>
-          <Switch bind:checked={audioOn} />
-        </label>
+        <li>To send sound, share a <b>tab</b> or the <b>game's window</b> and leave the audio box ticked. A whole-screen share is video only.</li>
       {/if}
-      <p class="text-xs text-muted-foreground">Sharing a game? Run it in borderless mode, not exclusive fullscreen.</p>
-    </div>
+      <li>Run games in borderless mode, not exclusive fullscreen.</li>
+    </ul>
     <Dialog.Footer>
-      <Button variant="ghost" onclick={() => (dialog = false)}>Cancel</Button>
-      <Button onclick={() => { dialog = false; picker = true }}>Choose what to share</Button>
+      <Button onclick={() => { tips = false; proto.tipsSeen = true; picker = true }}>Got it, choose what to share</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
@@ -107,7 +97,13 @@
         </button>
       {/each}
     </div>
-    <Dialog.Footer>
+    <Dialog.Footer class="items-center">
+      {#if canAudio}
+        <label class="mr-auto flex items-center gap-2 text-xs">
+          <input id="picker-audio" type="checkbox" bind:checked={audioOn} />
+          Also share {picked === 'tab' ? 'tab' : 'app'} audio
+        </label>
+      {/if}
       <Button variant="ghost" onclick={() => (picker = false)}>Cancel</Button>
       <Button onclick={confirmPicker}>Share</Button>
     </Dialog.Footer>

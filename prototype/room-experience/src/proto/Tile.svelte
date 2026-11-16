@@ -53,7 +53,12 @@
   </div>
 
   {#if own}
-    <div class="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100">
+    <div class="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
+      {#if share.audio || share.silenced}
+        <Button size="xs" variant="secondary" onclick={() => { share.audio = !share.audio; share.silenced = !share.audio }}>
+          {#if share.audio}<Volume />Audio on{:else}<Muted />Audio off{/if}
+        </Button>
+      {/if}
       <Button size="xs" variant="destructive" onclick={() => stopShare(share.id)}>Stop sharing</Button>
     </div>
   {:else if w}

@@ -8,7 +8,8 @@
   import Tile from './Tile.svelte'
   import Notice from './Notice.svelte'
   import ShareControls from './ShareControls.svelte'
-  import { ME, gridCols, isWatched, mine, proto, sharesOf, toggleWatch, unwatch, watch, watchAll, watchNone, watchedShares } from './state.svelte'
+  import PanelLeft from '@lucide/svelte/icons/panel-left'
+  import { ME, gridCols, isWatched, mine, proto, sharesOf, switchTo, toggleWatch, watchAll, watchNone, watchedShares } from './state.svelte'
 
   let { roomName }: { roomName: string } = $props()
   const shown = $derived(watchedShares())
@@ -17,16 +18,33 @@
   const present = $derived(proto.members.filter((m) => m.present && m.id !== ME))
   const away = $derived(proto.members.filter((m) => !m.present))
 
-  function toggleMember(id: string) {
-    const ss = sharesOf(id)
-    if (ss.every((s) => isWatched(s.id))) ss.forEach((s) => unwatch(s.id))
-    else ss.forEach((s) => watch(s.id))
-  }
 </script>
 
 <div class="flex h-full">
-  <aside class="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-3">
-    <h1 class="text-lg font-semibold">{roomName}</h1>
+  {#if !proto.sidebar}
+  <!-- collapsed: a thin rail, still one click to go to someone -->
+  <aside class="flex w-12 shrink-0 flex-col items-center gap-2 border-r py-3">
+    <Button size="icon-sm" variant="ghost" title="Show the bar (B)" onclick={() => (proto.sidebar = true)}><PanelLeft /></Button>
+    {#each present as m (m.id)}
+      {@const ss = sharesOf(m.id)}
+      <button
+        class="relative grid size-8 place-items-center rounded-full text-xs font-semibold disabled:opacity-40 {ss.some((s) => isWatched(s.id)) ? 'ring-2 ring-primary' : ''}"
+        style="background: hsl({m.hue} 45% 30%)" disabled={!ss.length}
+        title={ss.length ? `Go to ${m.name}` : `${m.name} is not sharing`}
+        onclick={() => switchTo(m.id)}
+      >
+        {m.name[0]}
+        {#if ss.length}<span class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-400"></span>{/if}
+      </button>
+    {/each}
+    <div class="mt-auto flex flex-col gap-2"><ShareControls size="sm" labels={false} /></div>
+  </aside>
+  {:else}
+  <aside class="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r p-3">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold">{roomName}</h1>
+      <Button size="icon-sm" variant="ghost" title="Hide the bar (B)" onclick={() => (proto.sidebar = false)}><PanelLeft /></Button>
+    </div>
 
     <div>
       <div class="mb-1 flex items-center justify-between">
@@ -45,8 +63,8 @@
           <button
             class="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm disabled:cursor-default"
             disabled={!ss.length}
-            title={ss.length ? `Watch everything ${m.name} is sharing` : `${m.name} is not sharing`}
-            onclick={() => toggleMember(m.id)}
+            title={ss.length ? `Go to ${m.name}: watch only what they share` : `${m.name} is not sharing`}
+            onclick={() => switchTo(m.id)}
           >
             <span class="size-2 shrink-0 rounded-full bg-emerald-400"></span>
             <span class="min-w-0">
@@ -57,10 +75,10 @@
             </span>
           </button>
           {#if screen}
-            <Button size="icon-sm" variant={isWatched(screen.id) ? 'default' : 'outline'} title="Screen: {screen.label}" onclick={() => toggleWatch(screen.id)}><Monitor /></Button>
+            <Button size="icon-sm" variant={isWatched(screen.id) ? 'default' : 'outline'} title="{isWatched(screen.id) ? `Stop watching` : `Add`} screen: {screen.label}" onclick={() => toggleWatch(screen.id)}><Monitor /></Button>
           {/if}
           {#if cam}
-            <Button size="icon-sm" variant={isWatched(cam.id) ? 'default' : 'outline'} title="Webcam" onclick={() => toggleWatch(cam.id)}><Video /></Button>
+            <Button size="icon-sm" variant={isWatched(cam.id) ? 'default' : 'outline'} title="{isWatched(cam.id) ? `Stop watching` : `Add`} webcam" onclick={() => toggleWatch(cam.id)}><Video /></Button>
           {/if}
         </div>
       {/each}
@@ -86,6 +104,7 @@
       <div class="grid grid-cols-2 gap-2"><ShareControls size="sm" /></div>
     </div>
   </aside>
+  {/if}
 
   <main class="min-w-0 flex-1 p-3">
     {#if shown.length === 0}

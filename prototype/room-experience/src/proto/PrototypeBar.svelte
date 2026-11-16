@@ -17,7 +17,8 @@
     const t = e.target as HTMLElement
     if (t.closest('input, textarea, [contenteditable]')) return
     if (e.key === 'ArrowLeft') cycle(-1)
-    if (e.key === 'ArrowRight') cycle(1)
+    if (e.key === "ArrowRight") cycle(1)
+    if (e.key === "b") proto.sidebar = !proto.sidebar
   }
   function click(e: MouseEvent) {
     if (!(e.target as HTMLElement).closest('[data-proto]')) proto.clicks++
@@ -50,6 +51,7 @@
         <div>First watch: {fmt(proto.firstWatch)}</div>
         <div>First share: {fmt(proto.firstShare)}</div>
         <button class="mt-1 underline" onclick={reopen}>Reopen the URL (reset)</button>
+        <button class="ml-2 mt-1 underline" onclick={() => (proto.tipsSeen = false)}>Forget first-share tips</button>
       </div>
       <div>
         <div class="font-semibold">Who else is sharing</div>
@@ -72,8 +74,8 @@
         </select>
         <span class="font-semibold">Share flow</span>
         <select class="rounded border bg-background p-1" bind:value={proto.flow}>
-          <option value="dialog">graeae dialog, then browser picker</option>
-          <option value="direct">straight to browser picker</option>
+          <option value="direct">tips once, then straight to the picker</option>
+          <option value="dialog">tips every time</option>
         </select>
         <span class="font-semibold">My rooms</span>
         <select class="rounded border bg-background p-1" bind:value={proto.rooms} onchange={reopen}>

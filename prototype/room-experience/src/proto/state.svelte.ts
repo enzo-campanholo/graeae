@@ -12,6 +12,7 @@ export type Share = {
   audio: boolean
   surface?: Surface
   notice?: string
+  silenced?: boolean // I had audio and switched it off after starting
 }
 export type Member = { id: string; name: string; present: boolean; hue: number }
 
@@ -19,7 +20,7 @@ export const ME = 'me'
 const q = new URLSearchParams(location.search)
 
 export const VARIANTS = [
-  { key: 'D', name: 'People sidebar (new)' },
+  { key: 'D', name: 'People sidebar' },
   { key: 'A', name: 'Sidebar and grid' },
   { key: 'C', name: 'Stage and dock' },
 ]
@@ -48,7 +49,9 @@ export const proto = $state({
   variant: q.get('variant') ?? 'D',
   rooms: Number(q.get('rooms') ?? 1), // 1 or 3: how many rooms this member has access to
   browser: (q.get('browser') ?? 'chromium') as 'chromium' | 'firefox',
-  flow: (q.get('flow') ?? 'dialog') as 'dialog' | 'direct', // share flow: graeae dialog first, or straight to the browser picker
+  flow: (q.get('flow') ?? 'direct') as 'dialog' | 'direct', // direct: tips once, then always straight to the browser picker
+  tipsSeen: false, // stands in for 'this device has shared a screen before'
+  sidebar: true,
   room: null as string | null,
   members: [
     { id: ME, name: 'You', present: true, hue: 210 },
@@ -149,4 +152,12 @@ export const downlink = () =>
 
 export function gridCols(n: number) {
   return n <= 1 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4
+}
+
+// Clicking a name goes to that member: it replaces what I watch with everything they share.
+export function switchTo(memberId: string) {
+  const ids = sharesOf(memberId).map((s) => s.id)
+  const only = ids.length === Object.keys(proto.watched).length && ids.every(isWatched)
+  watchNone()
+  if (!only) ids.forEach(watch)
 }
