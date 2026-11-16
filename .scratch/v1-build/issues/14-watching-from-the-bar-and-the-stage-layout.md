@@ -11,6 +11,9 @@ UI: build with the impeccable skill, following `DESIGN.md`. Layout source: `prot
 **Status:** ready-for-agent
 
 - [ ] Clicking a member's name replaces the stage with everything that member shares
+- [ ] The viewer then follows that member: a share the member starts later joins the stage by itself
+- [ ] Following ends when the viewer changes what they watch in any other way: a single icon, a shortcut, stop watching, or another name
+- [ ] The shortcuts are one-off: a share started after "everything" or "all webcams" does not join by itself
 - [ ] Clicking the name of the member already watched alone changes nothing and never empties the stage
 - [ ] Shortcuts in the bar: all webcams, everything, nothing
 - [ ] On arrival the empty stage offers "Watch everything"
