@@ -21,3 +21,7 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 - [ ] The root address takes a remembered device with one room straight into it; an unremembered browser gets "nothing here"
 - [ ] Seam 1 tests cover all of the above
 - [ ] Seam 2 harness: a real Chromium against the app running locally; setup-to-room is its first journey
+
+## Comments
+
+From ticket 01: `test/migrations.test.ts` shows an older schema starting on newer code, but checks it by reading a stand-in table inside the instance, because nothing over HTTP showed data then. Once this ticket adds the first real migration and an owner over HTTP, redo that check over HTTP as `CLAUDE.md` describes, and drop the direct read.
