@@ -81,6 +81,7 @@
     <label><input type="checkbox" id="audio" checked> Audio (tab or application)</label>
     <label><input type="checkbox" id="motion" checked> Favour smooth motion</label>
     <button id="share" class="primary">Share a screen</button>
+    <button id="diagnose">Diagnose this machine</button>
   </div>
   <div class="dim" style="margin-top:6px">Press it again to share another screen or window from the same machine. Each one is a separate upload.</div>
 </div>
@@ -280,6 +281,91 @@ async function share() {
   tile.button("Stop sharing", "danger", stop);
   video.addEventListener("ended", () => stop().catch(showError));
   pc.addEventListener("connectionstatechange", () => { tile.status.textContent = "connection: " + pc.connectionState; });
+}
+
+// ---- diagnosis: what this machine can encode, and how fast it captures with no call at all ----
+$("#diagnose").onclick = () => diagnose().catch(showError);
+
+async function diagnose() {
+  const tile = makeTile("Diagnosis", false);
+  tile.button("Dismiss", "", () => tile.el.remove());
+  const out = {};
+  const show = () => { tile.pre.textContent = JSON.stringify(out, null, 1); };
+  const fps = Number($("#fps").value);
+
+  // Start the capture first, while the click still counts as a user gesture.
+  tile.status.textContent = "Pick the game window, then put the game in front for 15 seconds.";
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: fps, max: fps }, width: { max: 1920 }, height: { max: 1080 } }, audio: false,
+  });
+  const [track] = stream.getVideoTracks();
+  out.asked = fps;
+  out.captureSettings = track.getSettings();
+
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    out.gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  } catch (err) { out.gpu = "unknown: " + err.message; }
+  out.screen = `${screen.width}x${screen.height} @ devicePixelRatio ${devicePixelRatio}`;
+  out.pageRefreshHz = await new Promise((resolve) => {
+    let n = 0; const start = performance.now();
+    const tick = (now) => { n++; if (now - start < 1000) requestAnimationFrame(tick); else resolve(Math.round(n * 1000 / (now - start))); };
+    requestAnimationFrame(tick);
+  });
+
+  out.h264Offered = (RTCRtpSender.getCapabilities?.("video")?.codecs ?? [])
+    .filter((c) => /h264|h265|av1|vp9/i.test(c.mimeType)).map((c) => `${c.mimeType.replace("video/", "")} ${c.sdpFmtpLine ?? ""}`);
+  out.canEncode = {};
+  const candidates = {
+    "H264 baseline 42e01f": "video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+    "H264 main 4d001f": "video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f",
+    "H264 high 64001f": "video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f",
+    "VP9": "video/VP9", "AV1": "video/AV1", "H265": "video/H265", "VP8": "video/VP8",
+  };
+  for (const [name, contentType] of Object.entries(candidates)) {
+    try {
+      const r = await navigator.mediaCapabilities.encodingInfo({
+        type: "webrtc", video: { contentType, width: 1920, height: 1080, bitrate: 12e6, framerate: 60 },
+      });
+      out.canEncode[name] = `supported ${r.supported}, smooth ${r.smooth}, hardware ${r.powerEfficient}`;
+    } catch (err) { out.canEncode[name] = "error: " + err.message; }
+  }
+  show();
+
+  // Count frames straight off the capture for 15 seconds: no connection, no encoder.
+  const gaps = [];
+  if (window.MediaStreamTrackProcessor) {
+    const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+    const until = performance.now() + 15000;
+    let last = null;
+    while (performance.now() < until) {
+      const { value: frame, done } = await reader.read();
+      if (done) break;
+      if (last != null) gaps.push((frame.timestamp - last) / 1000);
+      last = frame.timestamp;
+      frame.close();
+      if (gaps.length % 30 === 0) tile.head.textContent = `${gaps.length} frames counted…`;
+    }
+    reader.cancel().catch(() => {});
+  } else {
+    out.captureOnly = "this browser cannot read raw frames";
+  }
+  track.stop();
+  if (gaps.length) {
+    const total = gaps.reduce((a, b) => a + b, 0);
+    const buckets = {};
+    for (const g of gaps) { const k = (Math.round(g * 2) / 2).toFixed(1) + " ms"; buckets[k] = (buckets[k] ?? 0) + 1; }
+    out.captureOnly = {
+      frames: gaps.length + 1, fps: round(gaps.length * 1000 / total, 1),
+      commonGaps: Object.fromEntries(Object.entries(buckets).sort((a, b) => b[1] - a[1]).slice(0, 8)),
+    };
+    tile.head.textContent = `capture alone: ${out.captureOnly.fps} fps`;
+  }
+  tile.status.textContent = "Done. The result is in the log.";
+  show();
+  log({ kind: "diagnose", ...out });
+  flushLog();
 }
 
 // ---- watching -------------------------------------------------------------
