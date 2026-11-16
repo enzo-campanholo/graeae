@@ -70,7 +70,8 @@
   <div class="row">
     <label>Codec <select id="codec">
       <option value="H264">H.264 main/high (hardware)</option>
-      <option value="H264-baseline">H.264 baseline (software)</option>
+      <option value="H264-plain">H.264 plain baseline 42001f (hardware, for Firefox viewers)</option>
+      <option value="H264-baseline">H.264 constrained baseline 42e01f (software)</option>
       <option value="VP9">VP9</option><option value="AV1">AV1</option><option value="VP8">VP8</option>
       <option value="H265">H.265 (Chromium only)</option><option value="">browser default</option>
     </select></label>
@@ -203,16 +204,15 @@ async function newConnection() {
 function preferCodec(transceiver, mime) {
   if (!mime) return "browser default";
   // On the test machine only the main and high profiles are hardware encoded; baseline falls to OpenH264.
-  const baseline = mime === "H264-baseline";
-  const isBaseline = (c) => /profile-level-id=42/i.test(c.sdpFmtpLine ?? "");
-  if (baseline) mime = "H264";
+  const profiles = { "H264": /profile-level-id=(4d|64)/i, "H264-plain": /profile-level-id=4200/i, "H264-baseline": /profile-level-id=42e0/i }[mime];
+  if (profiles) mime = "H264";
   const want = ("video/" + mime).toLowerCase();
   let problem = "this browser does not offer it";
   for (const side of [RTCRtpSender, RTCRtpReceiver]) {
     const caps = side.getCapabilities?.("video")?.codecs ?? [];
     let chosen = caps.filter((c) => c.mimeType.toLowerCase() === want);
     if (mime === "H264") {
-      const picked = chosen.filter((c) => isBaseline(c) === baseline);
+      const picked = chosen.filter((c) => profiles.test(c.sdpFmtpLine ?? ""));
       if (picked.length) chosen = picked;
       chosen.sort((a, b) => /profile-level-id=64/i.test(b.sdpFmtpLine) - /profile-level-id=64/i.test(a.sdpFmtpLine));
     }
