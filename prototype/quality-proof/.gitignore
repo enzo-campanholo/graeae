@@ -1,0 +1,4 @@
+node_modules
+.wrangler
+.access-key
+.dev.vars

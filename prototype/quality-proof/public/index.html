@@ -1,0 +1,463 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Answers the "Quality proof" ticket; not production code. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>graeae quality proof (prototype)</title>
+<style>
+  :root { color-scheme: dark; --bg:#111417; --panel:#1a1f24; --line:#2c343c; --text:#e6e9ec; --dim:#93a0ab; --good:#5fd08a; --warn:#f0b54a; --bad:#f2716b; --accent:#7fb4ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:14px; margin:0 0 8px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  .banner { color:var(--warn); margin-bottom:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+  label { display:inline-flex; gap:6px; align-items:center; color:var(--dim); }
+  input, select, button { font:inherit; color:var(--text); background:#0e1114; border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  input[type=text] { min-width:0; width:150px; } #run { width:340px; max-width:100%; } #note { width:340px; max-width:100%; }
+  button { cursor:pointer; background:#243040; } button:hover { background:#2d3d52; } button.primary { background:#2b5a9e; } button.danger { background:#6a2b2b; }
+  button:disabled, input:disabled { opacity:.45; cursor:not-allowed; }
+  #shares div { padding:4px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:12px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; min-width:0; }
+  .tile h3 { margin:0 0 6px; font-size:14px; } .tile video { width:100%; background:#000; border-radius:4px; aspect-ratio:16/9; }
+  .head { font-size:17px; font-variant-numeric:tabular-nums; margin:6px 0; } .good { color:var(--good); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  pre { margin:6px 0; font:12px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; overflow-wrap:anywhere; color:#c9d2da; }
+  .status { color:var(--accent); min-height:1.4em; overflow-wrap:anywhere; } .dim { color:var(--dim); }
+  details summary { cursor:pointer; color:var(--accent); } ol { padding-left:20px; margin:8px 0 0; } li { margin-bottom:6px; }
+  #error { color:var(--bad); white-space:pre-wrap; overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<h1>graeae quality proof</h1>
+<div class="banner">Throwaway prototype. Everything here goes through the owner's Cloudflare account, so close the tab when you are done.</div>
+<div id="error"></div>
+
+<div class="panel">
+  <h2>You</h2>
+  <div class="row">
+    <label>Name <input type="text" id="name" placeholder="who you are"></label>
+    <label>Browser <input type="text" id="browser"></label>
+    <label>Test run <input type="text" id="run" list="runs" placeholder="what is being tested right now"></label>
+    <datalist id="runs">
+      <option value="1 baseline: Chromium to Chromium, one screen, game running">
+      <option value="2 Chromium sharer, Firefox viewer">
+      <option value="3 Firefox sharer, Chromium viewer">
+      <option value="4 three screens at once">
+      <option value="5 four screens at once">
+      <option value="6 high bitrate: 15 and 20 Mbps">
+      <option value="7 forced relay">
+      <option value="8 application audio">
+      <option value="9 Helium / Vivaldi / Brave as sharer">
+      <option value="10 exclusive fullscreen game">
+      <option value="11 cut-off timing">
+      <option value="12 relay credential revoked">
+    </datalist>
+    <label><input type="checkbox" id="relay" disabled> Force relay <span id="relayNote" class="dim">(no relay key configured)</span></label>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label>Note <input type="text" id="note" placeholder="e.g. game 144 fps before sharing, 131 fps while sharing"></label>
+    <button id="saveNote">Save note to log</button>
+    <button id="download">Download log</button>
+    <span id="logState" class="dim"></span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Share</h2>
+  <div class="row">
+    <label>Codec <select id="codec">
+      <option value="H264">H.264 (hardware on Chromium)</option>
+      <option value="VP9">VP9</option><option value="AV1">AV1</option><option value="VP8">VP8</option>
+      <option value="H265">H.265 (Chromium only)</option><option value="">browser default</option>
+    </select></label>
+    <label>Max bitrate <select id="bitrate">
+      <option value="8">8 Mbps</option><option value="12" selected>12 Mbps</option><option value="15">15 Mbps</option><option value="20">20 Mbps</option><option value="4">4 Mbps</option>
+    </select></label>
+    <label>Size <select id="height"><option value="1080">1080p</option><option value="720">720p</option></select></label>
+    <label><input type="checkbox" id="audio" checked> Audio (tab or application)</label>
+    <label><input type="checkbox" id="motion" checked> Favour smooth motion</label>
+    <button id="share" class="primary">Share a screen</button>
+  </div>
+  <div class="dim" style="margin-top:6px">Press it again to share another screen or window from the same machine. Each one is a separate upload.</div>
+</div>
+
+<div class="panel">
+  <h2>Live shares</h2>
+  <div id="shares" class="dim">Nobody is sharing.</div>
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="panel" style="margin-top:12px">
+  <details>
+    <summary>Test plan</summary>
+    <ol>
+      <li><b>Baseline.</b> Sharer on Chrome with a demanding game running in borderless mode, H.264, 12 Mbps. Viewer on Chrome. Let it run 5 minutes of real play. Save a note with the game's fps before and while sharing.</li>
+      <li><b>Firefox viewer.</b> Same share, a viewer opens it in Firefox.</li>
+      <li><b>Firefox sharer.</b> Share from Firefox with the game running, once with VP9 and once with H.264. A Chromium viewer watches.</li>
+      <li><b>Three screens, then four.</b> Everyone shares; one person watches all the others. If only two people are around, one of them shares several windows or monitors.</li>
+      <li><b>High bitrate.</b> Share at 15 and then 20 Mbps and see what the viewer actually receives.</li>
+      <li><b>Forced relay.</b> Tick "Force relay" on both sides and repeat the baseline for 2 minutes.</li>
+      <li><b>Application audio.</b> Share the game's <i>window</i> with audio on: a normal game, one in exclusive fullscreen, one started through a launcher. The viewer says whether they hear only the game.</li>
+      <li><b>Helium, Vivaldi, Brave.</b> Share from each with the game running, H.264, default browser settings. Check "encoder" says hardware. Repeat the application-audio check in each.</li>
+      <li><b>Exclusive fullscreen.</b> Share the whole screen, then put the game in exclusive fullscreen. Does the viewer's picture freeze?</li>
+      <li><b>Cut-off.</b> While watching, press "Cut at source". Do it 5 times (the sharer shares again each time). Then try "Cut my watching" a few times.</li>
+      <li><b>Relay revoked.</b> Watch with "Force relay" ticked, then press "Revoke my relay credential" and leave the tile open.</li>
+    </ol>
+    <div class="dim">Type or pick the matching "Test run" before each step so the log can tell them apart.</div>
+  </details>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const key = new URLSearchParams(location.search).get("k") || "";
+const client = crypto.randomUUID();
+const isFirefox = /Firefox\//.test(navigator.userAgent);
+const publishers = new Map(); // shareId -> tile
+const watching = new Map(); // shareId -> tile
+let logRows = [];
+let logged = 0;
+
+function showError(err) { $("#error").textContent = "Error: " + (err?.message ?? err); console.error(err); }
+window.addEventListener("unhandledrejection", (e) => showError(e.reason));
+
+async function api(path, body) {
+  const res = await fetch("/api/" + path, {
+    method: body ? "POST" : "GET",
+    headers: { "x-key": key, "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.status);
+  return data;
+}
+
+// ---- who you are ----------------------------------------------------------
+function guessBrowser() {
+  const brands = navigator.userAgentData?.brands?.filter((b) => !/Not.?A.?Brand/i.test(b.brand)) ?? [];
+  const named = brands.find((b) => !/Chromium/i.test(b.brand)) ?? brands[0];
+  if (named) return `${named.brand} ${named.version}`;
+  const m = navigator.userAgent.match(/(Firefox|Chrome)\/(\d+)/);
+  return m ? `${m[1]} ${m[2]}` : "unknown";
+}
+for (const id of ["name", "browser", "run"]) {
+  const el = $("#" + id);
+  try { el.value = localStorage.getItem("proof-" + id) ?? ""; } catch {}
+  el.addEventListener("change", () => { try { localStorage.setItem("proof-" + id, el.value); } catch {} });
+}
+if (!$("#browser").value) $("#browser").value = guessBrowser();
+const who = () => ({ client: client.slice(0, 6), name: $("#name").value || "anon", browser: $("#browser").value, run: $("#run").value });
+
+function log(row) { logRows.push({ t: new Date().toISOString(), ...who(), ...row }); }
+async function flushLog() {
+  if (!logRows.length) return;
+  const rows = logRows; logRows = [];
+  try { await api("log", { rows }); logged += rows.length; $("#logState").textContent = `${logged} rows logged`; }
+  catch { logRows = rows.concat(logRows); }
+}
+setInterval(flushLog, 5000);
+
+$("#saveNote").onclick = () => { if ($("#note").value) { log({ kind: "note", note: $("#note").value }); $("#note").value = ""; flushLog(); } };
+$("#download").onclick = async () => {
+  await flushLog();
+  const blob = new Blob([JSON.stringify(await api("log"), null, 1)], { type: "application/json" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "graeae-quality-proof-log.json" });
+  a.click();
+};
+
+// ---- tiles ----------------------------------------------------------------
+function makeTile(title, withVideo) {
+  const el = document.createElement("div");
+  el.className = "tile";
+  el.innerHTML = `<h3></h3>${withVideo ? "<video autoplay playsinline controls></video>" : ""}<div class="head"></div><div class="row actions"></div><div class="status"></div><pre></pre>`;
+  el.querySelector("h3").textContent = title;
+  $("#tiles").append(el);
+  const tile = {
+    el, video: el.querySelector("video"), head: el.querySelector(".head"), actions: el.querySelector(".actions"),
+    status: el.querySelector(".status"), pre: el.querySelector("pre"), prev: new Map(), prevAt: 0, lastFrameAt: 0, closed: false,
+  };
+  tile.button = (text, cls, fn) => {
+    const b = document.createElement("button");
+    b.textContent = text; if (cls) b.className = cls;
+    b.onclick = () => Promise.resolve(fn(b)).catch(showError);
+    tile.actions.append(b);
+    return b;
+  };
+  return tile;
+}
+
+async function newConnection() {
+  const { iceServers, username } = await api("ice", {});
+  const relayOnly = $("#relay").checked;
+  const pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: relayOnly ? "relay" : "all" });
+  return { pc, username, relayOnly };
+}
+
+// ---- sharing --------------------------------------------------------------
+function preferCodec(transceiver, mime) {
+  if (!mime) return "browser default";
+  const want = ("video/" + mime).toLowerCase();
+  let problem = "this browser does not offer it";
+  for (const side of [RTCRtpSender, RTCRtpReceiver]) {
+    const caps = side.getCapabilities?.("video")?.codecs ?? [];
+    const chosen = caps.filter((c) => c.mimeType.toLowerCase() === want);
+    if (!chosen.length) continue;
+    const helpers = caps.filter((c) => /rtx|red|ulpfec|flexfec/i.test(c.mimeType));
+    try { transceiver.setCodecPreferences([...chosen, ...helpers]); return mime; }
+    catch (err) { problem = err.message; }
+  }
+  return `${mime} NOT applied (${problem})`;
+}
+
+$("#share").onclick = () => share().catch(showError);
+
+async function share() {
+  const height = Number($("#height").value);
+  const maxBitrate = Number($("#bitrate").value) * 1e6;
+  const wantAudio = $("#audio").checked && !isFirefox; // Firefox captures no screen audio
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: 60, max: 60 }, width: { max: Math.round(height * 16 / 9) }, height: { max: height } },
+    audio: wantAudio
+      ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, restrictOwnAudio: true }
+      : false,
+    systemAudio: "exclude", // never the whole system's sound
+    windowAudio: "window", // a window carries only its own application's audio
+    selfBrowserSurface: "exclude",
+  });
+  const [video] = stream.getVideoTracks();
+  const [audio] = stream.getAudioTracks();
+  if ($("#motion").checked && "contentHint" in video) video.contentHint = "motion";
+  await video.applyConstraints({ frameRate: 60 }).catch(() => {}); // old Firefox ignored it in the first call
+
+  const { pc, username, relayOnly } = await newConnection();
+  const vt = pc.addTransceiver(video, { direction: "sendonly", sendEncodings: [{ maxBitrate, maxFramerate: 60 }] });
+  const codecNote = preferCodec(vt, $("#codec").value);
+  const at = audio ? pc.addTransceiver(audio, { direction: "sendonly" }) : null;
+
+  await pc.setLocalDescription(await pc.createOffer());
+  const tracks = [{ mid: vt.mid, kind: "video" }];
+  if (at) tracks.push({ mid: at.mid, kind: "audio" });
+  const settings = video.getSettings();
+  const label = `${$("#codec").value || "default"}, ${$("#bitrate").value} Mbps, ${settings.displaySurface ?? "?"}${audio ? ", audio" : ""}`;
+  const { shareId, answer } = await api("publish", { client, name: who().name, label, offer: pc.localDescription.sdp, tracks });
+  await pc.setRemoteDescription({ type: "answer", sdp: answer });
+
+  try {
+    const p = vt.sender.getParameters();
+    if (!p.encodings?.length) p.encodings = [{}];
+    p.encodings[0].maxBitrate = maxBitrate;
+    p.encodings[0].maxFramerate = 60;
+    if ($("#motion").checked) p.degradationPreference = "maintain-framerate";
+    await vt.sender.setParameters(p);
+  } catch (err) { console.warn("setParameters", err); }
+
+  const tile = makeTile(`You are sharing: ${label}`, false);
+  Object.assign(tile, { pc, role: "send", shareId, label });
+  tile.info = {
+    captured: `${settings.width}x${settings.height} @ ${settings.frameRate ?? "?"} fps, ${settings.displaySurface ?? "?"}`,
+    codecAsked: codecNote, contentHint: video.contentHint ?? "unsupported", audioTrack: audio ? audio.label || "yes" : "none", forcedRelay: relayOnly,
+  };
+  log({ kind: "share-start", shareId, label, ...tile.info });
+  publishers.set(shareId, tile);
+  const stop = async () => {
+    if (tile.closed) return;
+    tile.closed = true;
+    stream.getTracks().forEach((t) => t.stop());
+    pc.close(); tile.el.remove(); publishers.delete(shareId);
+    log({ kind: "share-stop", shareId });
+    await api("unpublish", { shareId });
+  };
+  tile.button("Stop sharing", "danger", stop);
+  video.addEventListener("ended", () => stop().catch(showError));
+  pc.addEventListener("connectionstatechange", () => { tile.status.textContent = "connection: " + pc.connectionState; });
+}
+
+// ---- watching -------------------------------------------------------------
+async function watch(shareInfo) {
+  const tile = makeTile(`Watching ${shareInfo.name}: ${shareInfo.label}`, true);
+  const { pc, username, relayOnly } = await newConnection();
+  Object.assign(tile, { pc, role: "recv", shareId: shareInfo.id, label: shareInfo.label, info: { forcedRelay: relayOnly } });
+  watching.set(shareInfo.id, tile);
+
+  const stream = new MediaStream();
+  tile.video.srcObject = stream;
+  pc.ontrack = (e) => { stream.addTrack(e.track); tile.video.play().catch(() => { tile.status.textContent = "click the video to start it"; }); };
+  if (tile.video.requestVideoFrameCallback) {
+    const onFrame = () => { tile.lastFrameAt = performance.now(); if (!tile.closed) tile.video.requestVideoFrameCallback(onFrame); };
+    tile.video.requestVideoFrameCallback(onFrame);
+  }
+
+  let watchId;
+  const stop = async () => {
+    if (tile.closed) return;
+    tile.closed = true;
+    pc.close(); tile.el.remove(); watching.delete(shareInfo.id);
+    log({ kind: "watch-stop", shareId: shareInfo.id });
+    if (watchId) await api("unwatch", { watchId });
+  };
+  tile.button("Stop watching", "", stop);
+
+  try {
+    const res = await api("watch", { shareId: shareInfo.id });
+    watchId = res.watchId;
+    await pc.setRemoteDescription({ type: "offer", sdp: res.offer });
+    await pc.setLocalDescription(await pc.createAnswer());
+    await api("watch-answer", { watchId, answer: pc.localDescription.sdp });
+  } catch (err) { await stop(); throw err; }
+  log({ kind: "watch-start", shareId: shareInfo.id, label: shareInfo.label, forcedRelay: relayOnly });
+
+  tile.button("Cut at source", "danger", () => measureStop(tile, "cut at source", () => api("cut-share", { shareId: shareInfo.id })));
+  tile.button("Cut my watching", "danger", () => measureStop(tile, "cut my watching", () => api("cut-watch", { watchId })));
+  if (username) tile.button("Revoke my relay credential", "danger", () => measureStop(tile, "relay credential revoked", () => api("turn-revoke", { username })));
+  pc.addEventListener("connectionstatechange", () => { if (!tile.measuring) tile.status.textContent = "connection: " + pc.connectionState; });
+}
+
+// Time from the click to the last video frame shown. One machine, one clock.
+function measureStop(tile, what, action) {
+  if (!tile.video.requestVideoFrameCallback) { tile.status.textContent = "this browser cannot time frames"; return; }
+  tile.measuring = true;
+  const t0 = performance.now();
+  let apiNote = "";
+  let apiMs = null;
+  action().then((r) => { apiMs = r.apiMs; apiNote = `, API call ${r.apiMs} ms`; }, (e) => { apiNote = `, API error: ${e.message}`; });
+  let warned = false;
+  const timer = setInterval(() => {
+    const now = performance.now();
+    if (tile.closed) return clearInterval(timer);
+    if (now - tile.lastFrameAt > 1500) {
+      clearInterval(timer);
+      const stopMs = Math.round(tile.lastFrameAt - t0);
+      tile.status.textContent = `${what}: picture stopped ${stopMs} ms after the click${apiNote}`;
+      log({ kind: "stop-timing", what, shareId: tile.shareId, stopMs, apiMs, relayPath: tile.lastPath });
+      flushLog();
+    } else {
+      const secs = Math.round((now - t0) / 1000);
+      tile.status.textContent = `${what}: picture still moving ${secs} s after the click${apiNote}`;
+      if (secs >= 30 && !warned) { warned = true; log({ kind: "stop-timing", what, shareId: tile.shareId, stillMovingAfterS: 30, apiMs, relayPath: tile.lastPath }); }
+    }
+  }, 100);
+}
+
+// ---- the list of live shares ---------------------------------------------
+async function poll() {
+  const state = await api("state?client=" + client);
+  $("#relay").disabled = !state.turn;
+  $("#relayNote").textContent = state.turn ? "" : "(no relay key configured)";
+  const box = $("#shares");
+  box.replaceChildren();
+  if (!state.shares.length) box.textContent = "Nobody is sharing.";
+  for (const s of state.shares) {
+    const row = document.createElement("div");
+    const mine = s.client === client;
+    const text = document.createElement("span");
+    text.textContent = `${s.name}${mine ? " (you)" : ""}: ${s.label}${s.cut ? " [cut at source]" : ""}`;
+    row.append(text);
+    if (!watching.has(s.id)) {
+      const b = document.createElement("button");
+      b.textContent = mine ? "Watch (your own)" : "Watch";
+      b.onclick = () => { b.disabled = true; watch(s).catch(showError); };
+      row.append(b);
+    }
+    box.append(row);
+  }
+}
+setInterval(() => poll().catch(() => {}), 2000);
+poll().catch(showError);
+
+// ---- statistics -----------------------------------------------------------
+const round = (n, d = 0) => (n == null || Number.isNaN(n) ? null : Number(n.toFixed(d)));
+
+function readStats(report, tile, dt) {
+  const prev = tile.prev;
+  const delta = (s, f) => { const p = prev.get(s.id); return p && s[f] != null && p[f] != null ? s[f] - p[f] : null; };
+  const rate = (s, f) => { const d = delta(s, f); return d == null ? null : d / dt; };
+  const per = (s, num, den) => { const n = delta(s, num), d = delta(s, den); return n != null && d > 0 ? n / d : null; };
+  const all = new Map();
+  report.forEach((s) => all.set(s.id, s));
+  const codecOf = (s) => { const c = all.get(s.codecId); return c ? { codec: c.mimeType?.replace("video/", ""), fmtp: c.sdpFmtpLine } : {}; };
+  const out = {};
+
+  all.forEach((s) => {
+    const kind = s.kind ?? s.mediaType;
+    if (s.type === "outbound-rtp" && kind === "video") {
+      Object.assign(out, {
+        res: s.frameWidth ? `${s.frameWidth}x${s.frameHeight}` : null, fps: round(s.framesPerSecond ?? rate(s, "framesEncoded"), 1),
+        mbps: round(rate(s, "bytesSent") * 8 / 1e6, 2), targetMbps: round(s.targetBitrate / 1e6, 2),
+        encoder: s.encoderImplementation, hardware: s.powerEfficientEncoder, limitedBy: s.qualityLimitationReason,
+        limitedSeconds: s.qualityLimitationDurations, encodeMsPerFrame: round(per(s, "totalEncodeTime", "framesEncoded") * 1000, 1),
+        nack: s.nackCount, pli: s.pliCount, scalability: s.scalabilityMode, ...codecOf(s),
+      });
+    } else if (s.type === "media-source" && kind === "video") {
+      out.captureFps = round(s.framesPerSecond, 1);
+      out.captureRes = s.width ? `${s.width}x${s.height}` : null;
+    } else if (s.type === "outbound-rtp" && kind === "audio") {
+      out.audioKbps = round(rate(s, "bytesSent") * 8 / 1e3);
+    } else if (s.type === "remote-inbound-rtp" && kind === "video") {
+      out.viewerSideLossPct = round(s.fractionLost * 100, 1);
+      out.rttMs = round(s.roundTripTime * 1000);
+    } else if (s.type === "inbound-rtp" && kind === "video") {
+      Object.assign(out, {
+        res: s.frameWidth ? `${s.frameWidth}x${s.frameHeight}` : null, fps: round(s.framesPerSecond ?? rate(s, "framesDecoded"), 1),
+        mbps: round(rate(s, "bytesReceived") * 8 / 1e6, 2), decoder: s.decoderImplementation, hardware: s.powerEfficientDecoder,
+        droppedPerSec: round(rate(s, "framesDropped"), 1), droppedTotal: s.framesDropped, freezes: s.freezeCount, freezeSeconds: round(s.totalFreezesDuration, 1),
+        jitterBufferMs: round(per(s, "jitterBufferDelay", "jitterBufferEmittedCount") * 1000),
+        decodeMsPerFrame: round(per(s, "totalDecodeTime", "framesDecoded") * 1000, 1),
+        packetsLost: s.packetsLost, nack: s.nackCount, pli: s.pliCount, ...codecOf(s),
+      });
+    } else if (s.type === "inbound-rtp" && kind === "audio") {
+      out.audioKbps = round(rate(s, "bytesReceived") * 8 / 1e3);
+      out.audioLevel = round(s.audioLevel, 3);
+    }
+  });
+
+  let pair = null;
+  all.forEach((s) => { if (s.type === "transport" && s.selectedCandidatePairId) pair = all.get(s.selectedCandidatePairId); });
+  if (!pair) all.forEach((s) => { if (s.type === "candidate-pair" && (s.selected || (s.nominated && s.state === "succeeded"))) pair = s; });
+  if (pair) {
+    const local = all.get(pair.localCandidateId);
+    out.path = local ? `${local.candidateType}/${local.relayProtocol ?? local.protocol}` : null;
+    out.uplinkEstimateMbps = round(pair.availableOutgoingBitrate / 1e6, 1);
+    out.rttMs ??= round(pair.currentRoundTripTime * 1000);
+  }
+  tile.prev = all;
+  for (const k of Object.keys(out)) if (out[k] == null) delete out[k];
+  return out;
+}
+
+function render(tile, s) {
+  const fpsClass = s.fps >= 57 ? "good" : s.fps >= 45 ? "warn" : "bad";
+  tile.head.innerHTML = s.res
+    ? `<span>${s.res}</span> @ <span class="${fpsClass}">${s.fps ?? "?"} fps</span> · ${s.mbps ?? "?"} Mbps`
+    : `<span class="dim">no picture yet</span>`;
+  const show = { ...tile.info, ...s };
+  delete show.res; delete show.fps; delete show.mbps;
+  tile.pre.textContent = Object.entries(show)
+    .map(([k, v]) => `${k.padEnd(20)} ${typeof v === "object" ? JSON.stringify(v) : v}`).join("\n");
+}
+
+setInterval(async () => {
+  for (const tile of [...publishers.values(), ...watching.values()]) {
+    if (tile.closed || !tile.pc) continue;
+    try {
+      const report = await tile.pc.getStats();
+      const now = performance.now();
+      const stats = readStats(report, tile, (now - tile.prevAt) / 1000);
+      const first = !tile.prevAt;
+      tile.prevAt = now;
+      tile.lastPath = stats.path;
+      if (first) continue;
+      render(tile, stats);
+      log({ kind: tile.role, shareId: tile.shareId, label: tile.label, ...stats });
+    } catch (err) { console.warn("stats", err); }
+  }
+}, 2000);
+
+window.addEventListener("pagehide", () => {
+  for (const id of publishers.keys()) navigator.sendBeacon?.("/api/unpublish?k=" + encodeURIComponent(key), JSON.stringify({ shareId: id }));
+});
+</script>
+</body>
+</html>

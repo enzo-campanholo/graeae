@@ -1,0 +1,10 @@
+// PROTOTYPE, throwaway. Delete the Worker with ./run.sh delete when the proof is done.
+{
+  "name": "graeae-quality-proof",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "assets": { "directory": "./public" },
+  "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "ProofRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProofRoom"] }]
+}
