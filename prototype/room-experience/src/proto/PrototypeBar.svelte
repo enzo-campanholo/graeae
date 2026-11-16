@@ -28,7 +28,7 @@
     u.searchParams.set('rooms', String(proto.rooms))
     u.searchParams.set('browser', proto.browser)
     u.searchParams.set('flow', proto.flow)
-    history.replaceState(null, '', u)
+    try { history.replaceState(null, "", u) } catch {}
   })
   const fmt = (m: null | { clicks: number; secs: number }) => (m ? `${m.clicks} clicks, ${m.secs}s` : 'not yet')
 </script>

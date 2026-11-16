@@ -38,4 +38,4 @@
   </div>
 {/if}
 
-{#if import.meta.env.DEV}<PrototypeBar />{/if}
+<PrototypeBar />
