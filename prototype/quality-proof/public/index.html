@@ -77,6 +77,7 @@
       <option value="8">8 Mbps</option><option value="12" selected>12 Mbps</option><option value="15">15 Mbps</option><option value="20">20 Mbps</option><option value="4">4 Mbps</option>
     </select></label>
     <label>Size <select id="height"><option value="1080">1080p</option><option value="720">720p</option></select></label>
+    <label>Frame rate <select id="fps"><option value="60">60 fps</option><option value="72">72 fps</option><option value="120">120 fps</option><option value="144">144 fps</option><option value="30">30 fps</option></select></label>
     <label><input type="checkbox" id="audio" checked> Audio (tab or application)</label>
     <label><input type="checkbox" id="motion" checked> Favour smooth motion</label>
     <button id="share" class="primary">Share a screen</button>
@@ -217,9 +218,10 @@ $("#share").onclick = () => share().catch(showError);
 async function share() {
   const height = Number($("#height").value);
   const maxBitrate = Number($("#bitrate").value) * 1e6;
+  const fps = Number($("#fps").value);
   const wantAudio = $("#audio").checked && !isFirefox; // Firefox captures no screen audio
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 60, max: 60 }, width: { max: Math.round(height * 16 / 9) }, height: { max: height } },
+    video: { frameRate: { ideal: fps, max: fps }, width: { max: Math.round(height * 16 / 9) }, height: { max: height } },
     audio: wantAudio
       ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, restrictOwnAudio: true }
       : false,
@@ -230,10 +232,10 @@ async function share() {
   const [video] = stream.getVideoTracks();
   const [audio] = stream.getAudioTracks();
   if ($("#motion").checked && "contentHint" in video) video.contentHint = "motion";
-  await video.applyConstraints({ frameRate: 60 }).catch(() => {}); // old Firefox ignored it in the first call
+  await video.applyConstraints({ frameRate: fps }).catch(() => {}); // old Firefox ignored it in the first call
 
   const { pc, username, relayOnly } = await newConnection();
-  const vt = pc.addTransceiver(video, { direction: "sendonly", sendEncodings: [{ maxBitrate, maxFramerate: 60 }] });
+  const vt = pc.addTransceiver(video, { direction: "sendonly", sendEncodings: [{ maxBitrate, maxFramerate: fps }] });
   const codecNote = preferCodec(vt, $("#codec").value);
   const at = audio ? pc.addTransceiver(audio, { direction: "sendonly" }) : null;
 
@@ -241,7 +243,7 @@ async function share() {
   const tracks = [{ mid: vt.mid, kind: "video" }];
   if (at) tracks.push({ mid: at.mid, kind: "audio" });
   const settings = video.getSettings();
-  const label = `${$("#codec").value || "default"}, ${$("#bitrate").value} Mbps, ${settings.displaySurface ?? "?"}${audio ? ", audio" : ""}`;
+  const label = `${$("#codec").value || "default"}, ${$("#bitrate").value} Mbps, ${fps} fps asked, ${settings.displaySurface ?? "?"}${audio ? ", audio" : ""}`;
   const { shareId, answer } = await api("publish", { client, name: who().name, label, offer: pc.localDescription.sdp, tracks });
   await pc.setRemoteDescription({ type: "answer", sdp: answer });
 
@@ -249,7 +251,7 @@ async function share() {
     const p = vt.sender.getParameters();
     if (!p.encodings?.length) p.encodings = [{}];
     p.encodings[0].maxBitrate = maxBitrate;
-    p.encodings[0].maxFramerate = 60;
+    p.encodings[0].maxFramerate = fps;
     if ($("#motion").checked) p.degradationPreference = "maintain-framerate";
     await vt.sender.setParameters(p);
   } catch (err) { console.warn("setParameters", err); }
