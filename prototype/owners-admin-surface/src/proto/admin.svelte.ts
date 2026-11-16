@@ -9,7 +9,7 @@ const q = new URLSearchParams(location.search)
 
 export const VARIANTS = [
   { key: 'A', name: 'In the bar' },
-  { key: 'B', name: 'Owner page' },
+  { key: 'B', name: 'Owner page, chosen' },
   { key: 'C', name: 'Side panel' },
 ]
 
@@ -28,7 +28,7 @@ const code = () => Math.random().toString(36).slice(2, 10)
 proto.members.push({ id: 'nina', name: 'Nina', present: false, hue: 330 })
 
 export const admin = $state({
-  variant: q.get('variant') ?? 'A',
+  variant: q.get('variant') ?? 'B',
   role: (q.get('as') ?? 'owner') as 'owner' | 'member',
   page: 'room' as 'room' | 'owner' | 'you', // variant B
   ownerTab: 'people' as 'people' | 'invites' | 'rooms' | 'usage', // variant B

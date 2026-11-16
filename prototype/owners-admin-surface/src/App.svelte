@@ -2,6 +2,7 @@
   // PROTOTYPE. Three variants of where the owner's screens live, switchable via ?variant=A|B|C,
   // on the room from the room-experience prototype. See src/proto/admin.svelte.ts.
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
+  import Settings from '@lucide/svelte/icons/settings'
   import { Button } from '$lib/components/ui/button'
   import Mine from './proto/Mine.svelte'
   import OwnerPage from './proto/OwnerPage.svelte'
@@ -19,14 +20,22 @@
   <OwnerPage />
 {:else if page === 'you'}
   <div class="mx-auto max-w-md space-y-6 p-10">
-    <Button size="sm" variant="ghost" onclick={() => (admin.page = 'room')}><ArrowLeft />Back to the room</Button>
+    <Button size="sm" variant="ghost" onclick={() => (admin.page = 'room')}><ArrowLeft />Back</Button>
     <h1 class="text-xl font-semibold">You</h1>
     <Mine />
   </div>
 {:else if !room}
   <!-- The root address for a member with several rooms. -->
   <div class="mx-auto max-w-md space-y-3 p-10">
-    <h1 class="text-xl font-semibold">Your rooms</h1>
+    <div class="flex items-center gap-1">
+      <h1 class="flex-1 text-xl font-semibold">Your rooms</h1>
+      {#if admin.variant === 'B'}
+        <Button size="sm" variant="ghost" title="Your name and devices" onclick={() => (admin.page = 'you')}>{admin.myName} <span class="text-muted-foreground">(you)</span></Button>
+        {#if isOwner()}
+          <Button size="icon-sm" variant="ghost" title="Owner: people, invites, rooms, usage" onclick={() => (admin.page = 'owner')}><Settings /></Button>
+        {/if}
+      {/if}
+    </div>
     {#each myRooms() as r (r.id)}
       <button class="flex w-full items-center justify-between rounded-lg border p-4 text-left hover:bg-muted" onclick={() => (proto.room = r.id)}>
         <span>
@@ -39,11 +48,6 @@
   </div>
 {:else}
   <div class="relative h-full">
-    {#if proto.rooms > 1}
-      <Button class="absolute left-1/2 top-1 z-10 -translate-x-1/2" size="xs" variant="ghost" onclick={() => (proto.room = null)}>
-        <ArrowLeft />Rooms
-      </Button>
-    {/if}
     <Room roomId={room.id} roomName={room.name} />
   </div>
 {/if}

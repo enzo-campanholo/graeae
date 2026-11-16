@@ -4,6 +4,7 @@
   //   A: everything hangs off the bar (row menus, popovers)
   //   B: the room stays clean; a button leads to a separate owner page and a "You" page
   //   C: a panel on the right, beside the stage, with the room still live
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import Ellipsis from '@lucide/svelte/icons/ellipsis'
   import Monitor from '@lucide/svelte/icons/monitor'
   import PanelLeft from '@lucide/svelte/icons/panel-left'
@@ -90,14 +91,17 @@
   </aside>
   {:else}
   <aside class="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r p-3">
-    <div class="flex items-center justify-between gap-1">
+    <div class="flex items-center gap-1">
+      {#if proto.rooms > 1}
+        <Button size="icon-sm" variant="ghost" title="Back to your rooms" onclick={() => (proto.room = null)}><ArrowLeft /></Button>
+      {/if}
       {#if isOwner() && v === 'A'}
         <Popover.Root>
-          <Popover.Trigger class="min-w-0 truncate rounded-md px-1 text-left text-lg font-semibold hover:bg-muted" title="Rename this room, or make a new one">{roomName}</Popover.Trigger>
+          <Popover.Trigger class="min-w-0 flex-1 truncate rounded-md px-1 text-left text-lg font-semibold hover:bg-muted" title="Rename this room, or make a new one">{roomName}</Popover.Trigger>
           <Popover.Content side="bottom" align="start" class="w-80"><RoomsAdmin only={roomId} /></Popover.Content>
         </Popover.Root>
       {:else}
-        <h1 class="min-w-0 truncate text-lg font-semibold">{roomName}</h1>
+        <h1 class="min-w-0 flex-1 truncate text-lg font-semibold">{roomName}</h1>
       {/if}
       <span class="flex shrink-0">
         {#if isOwner() && v !== 'A'}

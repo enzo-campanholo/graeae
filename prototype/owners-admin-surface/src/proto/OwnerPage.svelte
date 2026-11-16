@@ -23,7 +23,7 @@
 
 <div class="flex h-full">
   <nav class="flex w-56 shrink-0 flex-col gap-1 border-r p-3">
-    <Button class="mb-3 justify-start" size="sm" variant="ghost" onclick={() => (admin.page = 'room')}><ArrowLeft />Back to the room</Button>
+    <Button class="mb-3 justify-start" size="sm" variant="ghost" onclick={() => (admin.page = 'room')}><ArrowLeft />Back</Button>
     <div class="px-2 pb-1 text-lg font-semibold">Owner</div>
     {#each tabs as t}
       <button class="rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted {admin.ownerTab === t.key ? 'bg-muted' : ''}" onclick={() => (admin.ownerTab = t.key)}>{t.label}</button>
@@ -70,7 +70,7 @@
       <div class="flex gap-8">
         <div class="w-80 shrink-0 rounded-lg border p-4">
           <div class="mb-3 font-medium">Invite someone</div>
-          <InviteForm mode="full" />
+          <InviteForm mode="quick" />
         </div>
         <div class="flex-1">
           <div class="mb-2 font-medium">Pending</div>
