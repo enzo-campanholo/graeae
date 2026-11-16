@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["svelte", "vite/client"],
+    "paths": { "$lib": ["./src/app/lib"], "$lib/*": ["./src/app/lib/*"] }
+  },
+  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/shared/**/*.ts"]
+}
