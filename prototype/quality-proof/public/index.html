@@ -69,7 +69,8 @@
   <h2>Share</h2>
   <div class="row">
     <label>Codec <select id="codec">
-      <option value="H264">H.264 (hardware on Chromium)</option>
+      <option value="H264">H.264 main/high (hardware)</option>
+      <option value="H264-baseline">H.264 baseline (software)</option>
       <option value="VP9">VP9</option><option value="AV1">AV1</option><option value="VP8">VP8</option>
       <option value="H265">H.265 (Chromium only)</option><option value="">browser default</option>
     </select></label>
@@ -201,14 +202,23 @@ async function newConnection() {
 // ---- sharing --------------------------------------------------------------
 function preferCodec(transceiver, mime) {
   if (!mime) return "browser default";
+  // On the test machine only the main and high profiles are hardware encoded; baseline falls to OpenH264.
+  const baseline = mime === "H264-baseline";
+  const isBaseline = (c) => /profile-level-id=42/i.test(c.sdpFmtpLine ?? "");
+  if (baseline) mime = "H264";
   const want = ("video/" + mime).toLowerCase();
   let problem = "this browser does not offer it";
   for (const side of [RTCRtpSender, RTCRtpReceiver]) {
     const caps = side.getCapabilities?.("video")?.codecs ?? [];
-    const chosen = caps.filter((c) => c.mimeType.toLowerCase() === want);
+    let chosen = caps.filter((c) => c.mimeType.toLowerCase() === want);
+    if (mime === "H264") {
+      const picked = chosen.filter((c) => isBaseline(c) === baseline);
+      if (picked.length) chosen = picked;
+      chosen.sort((a, b) => /profile-level-id=64/i.test(b.sdpFmtpLine) - /profile-level-id=64/i.test(a.sdpFmtpLine));
+    }
     if (!chosen.length) continue;
     const helpers = caps.filter((c) => /rtx|red|ulpfec|flexfec/i.test(c.mimeType));
-    try { transceiver.setCodecPreferences([...chosen, ...helpers]); return mime; }
+    try { transceiver.setCodecPreferences([...chosen, ...helpers]); return `${mime}: ${chosen.map((c) => (c.sdpFmtpLine ?? "").match(/profile-level-id=(\w+)/)?.[1] ?? "").join(" ")}`; }
     catch (err) { problem = err.message; }
   }
   return `${mime} NOT applied (${problem})`;
