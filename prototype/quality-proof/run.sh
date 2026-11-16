@@ -34,7 +34,10 @@ case "${1:-deploy}" in
     enter_secrets
     ;;
   deploy)
-    wrangler whoami >/dev/null 2>&1 || wrangler login
+    # whoami exits 0 even when logged out, so read what it says.
+    if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && ! wrangler whoami 2>&1 | grep -q "associated with the email\|Account ID"; then
+      wrangler login
+    fi
     [ -f .access-key ] || head -c 18 /dev/urandom | base64 | tr -d '/+=' > .access-key
     out=$(wrangler deploy 2>&1 | tee /dev/stderr)
     printf '%s' "$(cat .access-key)" | wrangler secret put ACCESS_KEY >/dev/null
