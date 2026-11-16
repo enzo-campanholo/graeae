@@ -109,7 +109,8 @@
       <li><b>Helium, Vivaldi, Brave.</b> Share from each with the game running, H.264, default browser settings. Check "encoder" says hardware. Repeat the application-audio check in each.</li>
       <li><b>Exclusive fullscreen.</b> Share the whole screen, then put the game in exclusive fullscreen. Does the viewer's picture freeze?</li>
       <li><b>Cut-off.</b> While watching, press "Cut at source". Do it 5 times (the sharer shares again each time). Then try "Cut my watching" a few times.</li>
-      <li><b>Relay revoked.</b> Watch with "Force relay" ticked, then press "Revoke my relay credential" and leave the tile open.</li>
+      <li><b>Relay revoked.</b> Watch with "Force relay" ticked. Press "Probe relay with this credential" (it should work), then "Revoke my relay credential", then probe again, and leave the tile open and visible until the picture stops. Repeat 3 times.</li>
+      <li><b>After a cut.</b> When a share was cut at source, the sharer leaves their tile open for 5 minutes instead of pressing "Stop sharing".</li>
     </ol>
     <div class="dim">Type or pick the matching "Test run" before each step so the log can tell them apart.</div>
   </details>
@@ -197,7 +198,7 @@ async function newConnection() {
   const { iceServers, username } = await api("ice", {});
   const relayOnly = $("#relay").checked;
   const pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: relayOnly ? "relay" : "all" });
-  return { pc, username, relayOnly };
+  return { pc, username, relayOnly, iceServers };
 }
 
 // ---- sharing --------------------------------------------------------------
@@ -382,7 +383,7 @@ async function diagnose() {
 // ---- watching -------------------------------------------------------------
 async function watch(shareInfo) {
   const tile = makeTile(`Watching ${shareInfo.name}: ${shareInfo.label}`, true);
-  const { pc, username, relayOnly } = await newConnection();
+  const { pc, username, relayOnly, iceServers } = await newConnection();
   Object.assign(tile, { pc, role: "recv", shareId: shareInfo.id, label: shareInfo.label, info: { forcedRelay: relayOnly } });
   watching.set(shareInfo.id, tile);
 
@@ -415,8 +416,33 @@ async function watch(shareInfo) {
 
   tile.button("Cut at source", "danger", () => measureStop(tile, "cut at source", () => api("cut-share", { shareId: shareInfo.id })));
   tile.button("Cut my watching", "danger", () => measureStop(tile, "cut my watching", () => api("cut-watch", { watchId })));
-  if (username) tile.button("Revoke my relay credential", "danger", () => measureStop(tile, "relay credential revoked", () => api("turn-revoke", { username })));
+  if (username) {
+    tile.button("Revoke my relay credential", "danger", () => measureStop(tile, "relay credential revoked", () => api("turn-revoke", { username })));
+    tile.button("Probe relay with this credential", "", () => probeRelay(tile, iceServers));
+  }
   pc.addEventListener("connectionstatechange", () => { if (!tile.measuring) tile.status.textContent = "connection: " + pc.connectionState; });
+}
+
+// Can this tile's relay credential still open a NEW relay? Press before revoking (control) and after.
+async function probeRelay(tile, iceServers) {
+  tile.probe ??= tile.el.appendChild(Object.assign(document.createElement("div"), { className: "status" }));
+  tile.probe.textContent = "probing the relay…";
+  const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "relay" });
+  pc.createDataChannel("probe");
+  let relayCandidates = 0;
+  const errors = new Set();
+  pc.onicecandidate = (e) => { if (/ typ relay/.test(e.candidate?.candidate ?? "")) relayCandidates++; };
+  pc.onicecandidateerror = (e) => errors.add(`${e.errorCode} ${e.errorText}`.trim());
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise((resolve) => {
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") resolve(); };
+    setTimeout(resolve, 8000);
+  });
+  pc.close();
+  const result = { relayCandidates, errors: [...errors].slice(0, 6) };
+  tile.probe.textContent = `relay probe at ${new Date().toLocaleTimeString()}: ${relayCandidates ? "credential WORKS, " + relayCandidates + " relay addresses" : "credential REFUSED"} ${result.errors.join("; ")}`;
+  log({ kind: "relay-probe", shareId: tile.shareId, ...result });
+  flushLog();
 }
 
 // Time from the click to the last video frame shown. One machine, one clock.
@@ -426,7 +452,8 @@ function measureStop(tile, what, action) {
   const t0 = performance.now();
   let apiNote = "";
   let apiMs = null;
-  action().then((r) => { apiMs = r.apiMs; apiNote = `, API call ${r.apiMs} ms`; }, (e) => { apiNote = `, API error: ${e.message}`; });
+  let sessionAfter;
+  action().then((r) => { apiMs = r.apiMs; sessionAfter = r.sessionAfter; apiNote = `, API call ${r.apiMs} ms`; }, (e) => { apiNote = `, API error: ${e.message}`; });
   let warned = false;
   const timer = setInterval(() => {
     const now = performance.now();
@@ -435,7 +462,7 @@ function measureStop(tile, what, action) {
       clearInterval(timer);
       const stopMs = Math.round(tile.lastFrameAt - t0);
       tile.status.textContent = `${what}: picture stopped ${stopMs} ms after the click${apiNote}`;
-      log({ kind: "stop-timing", what, shareId: tile.shareId, stopMs, apiMs, relayPath: tile.lastPath });
+      log({ kind: "stop-timing", what, shareId: tile.shareId, stopMs, apiMs, sessionAfter, relayPath: tile.lastPath });
       flushLog();
     } else {
       const secs = Math.round((now - t0) / 1000);
@@ -511,8 +538,11 @@ function readStats(report, tile, dt) {
         decodeMsPerFrame: round(per(s, "totalDecodeTime", "framesDecoded") * 1000, 1),
         packetsLost: s.packetsLost, nack: s.nackCount, pli: s.pliCount, ...codecOf(s),
       });
+      // For the usage comparison: bytes this viewer received in this interval, with RTP headers.
+      out.rtpBytes = (out.rtpBytes ?? 0) + (delta(s, "bytesReceived") ?? 0) + (delta(s, "headerBytesReceived") ?? 0);
     } else if (s.type === "inbound-rtp" && kind === "audio") {
       out.audioKbps = round(rate(s, "bytesReceived") * 8 / 1e3);
+      out.rtpBytes = (out.rtpBytes ?? 0) + (delta(s, "bytesReceived") ?? 0) + (delta(s, "headerBytesReceived") ?? 0);
       out.audioLevel = round(s.audioLevel, 3);
     }
   });
@@ -520,6 +550,7 @@ function readStats(report, tile, dt) {
   let pair = null;
   all.forEach((s) => { if (s.type === "transport" && s.selectedCandidatePairId) pair = all.get(s.selectedCandidatePairId); });
   if (!pair) all.forEach((s) => { if (s.type === "candidate-pair" && (s.selected || (s.nominated && s.state === "succeeded"))) pair = s; });
+  all.forEach((s) => { if (s.type === "transport") { out.transportRecvBytes = delta(s, "bytesReceived"); out.transportSentBytes = delta(s, "bytesSent"); } });
   if (pair) {
     const local = all.get(pair.localCandidateId);
     out.path = local ? `${local.candidateType}/${local.relayProtocol ?? local.protocol}` : null;
@@ -554,7 +585,7 @@ setInterval(async () => {
       tile.lastPath = stats.path;
       if (first) continue;
       render(tile, stats);
-      log({ kind: tile.role, shareId: tile.shareId, label: tile.label, ...stats });
+      log({ kind: tile.role, shareId: tile.shareId, label: tile.label, conn: tile.pc.connectionState, ...stats });
     } catch (err) { console.warn("stats", err); }
   }
 }, 2000);

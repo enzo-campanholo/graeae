@@ -20,6 +20,7 @@ export class ProofRoom extends DurableObject {
   shares = new Map(); // shareId -> { id, client, name, label, sessionId, tracks:[{trackName, mid, kind}], cut }
   watches = new Map(); // watchId -> { sessionId, mids }
   seen = new Map(); // client -> last poll time
+  cutSessions = new Map(); // sessionId -> { what, name, at }: kept after a forced close to see what Cloudflare does with them
 
   constructor(ctx, env) {
     super(ctx, env);
@@ -46,6 +47,12 @@ export class ProofRoom extends DurableObject {
   failedTracks(data) {
     const bad = (data.tracks ?? []).filter((t) => t.errorCode);
     if (bad.length) throw new Error("media server track error: " + JSON.stringify(bad));
+  }
+
+  // Asked straight after a forced close: does the session's own state already show it?
+  async sessionState(sessionId) {
+    try { const d = await this.sfu("GET", `/sessions/${sessionId}`); return { askMs: d.ms, tracks: d.tracks ?? d }; }
+    catch (err) { return { error: String(err?.message ?? err) }; }
   }
 
   hasTurn() { return Boolean(this.env.TURN_KEY_ID && this.env.TURN_KEY_TOKEN); }
@@ -164,7 +171,8 @@ export class ProofRoom extends DurableObject {
           tracks: share.tracks.map((t) => ({ mid: t.mid })), force: true,
         });
         share.cut = true;
-        return { apiMs: data.ms, tracks: data.tracks };
+        this.cutSessions.set(share.sessionId, { what: "share", name: share.name, at: now });
+        return { apiMs: data.ms, tracks: data.tracks, sessionAfter: await this.sessionState(share.sessionId) };
       }
 
       // The other half of removal: force-close one viewer's subscription.
@@ -174,7 +182,8 @@ export class ProofRoom extends DurableObject {
         const data = await this.sfu("PUT", `/sessions/${watch.sessionId}/tracks/close`, {
           tracks: watch.mids.map((mid) => ({ mid })), force: true,
         });
-        return { apiMs: data.ms, tracks: data.tracks };
+        this.cutSessions.set(watch.sessionId, { what: "watch", at: now });
+        return { apiMs: data.ms, tracks: data.tracks, sessionAfter: await this.sessionState(watch.sessionId) };
       }
 
       case "turn-revoke": {
@@ -185,6 +194,15 @@ export class ProofRoom extends DurableObject {
         );
         if (!res.ok) throw new Error(`relay revoke -> ${res.status}: ${(await res.text()).slice(0, 300)}`);
         return { apiMs: Date.now() - started, status: res.status };
+      }
+
+      // What the media server says about every session this room knows, cut ones included.
+      case "sessions": {
+        const out = [];
+        for (const s of this.shares.values()) out.push({ what: "share", name: s.name, cut: s.cut, sessionId: s.sessionId, state: await this.sessionState(s.sessionId) });
+        for (const [id, w] of this.watches) out.push({ what: "watch", watchId: id, sessionId: w.sessionId, state: await this.sessionState(w.sessionId) });
+        for (const [sessionId, c] of this.cutSessions) out.push({ ...c, cutSecondsAgo: Math.round((now - c.at) / 1000), sessionId, state: await this.sessionState(sessionId) });
+        return out;
       }
 
       case "log": {
