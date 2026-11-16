@@ -1,0 +1,15 @@
+# graeae
+
+## Agent skills
+
+### Issue tracker
+
+Issues are markdown files under `.scratch/<feature>/` in this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage roles, each recorded as a `Status:` line in the issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
