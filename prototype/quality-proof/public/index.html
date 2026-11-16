@@ -266,7 +266,12 @@ async function share() {
     if (tile.closed) return;
     tile.closed = true;
     stream.getTracks().forEach((t) => t.stop());
-    pc.close(); tile.el.remove(); publishers.delete(shareId);
+    pc.close(); publishers.delete(shareId);
+    // Keep the last figures on screen: the sharer was in the game, not looking here.
+    tile.el.querySelector("h3").textContent = `Stopped at ${new Date().toLocaleTimeString()}: ${label}`;
+    tile.actions.replaceChildren();
+    tile.button("Dismiss", "", () => tile.el.remove());
+    tile.status.textContent = "Last figures before the share stopped. The full run is in the log.";
     log({ kind: "share-stop", shareId });
     await api("unpublish", { shareId });
   };
