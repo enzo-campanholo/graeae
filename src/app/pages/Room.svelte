@@ -69,7 +69,14 @@
   const isLive = (member: string, kind: ShareKind) =>
     !!view?.shares.live.some((share) => share.member === member && share.kind === kind);
   const rowShare = (member: string, kind: ShareKind) =>
-    isLive(member, kind) ? { watched: !!client?.watches({ member, kind }) } : null;
+    isLive(member, kind)
+      ? {
+          watched: !!client?.watches({ member, kind }),
+          reconnecting: !!view?.shares.live.some(
+            (share) => share.member === member && share.kind === kind && share.reconnecting,
+          ),
+        }
+      : null;
   const toggle = (member: string, kind: ShareKind) => client?.toggle({ member, kind });
 
   const nameOf = (id: string) => view?.people.members.find((person) => person.id === id)?.name ?? "";
@@ -328,7 +335,12 @@
       </Bar>
     {/if}
 
-    <Stage count={tiles.length} focused={focusedTile ? focusedShare : undefined} {strip}>
+    <Stage
+      count={tiles.length}
+      focused={focusedTile ? focusedShare : undefined}
+      {strip}
+      reconnecting={client?.reconnecting ?? false}
+    >
       {#each tiles as tile (tile.key)}
         {@render stageTile(tile, "grid")}
       {/each}

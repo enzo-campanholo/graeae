@@ -43,7 +43,7 @@ function build(): Sample {
           webcam: { watched: watched("bia-webcam") },
         },
         { id: "caio", name: "Caio", followed: false, screen: { watched: watched("caio-screen") }, webcam: null },
-        { id: "duda", name: "Duda", followed: false, reconnecting: true, screen: null, webcam: { watched: watched("duda-webcam") } },
+        { id: "duda", name: "Duda", followed: false, reconnecting: true, screen: null, webcam: { watched: watched("duda-webcam"), reconnecting: true } },
       ],
       away: ["Edu", "Fê"],
       mine: [{ kind: "webcam", watchers: ["Bia", "Caio"], scene: "webcam-2" }],

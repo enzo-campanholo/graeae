@@ -63,7 +63,11 @@ describe("a restart of the instance mid-session", () => {
     await instance.clock.advance(2 * SECOND);
     const { tab: ownerTab } = await openRoom(owner, room);
     await pass(instance, 25 * SECOND, [ownerTab]);
-    expect(ownerTab.queued()).toEqual([{ type: "presence", change: { type: "reconnecting", member: biaId } }]);
+    expect(ownerTab.queued()).toEqual([
+      { type: "presence", change: { type: "reconnecting", member: biaId } },
+      { type: "shares", change: { type: "reconnecting", share: biasWebcam } },
+    ]);
+    await ownerTab.next();
     await ownerTab.next();
 
     // 30 seconds from the restart.
