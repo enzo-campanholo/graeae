@@ -1,6 +1,7 @@
 // What a Seam 2 journey reads and steers of the fake media client, on
 // `window.graeaeFakeMedia`. Types only, so the journeys can import them too.
 
+import type { QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily, ScreenCaptureRequest } from "./capture.ts";
 
 /**
@@ -20,4 +21,11 @@ export interface FakeMediaControl {
   screenAudio: boolean | null;
   /** The browser ends the screen capture by itself: its "stop sharing" bar, or the shared tab closing. */
   endScreen(): void;
+  /**
+   * The quality every share this tab watches arrives at: 1080p unless a journey says
+   * otherwise. A real browser reads it from the frames received.
+   */
+  received: QualityName;
+  /** Every watched share arrives at `quality` from now on, as when the media server steps a weak link down. */
+  receive(quality: QualityName): void;
 }

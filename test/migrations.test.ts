@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
 import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
-import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareWebcam, watch } from "./steps.ts";
+import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareScreen, shareWebcam, watch } from "./steps.ts";
 import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
@@ -150,9 +150,38 @@ describe("the watches migration", () => {
     await shareWebcam(biaTab);
     const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
     const { tab: ownerTab, state } = await openRoom(owner, room);
-    expect(state.watching).toEqual({ stage: [], watchers: [] });
+    expect(state.watching).toEqual({ stage: [], watchers: [], qualities: [] });
     await connectMedia(ownerTab);
     await watch(ownerTab, biasWebcam);
     expect(instance.media.connections()[1]).toHaveLength(1);
+  });
+});
+
+describe("the two-qualities migration", () => {
+  const added = migrations.find((migration) => migration.name === "two-qualities")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance that already has members and rooms, who can then choose the quality they watch at", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await shareScreen(biaTab);
+    const biasScreen = { member: biaState.people.you.id, kind: "screen" as const };
+    const { tab: ownerTab, state } = await openRoom(owner, room);
+    expect(state.shares.live).toEqual([{ ...biasScreen, audio: true, twoQualities: true }]);
+    expect(state.watching).toEqual({ stage: [], watchers: [], qualities: [] });
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasScreen);
+    ownerTab.send({ type: "watching", request: { type: "quality", share: biasScreen, quality: "720p" } });
+    expect(await ownerTab.next()).toEqual({
+      type: "watching",
+      change: { type: "quality", share: biasScreen, quality: "720p" },
+    });
   });
 });

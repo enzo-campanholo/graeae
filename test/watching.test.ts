@@ -96,7 +96,7 @@ describe("watching a share", () => {
 
     const { state } = await openRoom(owner, room);
 
-    expect(state.watching).toEqual({ stage: [], watchers: [] });
+    expect(state.watching).toEqual({ stage: [], watchers: [], qualities: [] });
     expect(instance.media.connections()).toHaveLength(1); // Bia's own, sending
   });
 
@@ -187,8 +187,8 @@ describe("who is watching", () => {
     const { state: biasLater } = await openRoom(bia, room);
     const { state: ownersLater } = await openRoom(owner, room);
 
-    expect(biasLater.watching).toEqual({ stage: [], watchers: [{ share: biasWebcam, members: [ownerId] }] });
-    expect(ownersLater.watching).toEqual({ stage: [], watchers: [] });
+    expect(biasLater.watching).toEqual({ stage: [], watchers: [{ share: biasWebcam, members: [ownerId] }], qualities: [] });
+    expect(ownersLater.watching).toEqual({ stage: [], watchers: [], qualities: [] });
   });
 
   it("names the members in the order they began watching", async () => {

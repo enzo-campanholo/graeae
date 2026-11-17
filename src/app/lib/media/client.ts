@@ -9,6 +9,7 @@
 // What a screen capture asks the browser for is one pure rule, in `capture.ts`.
 
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
+import type { QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily } from "./capture.ts";
 
 /**
@@ -65,6 +66,12 @@ export interface MediaClient {
    * send back. `stream` is the share's picture and sound; null when there is none.
    */
   pull(offer: string, video: string, audio?: string): Promise<{ answer: string; stream: MediaStream | null }>;
+  /**
+   * Reports the quality the watched share on `video` arrives at, now and whenever it
+   * changes, to `heard`: 720p or 1080p, from the frames received, or null before the
+   * first. Returns the way to stop listening.
+   */
+  received(video: string, heard: (quality: QualityName | null) => void): () => void;
   /** Lets go of the watched share on `video`, whose pull the instance has closed. */
   drop(video: string): void;
   /** Turns a live capture's sound on or off, without stopping the share. */

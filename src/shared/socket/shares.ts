@@ -6,6 +6,7 @@
 // that only the sharer's tab needs (the media server's half of the negotiation, or a
 // refusal) comes in the media area; every tab on the room hears `started` and `ended`.
 
+import type { BrowserFamily } from "../encoding.ts";
 import { unknownChange } from "./area.ts";
 
 /** The two kinds of share (GLOSSARY.md): a screen share or a webcam share. */
@@ -19,12 +20,18 @@ export interface LiveShare {
 }
 
 /**
- * A live share as the room lists it: its name, and for a screen share whether it carries
- * screen audio. A share is always asked for by its name alone.
+ * A live share as the room lists it: its name, for a screen share whether it carries
+ * screen audio, and whether a viewer can choose the quality they watch it at. A share is
+ * always asked for by its name alone.
  */
 export interface ListedShare extends LiveShare {
   /** A screen share only: true when it carries screen audio, false when it is video only. */
   audio?: boolean;
+  /**
+   * Present on a share that goes out at two qualities, 1080p and 720p (a Chromium screen
+   * share): a viewer may choose "Auto", "1080p" or "720p". Left out on a share with one.
+   */
+  twoQualities?: true;
 }
 
 export interface SharesState {
@@ -48,9 +55,10 @@ export type SharesRequest =
   /**
    * Start a screen share from this tab, likewise. `audio` is the mid of the transceiver
    * that sends its screen audio, left out when the browser's picker gave no sound: the
-   * share is then video only.
+   * share is then video only. `browser` is the family of the browser sending it, whose
+   * encoding plan says how many qualities it goes out at.
    */
-  | { type: "start"; kind: "screen"; offer: string; video: string; audio?: string }
+  | { type: "start"; kind: "screen"; offer: string; video: string; audio?: string; browser: BrowserFamily }
   /** Stop this tab's share of `kind`. */
   | { type: "stop"; kind: ShareKind };
 

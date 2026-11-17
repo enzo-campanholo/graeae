@@ -4,34 +4,31 @@
 //
 // No test reaches this file: Seam 2 runs on the fake. It is kept thin enough to read
 // against the spec's Screen audio, Encoding and quality and Relay sections; what a screen
-// capture asks for is the pure rule in `capture.ts`, which is tested. Ticket 13 proves it
-// on a deployed instance; ticket 17 adds the codec order and the two qualities.
+// capture asks for, the encoding plan and how the browser's API takes it are pure rules
+// in `capture.ts`, `src/shared/encoding.ts` and `encodings.ts`, which are tested. The
+// owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
 
+import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
+import { codecPreferences, receivedQuality, sendEncodings, type SendEncoding } from "./encodings.ts";
 
-/** A webcam share: 720p at 30 fps, limited to 1.5 Mbps (spec, Encoding and quality). */
-const WEBCAM = { width: 1280, height: 720, frameRate: 30, maxBitrate: 1_500_000 };
-
-/** A screen share's one quality until ticket 17: 60 fps, limited to 12 Mbps. */
-const SCREEN = { frameRate: 60, maxBitrate: 12_000_000 };
+/** How often a watched share's statistics are read for the quality it arrives at. */
+const RECEIVED_EVERY_MS = 2000;
 
 export class BrowserMediaClient implements MediaClient {
   readonly browser: BrowserFamily = browserFamily(navigator.userAgent);
   private connection: RTCPeerConnection | null = null;
   /** The transceivers sending each capture, so stopping one stops its sending. */
   private readonly sending = new Map<Capture, RTCRtpTransceiver[]>();
-  /** The video transceiver of the last offer and its limits, set again once it is accepted. */
-  private offered: { transceiver: RTCRtpTransceiver; limits: RTCRtpEncodingParameters } | null = null;
+  /** The video transceiver of the last offer and its encodings, set again once it is accepted. */
+  private offered: { transceiver: RTCRtpTransceiver; encodings: SendEncoding[] } | null = null;
 
   async captureWebcam(): Promise<Capture> {
+    const { width, height, frameRate } = encodingPlan(this.browser, "webcam").capture;
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: WEBCAM.width },
-        height: { ideal: WEBCAM.height },
-        frameRate: { ideal: WEBCAM.frameRate, max: WEBCAM.frameRate },
-      },
+      video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: frameRate, max: frameRate } },
       audio: false,
     });
     return { kind: "webcam", stream, audio: false, ended: endedOf(stream) };
@@ -63,13 +60,15 @@ export class BrowserMediaClient implements MediaClient {
     const [video] = capture.stream?.getVideoTracks() ?? [];
     const [audio] = capture.stream?.getAudioTracks() ?? [];
     if (!video) throw new Error("The capture has no picture to send");
-    const limits = capture.kind === "screen" ? SCREEN : WEBCAM;
-    const encoding = { maxBitrate: limits.maxBitrate, maxFramerate: limits.frameRate };
-    const videoSender = connection.addTransceiver(video, { direction: "sendonly", streams, sendEncodings: [encoding] });
+    const plan = encodingPlan(this.browser, capture.kind);
+    // One encoding per quality, each scaled down to its height: a larger monitor to 1080p.
+    const encodings = sendEncodings(plan, video.getSettings().height);
+    const videoSender = connection.addTransceiver(video, { direction: "sendonly", streams, sendEncodings: encodings });
+    preferCodecs(videoSender, plan);
     // A screen share's sound goes with its picture, as one unit.
     const audioSender = audio ? connection.addTransceiver(audio, { direction: "sendonly", streams }) : null;
     this.sending.set(capture, audioSender ? [videoSender, audioSender] : [videoSender]);
-    this.offered = { transceiver: videoSender, limits: encoding };
+    this.offered = { transceiver: videoSender, encodings };
     const offer = await connection.createOffer();
     await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
     if (!videoSender.mid || !connection.localDescription) throw new Error("The offer gave the capture no mid");
@@ -89,8 +88,7 @@ export class BrowserMediaClient implements MediaClient {
     this.offered = null;
     if (!offered) return;
     const parameters = offered.transceiver.sender.getParameters();
-    const [encoding = {}] = parameters.encodings ?? [];
-    parameters.encodings = [{ ...encoding, ...offered.limits }];
+    parameters.encodings = offered.encodings.map((limits, index) => ({ ...parameters.encodings?.[index], ...limits }));
     await offered.transceiver.sender.setParameters(parameters).catch(() => undefined);
   }
 
@@ -98,7 +96,7 @@ export class BrowserMediaClient implements MediaClient {
     const connection = await this.settled();
     await connection.setRemoteDescription({ type: "offer", sdp: offer });
     const tracks = [video, ...(audio === undefined ? [] : [audio])].map((mid) => {
-      const transceiver = connection.getTransceivers().find((candidate) => candidate.mid === mid);
+      const transceiver = this.transceiver(mid);
       if (!transceiver) throw new Error(`The media server's offer has no transceiver ${mid}`);
       return transceiver.receiver.track;
     });
@@ -106,6 +104,22 @@ export class BrowserMediaClient implements MediaClient {
     await connection.setLocalDescription({ type: "answer", sdp: stereoOpus(answer.sdp ?? "") });
     if (!connection.localDescription) throw new Error("The browser made no answer");
     return { answer: connection.localDescription.sdp, stream: new MediaStream(tracks) };
+  }
+
+  received(video: string, heard: (quality: QualityName | null) => void): () => void {
+    let last: QualityName | null | undefined;
+    const read = async () => {
+      const receiver = this.transceiver(video)?.receiver;
+      let height: number | undefined;
+      for (const report of (await receiver?.getStats().catch(() => null))?.values() ?? []) {
+        if (report.type === "inbound-rtp" && report.kind === "video") height = report.frameHeight;
+      }
+      const quality = receivedQuality(height);
+      if (quality !== last) heard((last = quality));
+    };
+    void read();
+    const timer = setInterval(() => void read(), RECEIVED_EVERY_MS);
+    return () => clearInterval(timer);
   }
 
   drop(video: string) {
@@ -136,6 +150,10 @@ export class BrowserMediaClient implements MediaClient {
     this.connection = null;
   }
 
+  private transceiver(mid: string): RTCRtpTransceiver | undefined {
+    return this.connection?.getTransceivers().find((candidate) => candidate.mid === mid);
+  }
+
   /**
    * The media connection, ready for a new negotiation: an offer the media server never
    * answered, because the instance refused the share, is rolled back first.
@@ -149,6 +167,21 @@ export class BrowserMediaClient implements MediaClient {
   private peer(): RTCPeerConnection {
     if (!this.connection) throw new Error("The media connection is not made yet");
     return this.connection;
+  }
+}
+
+/**
+ * Offers only the plan's codecs, in its order: hardware H.264 high and main before the
+ * software codec, so the media server answers with the best this browser has. A browser
+ * that refuses the list is left to its own order, so the share still starts.
+ */
+function preferCodecs(transceiver: RTCRtpTransceiver, plan: EncodingPlan) {
+  const codecs = codecPreferences(plan.codecs, RTCRtpSender.getCapabilities("video")?.codecs ?? []);
+  if (codecs.length === 0 || !("setCodecPreferences" in transceiver)) return;
+  try {
+    transceiver.setCodecPreferences(codecs);
+  } catch {
+    // Left to the browser's own order.
   }
 }
 

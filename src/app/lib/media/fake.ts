@@ -5,9 +5,11 @@
 // every step the real client does.
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
-// browser family, what the browser's picker returns, and the browser ending a screen
-// share by itself. It is in a build for Seam 2 only.
+// browser family, what the browser's picker returns, the browser ending a screen share
+// by itself, and the quality the shares it watches arrive at. It is in a build for
+// Seam 2 only.
 
+import type { QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
@@ -21,18 +23,27 @@ declare global {
   }
 }
 
+/** Whoever listens for the quality the watched shares arrive at. */
+const listeners = new Set<(quality: QualityName) => void>();
+
 /** The control, made on first use from whatever a journey set before the page loaded. */
 function control(): FakeMediaControl {
   const preset = window.graeaeFakeMedia ?? {};
   if (!("endScreen" in preset)) {
-    window.graeaeFakeMedia = {
+    const made: FakeMediaControl = {
       browser: "chromium",
       picker: { surface: "tab", audio: true },
       asked: [],
       screenAudio: null,
       endScreen: () => undefined,
+      received: "1080p",
+      receive: (quality) => {
+        made.received = quality;
+        for (const heard of listeners) heard(quality);
+      },
       ...preset,
     };
+    window.graeaeFakeMedia = made;
   }
   return window.graeaeFakeMedia as FakeMediaControl;
 }
@@ -91,6 +102,13 @@ export class FakeMediaClient implements MediaClient {
     this.pulled.add(video);
     if (audio !== undefined) this.pulled.add(audio);
     return { answer: "v=0 a stand-in answer", stream: null };
+  }
+
+  received(video: string, heard: (quality: QualityName | null) => void): () => void {
+    void video;
+    heard(control().received);
+    listeners.add(heard);
+    return () => listeners.delete(heard);
   }
 
   drop(video: string) {
