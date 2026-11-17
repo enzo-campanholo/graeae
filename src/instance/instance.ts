@@ -20,7 +20,7 @@ import type {
   UsageAnswer,
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
-import type { ClientMessage, LiveShare, RoomView } from "../shared/socket/index.ts";
+import type { BudgetLevel, ClientMessage, LiveShare, RoomView, UsageState } from "../shared/socket/index.ts";
 import { isQualityChoice } from "../shared/socket/watching.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
@@ -37,6 +37,9 @@ export const INSTANCE_NAME = "instance";
 
 /** The owner page's sections, each at `/owner/<section>`. `/owner` itself opens the first. */
 const OWNER_SECTIONS = ["people", "invites", "rooms", "usage"];
+
+/** Where the instance keeps the level of the usage budget it last told the room of. */
+const BUDGET_TOLD_KEY = "usage:told";
 
 /** The instance: one Durable Object holding all of its state (ADR 0002). */
 export class Instance extends DurableObject<Env> {
@@ -75,7 +78,10 @@ export class Instance extends DurableObject<Env> {
           this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
         // The usage count charges a watch at its share's maximum bitrate where no later total arrives.
         began: (watch, tab, maxBitrate) => this.usage.watching(watch, tab, maxBitrate),
-        ended: (watch, tab) => this.usage.watchEnded(watch, this.signaling.holds(tab)),
+        ended: (watch, tab) => {
+          this.usage.watchEnded(watch, this.signaling.holds(tab));
+          this.checkBudget();
+        },
         // A hand-over carried this tab's watching over to the new share: it answers the new pull.
         moved: (tab, share, { offer, video, audio, quality }) => {
           const change = { type: "moved" as const, share, offer, video, ...(audio === null ? {} : { audio }) };
@@ -114,6 +120,8 @@ export class Instance extends DurableObject<Env> {
     });
     const dropped = this.signaling.restore(recorded);
     if (!woke || dropped.length > 0) this.ctx.waitUntil(this.afterRestart());
+    // A stop a restart broke off runs again; a month that reset while asleep is told.
+    this.checkBudget();
   }
 
   /**
@@ -131,10 +139,12 @@ export class Instance extends DurableObject<Env> {
   /**
    * Sets the instance's one alarm for the earliest moment anything waits for: a grace
    * period running out, a member falling silent, a failed close's next try, or the end
-   * of a share whose media has faltered for 30 seconds.
+   * of a share whose media has faltered for 30 seconds, or the month resetting while the
+   * room has been warned about the usage budget.
    */
   private schedule() {
-    const moments = [this.signaling.nextMoment(), this.shares.nextRetry(), this.shares.nextFaltered()].filter(
+    const reset = this.told() === null ? null : this.usage.resetsAt();
+    const moments = [this.signaling.nextMoment(), this.shares.nextRetry(), this.shares.nextFaltered(), reset].filter(
       (moment): moment is number => moment !== null,
     );
     if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
@@ -293,6 +303,7 @@ export class Instance extends DurableObject<Env> {
       const { bytes, relayed, final } = request as { bytes?: unknown; relayed?: unknown; final?: unknown };
       if (!isByteCount(bytes) || typeof relayed !== "boolean") return;
       this.usage.received(tab.id, bytes, relayed, final === true);
+      this.checkBudget();
       return;
     }
     if (message.type === "media" && type === "answer") {
@@ -308,9 +319,12 @@ export class Instance extends DurableObject<Env> {
       const share = asLiveShare((request as { share?: unknown }).share);
       if (!share) return;
       if (type === "watch") {
-        const watched = allowed
-          ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id))
-          : { watching: false as const };
+        // Refused while the usage budget is used up, including a pull that was under way when it ran out.
+        const budgetAllows = () => this.usage.level() !== "used up";
+        const watched =
+          allowed && budgetAllows()
+            ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id) && budgetAllows())
+            : { watching: false as const };
         if (watched === null) return;
         if (!watched.watching) {
           this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
@@ -394,8 +408,12 @@ export class Instance extends DurableObject<Env> {
       }
       this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
       this.shareChanged(tab.room, { type: "started", share: started.share });
-      // A hand-over: the new share is live, so the old one ends and its viewers here move to this one.
-      if (started.handOver) this.sharesEnded(await this.shares.handOver(started.id, (other) => this.signaling.isOpen(other)));
+      // A hand-over: the new share is live, so the old one ends and its viewers here move to this one,
+      // unless the usage budget is used up: a move is a new watch, and is refused like one.
+      if (started.handOver) {
+        const movable = (other: string) => this.signaling.isOpen(other) && this.usage.level() !== "used up";
+        this.sharesEnded(await this.shares.handOver(started.id, movable));
+      }
       return;
     }
     if (type === "stop") {
@@ -450,8 +468,58 @@ export class Instance extends DurableObject<Env> {
       // The tabs cut off report no more: what they watched since their last report is charged.
       if ("tab" in covered) this.usage.tabGone(covered.tab);
       for (const tab of cut?.tabs ?? []) this.usage.tabGone(tab.id);
+      this.checkBudget();
       cut?.tell();
     }
+  }
+
+  /** The usage budget stop under way, if any. */
+  private stopping: Promise<void> | null = null;
+
+  /**
+   * Holds the month's usage against the usage budget, after anything that may have
+   * changed either. When the month reaches the budget, every watch stops through the
+   * cut-off routine (storage needs no change: from that instant every watch is refused,
+   * as `level` says) and the room is told only once the closes have returned. Otherwise,
+   * each tab whose member's warning changed is told the new one.
+   */
+  private checkBudget() {
+    if (this.stopping) return;
+    const level = this.usage.level();
+    const told = this.told();
+    if (level === told) return;
+    if (level === "used up") {
+      this.stopping = this.cutOff({ everyWatch: true }).finally(() => {
+        this.stopping = null;
+        this.tellBudget(this.usage.level() === "used up" ? "used up" : told);
+        // The budget may have changed while the closes were under way.
+        this.checkBudget();
+      });
+      this.inBackground(this.stopping);
+      return;
+    }
+    this.tellBudget(level);
+  }
+
+  /** Tells each open room tab whose member's warning differs from what they were told before. */
+  private tellBudget(level: BudgetLevel | null) {
+    const told = this.told();
+    if (level === told) return;
+    if (level === null) this.ctx.storage.kv.delete(BUDGET_TOLD_KEY);
+    else this.ctx.storage.kv.put(BUDGET_TOLD_KEY, level);
+    const owners = new Map<string, boolean>();
+    this.signaling.toEveryRoomTab((id) => {
+      if (!owners.has(id)) owners.set(id, this.people.member(id)?.owner ?? false);
+      const owner = owners.get(id)!;
+      const now = budgetFor(level, owner);
+      return now === budgetFor(told, owner) ? null : { type: "usage", change: { type: "budget", budget: now } };
+    });
+    this.schedule();
+  }
+
+  /** The level of the usage budget the room was last told of. */
+  private told(): BudgetLevel | null {
+    return this.ctx.storage.kv.get<BudgetLevel>(BUDGET_TOLD_KEY) ?? null;
   }
 
   /**
@@ -479,6 +547,8 @@ export class Instance extends DurableObject<Env> {
     ended.push(...faltered.ended);
     this.sharesEnded(ended);
     for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
+    // The month may have reset.
+    this.checkBudget();
     this.schedule();
   }
 
@@ -501,7 +571,7 @@ export class Instance extends DurableObject<Env> {
         watchers: this.shares.watchers(room.address, member.id),
         qualities: this.shares.qualities(tab),
       },
-      usage: {},
+      usage: usageFor(this.usage.level(), member.owner),
     };
   }
 
@@ -588,9 +658,19 @@ export class Instance extends DurableObject<Env> {
     if (pathname === "/api/owner/usage") {
       return method === "GET" ? json(this.usage.answer() satisfies UsageAnswer) : refuse();
     }
+    // A new reset day or budget may move the month past a warning, or back below one. Raising
+    // the budget allows watching at once; setting it below what is used stops it at once.
     if (pathname === "/api/owner/usage/reset-day" && method === "PUT") {
       const body = await request.json<{ day?: unknown }>().catch(() => null);
-      return body && this.usage.setResetDay(body.day) ? json(this.usage.answer() satisfies UsageAnswer) : refuse();
+      if (!body || !this.usage.setResetDay(body.day)) return refuse();
+      this.checkBudget();
+      return json(this.usage.answer() satisfies UsageAnswer);
+    }
+    if (pathname === "/api/owner/usage/budget" && method === "PUT") {
+      const body = await request.json<{ gigabytes?: unknown }>().catch(() => null);
+      if (!body || !this.usage.setBudget(body.gigabytes)) return refuse();
+      this.checkBudget();
+      return json(this.usage.answer() satisfies UsageAnswer);
     }
     if (pathname === "/api/owner/people" || pathname.startsWith("/api/owner/people/")) {
       return this.peopleAnswer(request, pathname, visitor);
@@ -770,4 +850,18 @@ function asLiveShare(value: unknown): LiveShare | null {
   if (typeof member !== "string" || member.length === 0 || member.length > 64) return null;
   if (kind !== "webcam" && kind !== "screen") return null;
   return { member, kind };
+}
+
+/**
+ * The level of the usage budget as a member is told it: the owner from 80%, everyone
+ * else from 95%. Null below their warning.
+ */
+function budgetFor(level: BudgetLevel | null, owner: boolean): BudgetLevel | null {
+  return level === "80%" && !owner ? null : level;
+}
+
+/** The usage area of the room as `owner` or a member sees it at `level`. */
+function usageFor(level: BudgetLevel | null, owner: boolean): UsageState {
+  const budget = budgetFor(level, owner);
+  return budget === null ? {} : { budget };
 }

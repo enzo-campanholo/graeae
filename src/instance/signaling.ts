@@ -395,6 +395,15 @@ export class Signaling {
     }
   }
 
+  /** Sends each open tab showing a room, whichever room, the message `messageFor` gives its member, if any. */
+  toEveryRoomTab(messageFor: (member: string) => ServerMessage | null) {
+    for (const socket of this.ctx.getWebSockets()) {
+      const tab = tabOf(socket);
+      const message = tab && isRoomTab(tab) ? messageFor(tab.member) : null;
+      if (message) send(socket, message);
+    }
+  }
+
   /** Sends `message` to every open list of rooms whose member is one of `members`. */
   toLists(members: ReadonlySet<string>, message: ListMessage) {
     for (const socket of this.ctx.getWebSockets(LIST_TAG)) {

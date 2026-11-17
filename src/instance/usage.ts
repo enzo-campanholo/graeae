@@ -21,8 +21,13 @@
 //
 // Each charge goes to the UTC day it is made on. The month runs from the owner's reset
 // day, at midnight UTC, to the same day of the next month, and sums the days between.
+//
+// The usage budget is the owner's, in whole GB a month, 1,000 until set. The month's
+// `level` against it is what the instance warns of and stops watching at; graeae never
+// lowers quality on its own.
 
 import { GIGABYTE, type UsageAnswer } from "../shared/api.ts";
+import type { BudgetLevel } from "../shared/socket/usage.ts";
 
 /** The share of every reported byte added on top, in percent. A constant, not a setting. */
 export const SAFETY_MARGIN_PERCENT = 5;
@@ -30,14 +35,15 @@ export const SAFETY_MARGIN_PERCENT = 5;
 /** Whether relayed watching is counted twice. The one place to switch the doubling off. */
 export const RELAYED_COUNTS_TWICE = true;
 
-/** The usage budget: 1,000 GB, Cloudflare's monthly allowance. Ticket 24 makes it the owner's to set. */
-export const USAGE_BUDGET_BYTES = 1_000 * GIGABYTE;
+/** The usage budget until the owner sets another, in GB: 1,000, Cloudflare's monthly allowance. */
+export const DEFAULT_BUDGET_GIGABYTES = 1_000;
 
 /** The day of the month usage resets on until the owner sets another. */
 export const DEFAULT_RESET_DAY = 1;
 
 const DAY_MS = 86_400_000;
 const RESET_DAY_SETTING = "reset_day";
+const BUDGET_SETTING = "budget_gigabytes";
 
 interface TabRow extends Record<string, SqlStorageValue> {
   total: number;
@@ -121,16 +127,13 @@ export class Usage {
     const now = Date.now();
     const resetDay = this.resetDay();
     const { since, until } = month(now, resetDay);
-    const used =
-      this.sql
-        .exec<{ used: number | null }>("SELECT SUM(bytes) AS used FROM usage_day WHERE day >= ? AND day < ?", since, until)
-        .one().used ?? 0;
+    const used = this.used(since, until);
     // At the same daily rate as the month so far; the first day counts as a whole day, so
     // the first hours of a month do not project a wild figure.
     const projected = (used / Math.max(now - since, DAY_MS)) * (until - since);
     return {
       used: Math.round(used),
-      budget: USAGE_BUDGET_BYTES,
+      budget: this.budget(),
       projected: Math.round(Math.max(projected, used)),
       resetDay,
       since,
@@ -141,17 +144,71 @@ export class Usage {
   /** Sets the day of the month usage resets on: a whole number from 1 to 31. False, and nothing changed, otherwise. */
   setResetDay(day: unknown): boolean {
     if (typeof day !== "number" || !Number.isInteger(day) || day < 1 || day > 31) return false;
-    this.sql.exec(
-      "INSERT INTO setting (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value",
-      RESET_DAY_SETTING,
-      day,
-    );
+    this.setSetting(RESET_DAY_SETTING, day);
     return true;
   }
 
+  /**
+   * Sets the usage budget to `gigabytes` GB a month: a whole number from 1, with no upper
+   * limit. False, and nothing changed, otherwise.
+   */
+  setBudget(gigabytes: unknown): boolean {
+    if (typeof gigabytes !== "number" || !Number.isSafeInteger(gigabytes) || gigabytes < 1) return false;
+    this.setSetting(BUDGET_SETTING, gigabytes);
+    return true;
+  }
+
+  /** The usage budget, in bytes. */
+  budget(): number {
+    return (this.setting(BUDGET_SETTING) ?? DEFAULT_BUDGET_GIGABYTES) * GIGABYTE;
+  }
+
+  /**
+   * How far this month has gone into the usage budget: past 80% (the owner's warning),
+   * past 95% (everyone's), "used up" at the budget itself, or null below 80%.
+   */
+  level(): BudgetLevel | null {
+    // An instance started on an older schema than this code's, as the migration tests do,
+    // has no usage to hold against a budget.
+    if (!this.counting()) return null;
+    const { since, until } = month(Date.now(), this.resetDay());
+    const share = this.used(since, until) / this.budget();
+    return share >= 1 ? "used up" : share >= 0.95 ? "95%" : share >= 0.8 ? "80%" : null;
+  }
+
+  /** When this month ends and usage starts again from nothing. */
+  resetsAt(): number {
+    return month(Date.now(), this.resetDay()).until;
+  }
+
+  /** Whether the storage holds the usage count's tables. */
+  private counting(): boolean {
+    return this.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'setting'").toArray().length > 0;
+  }
+
+  /** The usage charged from `since` until `until`, in bytes. */
+  private used(since: number, until: number): number {
+    return (
+      this.sql
+        .exec<{ used: number | null }>("SELECT SUM(bytes) AS used FROM usage_day WHERE day >= ? AND day < ?", since, until)
+        .one().used ?? 0
+    );
+  }
+
   private resetDay(): number {
-    const row = this.sql.exec<{ value: number }>("SELECT value FROM setting WHERE name = ?", RESET_DAY_SETTING).toArray()[0];
-    return row?.value ?? DEFAULT_RESET_DAY;
+    return this.setting(RESET_DAY_SETTING) ?? DEFAULT_RESET_DAY;
+  }
+
+  private setting(name: string): number | null {
+    return this.sql.exec<{ value: number }>("SELECT value FROM setting WHERE name = ?", name).toArray()[0]?.value ?? null;
+  }
+
+  private setSetting(name: string, value: number) {
+    this.sql.exec(
+      "INSERT INTO setting (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value",
+      name,
+      value,
+    );
   }
 
   /** Charges each watch `where` takes in at its maximum bitrate over its gap, and forgets it. */
