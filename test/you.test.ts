@@ -3,9 +3,9 @@
 // member and the owner.
 
 import { describe, expect, it } from "vitest";
-import type { DeviceInviteAnswer, InvitesAnswer, JoinAnswer, MeAnswer } from "../src/shared/api.ts";
-import { startInstance, type TestBrowser, type TestInstance } from "./harness.ts";
-import { addMember, answer, createInvite, createRoom, pressJoin, setUpOwner } from "./steps.ts";
+import type { DeviceInviteAnswer, InvitesAnswer, MeAnswer } from "../src/shared/api.ts";
+import { startInstance, type TestBrowser } from "./harness.ts";
+import { addDevice, addMember, addSecondBrowser, answer, createInvite, createRoom, pressJoin, setUpOwner } from "./steps.ts";
 import { addressOf, openList, openRoom } from "./sockets.ts";
 
 function rename(browser: TestBrowser, name: unknown) {
@@ -81,22 +81,6 @@ describe("the display name", () => {
 
 const MINUTE = 60 * 1000;
 const FIREFOX_ON_LINUX = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
-
-/** The press of "Add a device". */
-function addDevice(browser: TestBrowser) {
-  return browser.fetch("/api/me/devices", { method: "POST" });
-}
-
-/** Has `browser`'s member add a device, and returns a fresh browser made that device by pressing the invite. */
-async function addSecondBrowser(instance: TestInstance, browser: TestBrowser, userAgent?: string) {
-  const made = await addDevice(browser);
-  expect(made.status).toBe(200);
-  const { invite } = await made.json<DeviceInviteAnswer>();
-  const other = instance.browser({ userAgent });
-  const joined = await pressJoin(other, invite.code);
-  expect(joined.status).toBe(200);
-  return { other, to: (await joined.json<JoinAnswer>()).to };
-}
 
 describe("adding a device", () => {
   it("makes a single-use invite that lasts 10 minutes", async () => {

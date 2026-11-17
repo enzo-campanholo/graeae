@@ -167,6 +167,11 @@ export class Instance extends DurableObject<Env> {
     this.signaling.closed(socket);
   }
 
+  /** The grace periods' moments are the only thing the alarm wakes the instance for yet. */
+  override alarm() {
+    this.signaling.alarm();
+  }
+
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
   private roomView(member: Member, room: RoomSummary): RoomView {
     return {
@@ -175,7 +180,10 @@ export class Instance extends DurableObject<Env> {
         you: { id: member.id, owner: member.owner, rooms: this.people.rooms(member).length },
         members: this.people.membersOf(room.address).map(({ id, name }) => ({ id, name })),
       },
-      presence: { present: [...this.signaling.present(room.address)] },
+      presence: {
+        present: [...this.signaling.present(room.address)],
+        reconnecting: this.signaling.reconnecting(room.address),
+      },
       shares: {},
       usage: {},
     };

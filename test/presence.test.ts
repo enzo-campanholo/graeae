@@ -33,7 +33,7 @@ describe("a tab on a room", () => {
     expect(state).toEqual({
       room: { address: addressOf(room), name: "First room" },
       people: { you, members: [{ id: you.id, name: "Owner" }] },
-      presence: { present: [you.id] },
+      presence: { present: [you.id], reconnecting: [] },
       shares: {},
       usage: {},
     });
