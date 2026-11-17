@@ -46,10 +46,14 @@
   const people = $derived.by(() => {
     if (!view) return null;
     const present = new Set(view.presence.present);
+    const reconnecting = new Set(view.presence.reconnecting);
     const others = view.people.members.filter((person) => person.id !== view.people.you.id);
     return {
       you: view.people.members.find((person) => person.id === view.people.you.id)?.name ?? "",
-      here: others.filter((person) => present.has(person.id)).toSorted(byName),
+      here: others
+        .filter((person) => present.has(person.id))
+        .map((person) => ({ ...person, reconnecting: reconnecting.has(person.id) }))
+        .toSorted(byName),
       away: others.filter((person) => !present.has(person.id)).toSorted(byName),
     };
   });
@@ -94,8 +98,15 @@
               name: person.name,
               followed: person.followed,
               sharing: !!(person.screen || person.webcam),
+              reconnecting: !!person.reconnecting,
             }))
-          : (people?.here ?? []).map(({ id, name }) => ({ id, name, followed: false, sharing: false }))}
+          : (people?.here ?? []).map(({ id, name, reconnecting }) => ({
+              id,
+              name,
+              followed: false,
+              sharing: false,
+              reconnecting,
+            }))}
         onexpand={() => fold(false)}
       >
         {#snippet foot()}
@@ -117,7 +128,7 @@
           <section aria-label="Here">
             <PeopleHeading label="Here" count={people.here.length + 1} />
             {#each people.here as person (person.id)}
-              <PersonRow name={person.name} />
+              <PersonRow name={person.name} reconnecting={person.reconnecting} />
             {/each}
             <PersonRow name={people.you} you />
           </section>
@@ -135,6 +146,7 @@
             {#each room.people as person (person.id)}
               <PersonRow
                 name={person.name}
+                reconnecting={person.reconnecting}
                 followed={person.followed}
                 screen={person.screen}
                 webcam={person.webcam}

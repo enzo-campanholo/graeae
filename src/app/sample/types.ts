@@ -18,6 +18,8 @@ export interface SamplePerson {
   id: string;
   name: string;
   followed: boolean;
+  /** Present, but not heard for about 10 seconds. */
+  reconnecting?: boolean;
   screen: { watched: boolean } | null;
   webcam: { watched: boolean } | null;
 }
