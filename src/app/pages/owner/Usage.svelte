@@ -5,8 +5,10 @@
   import Loading from "$lib/components/Loading.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import type { OwnerUsage } from "$lib/owner-usage.svelte.js";
-  import { gigabytes } from "$lib/words.js";
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
+  import { budgetCost, INCLUDED_GIGABYTES, type OwnerUsage } from "$lib/owner-usage.svelte.js";
+  import { dollars, gigabytes } from "$lib/words.js";
+  import RaiseConfirm from "./RaiseConfirm.svelte";
 
   let { usage }: { usage: OwnerUsage } = $props();
 
@@ -44,6 +46,45 @@
     saving = false;
     if (saved) draft = null;
     else problem = "Not saved. Try again.";
+  }
+
+  // The usage budget, in whole GB, as typed until it is saved. Raising it asks first, in
+  // a confirm that names the most it can add to the bill; lowering it saves at once.
+  const BUDGET_PROBLEM = "Pick a whole number of GB from 1.";
+  let budgetDraft = $state<string | null>(null);
+  let budgetSaving = $state(false);
+  let budgetProblem = $state<string | null>(null);
+  let confirming = $state(false);
+  const budgetNow = $derived(figures ? Math.round(figures.budget) : 0);
+  const budgetShown = $derived(budgetDraft ?? String(budgetNow || ""));
+  const budgetTyped = $derived.by(() => {
+    const value = Number(budgetShown);
+    return budgetShown.trim() !== "" && Number.isSafeInteger(value) && value >= 1 ? value : null;
+  });
+  // Below what is used already, a new budget stops watching the moment it is saved.
+  const stopsWatching = $derived(
+    budgetDraft !== null && budgetTyped !== null && !!figures && budgetTyped <= figures.used && budgetTyped !== budgetNow,
+  );
+
+  function saveBudget(event: SubmitEvent) {
+    event.preventDefault();
+    if (budgetDraft === null || budgetSaving) return;
+    if (budgetTyped === null) {
+      budgetProblem = BUDGET_PROBLEM;
+      return;
+    }
+    budgetProblem = null;
+    if (budgetTyped > budgetNow) confirming = true;
+    else void storeBudget(budgetTyped);
+  }
+
+  async function storeBudget(value: number) {
+    budgetSaving = true;
+    const saved = await usage.setBudget(value);
+    budgetSaving = false;
+    confirming = false;
+    if (saved) budgetDraft = null;
+    else budgetProblem = "Not saved. Try again.";
   }
 </script>
 
@@ -114,6 +155,63 @@
         </p>
       </div>
     </section>
+
+    <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
+      <h2 class="text-muted-foreground flex h-7 items-center text-xs font-normal">Usage budget</h2>
+      <div class="grid gap-1.5">
+        <label for="usage-budget-gb" class="text-muted-foreground text-xs">GB a month</label>
+        <div class="flex items-center gap-1.5">
+          <Input
+            id="usage-budget-gb"
+            type="number"
+            inputmode="numeric"
+            min={1}
+            step={1}
+            value={budgetShown}
+            aria-invalid={budgetProblem === BUDGET_PROBLEM ? true : undefined}
+            aria-describedby="usage-budget-cost"
+            class="w-28 [appearance:textfield] text-right tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            oninput={(event) => {
+              budgetDraft = event.currentTarget.value;
+              budgetProblem = null;
+            }}
+          />
+          <Button type="submit" variant="secondary" disabled={budgetDraft === null || budgetSaving}>Save</Button>
+          <!-- The dollar equivalent of what is typed, beside it. -->
+          <p id="usage-budget-cost" class="text-soft ml-3 text-xs tabular-nums" aria-live="polite">
+            {#if budgetTyped === null}
+              &nbsp;
+            {:else if budgetCost(budgetTyped) === 0}
+              {dollars(0)} a month
+            {:else}
+              Up to {dollars(budgetCost(budgetTyped))} a month
+            {/if}
+          </p>
+        </div>
+      </div>
+      <div class="grid gap-1 text-xs">
+        {#if budgetProblem}
+          <p class="text-muted-foreground" role="alert">{budgetProblem}</p>
+        {:else if stopsWatching}
+          <p class="text-warn flex items-center gap-2" role="status">
+            <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
+            for everyone once it is saved.
+          </p>
+        {/if}
+        <p class="text-dim">
+          Cloudflare includes {INCLUDED_GIGABYTES.toLocaleString("en")} GB a month; watched media past that costs $0.05 per GB.
+          When the month reaches the budget, watching stops and shares stay live.
+        </p>
+      </div>
+    </form>
+
+    <RaiseConfirm
+      bind:open={confirming}
+      from={budgetNow}
+      to={budgetTyped ?? budgetNow}
+      saving={budgetSaving}
+      onconfirm={() => budgetTyped !== null && storeBudget(budgetTyped)}
+    />
 
     <form class="grid gap-3" aria-label="Reset day" onsubmit={save} novalidate>
       <h2 class="text-muted-foreground flex h-7 items-center text-xs font-normal">Reset day</h2>
