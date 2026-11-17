@@ -80,7 +80,8 @@ export class RoomClient {
   private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
   /** Shares being asked for that the tab no longer wants: each is stopped once it is watched. */
   private unwanted: LiveShare[] = [];
-  /** How to stop listening for the quality each watched share arrives at, by its video's mid. */
+  /** How to stop listening for the quality each watched share arrives at, by its video's mid. Nothing renders from it. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
   private readonly listening = new Map<string, () => void>();
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();

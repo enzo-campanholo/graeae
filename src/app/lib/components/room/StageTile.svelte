@@ -5,7 +5,9 @@
   // strip beneath a focused share it is a small, fixed height, and a click on it focuses
   // it. Its controls sit on the picture's corner and show while the pointer is on the
   // tile or a control has the keyboard's focus. Any tile can go fullscreen, from its
-  // button or a double-click on the picture.
+  // button or a double-click on the picture. A share that goes out at two qualities has
+  // the viewer's choice of quality among its controls, and its caption carries a small
+  // "720p" mark while it arrives at the lower quality.
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import LayoutGrid from "@lucide/svelte/icons/layout-grid";
   import LayoutPanelTop from "@lucide/svelte/icons/layout-panel-top";
@@ -13,12 +15,16 @@
   import Minimize from "@lucide/svelte/icons/minimize";
   import type { Snippet } from "svelte";
   import type { ShareKind } from "$lib/share.js";
+  import type { QualityChoice as Quality } from "../../../../shared/socket/index.ts";
   import IconButton from "../IconButton.svelte";
+  import QualityChoice from "./QualityChoice.svelte";
 
   let {
     name,
     kind,
     videoOnly = false,
+    quality = null,
+    lower = false,
     aspect = 16 / 9,
     place = "grid",
     onstop,
@@ -30,6 +36,10 @@
     kind: ShareKind;
     /** A screen share with no screen audio: its caption says "video only". */
     videoOnly?: boolean;
+    /** A share at two qualities: the one this tab watches it at, and how to choose another. Null for one quality. */
+    quality?: { value: Quality; onchoose: (quality: Quality) => void } | null;
+    /** A share at two qualities that arrives at the lower one: its caption carries the "720p" mark. */
+    lower?: boolean;
     /** The picture's width over its height, once the video reports it. */
     aspect?: number;
     /** In the grid, the one focused share, or in the strip beneath it. */
@@ -83,6 +93,10 @@
       ></button>
     {/if}
     <div class={["controls bg-raised/90 absolute flex gap-0.5 rounded-md p-0.5", place === "strip" ? "top-1 right-1" : "top-2 right-2"]}>
+      <!-- Too small to choose from in the strip: focus the share to choose. -->
+      {#if quality && place !== "strip"}
+        <div class="mr-1"><QualityChoice {share} value={quality.value} onchoose={quality.onchoose} /></div>
+      {/if}
       {#if place === "grid" && onfocus}
         <IconButton label="Focus {share}" {size} side="bottom" onclick={onfocus}><LayoutPanelTop /></IconButton>
       {:else if place === "focused" && onunfocus}
@@ -104,6 +118,11 @@
   <figcaption class="flex h-5 min-w-0 items-baseline gap-1.5 px-0.5">
     <span class="text-soft truncate font-medium">{name}</span>
     <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{/if}</span>
+    {#if lower}
+      <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-[4px] px-1 text-[11px] leading-4 font-medium tabular-nums"
+        ><span class="sr-only">Received at&nbsp;</span>720p</span
+      >
+    {/if}
   </figcaption>
 </figure>
 
@@ -139,6 +158,14 @@
       opacity: 1;
     }
   }
+  .mark {
+    animation: mark 180ms var(--ease-out);
+  }
+  @keyframes mark {
+    from {
+      opacity: 0;
+    }
+  }
   @keyframes arrive {
     from {
       opacity: 0;
@@ -151,6 +178,9 @@
     }
     .controls {
       transition: none;
+    }
+    .mark {
+      animation: none;
     }
   }
 </style>

@@ -6,7 +6,9 @@
 // over the tab's socket, so no media server identifier ever reaches the page (ADR 0003).
 // The real implementation, on `getUserMedia`, `getDisplayMedia` and `RTCPeerConnection`,
 // is in `browser.ts`; the fake in `fake.ts` captures and connects nothing, for Seam 2.
-// What a screen capture asks the browser for is one pure rule, in `capture.ts`.
+// What a screen capture asks the browser for is one pure rule, in `capture.ts`; how a
+// share is sent is the encoding plan (`src/shared/encoding.ts`), as `encodings.ts` hands
+// it to the browser.
 
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
 import type { QualityName } from "../../../shared/encoding.ts";

@@ -25,7 +25,8 @@
 //
 // Two qualities are simulcast: the sharer's browser sends one encode per quality, each
 // with its rid (`RIDS` in `src/shared/encoding.ts`), and each viewer's pull names the one
-// it prefers (developers.cloudflare.com/realtime/sfu/simulcast/). Ticket 27 proves it.
+// it prefers (developers.cloudflare.com/realtime/sfu/simulcast/). The owner's real-media
+// pass (ticket 27) proves it.
 
 import { RIDS } from "../../shared/encoding.ts";
 import type { IceServer } from "../../shared/socket/media.ts";
