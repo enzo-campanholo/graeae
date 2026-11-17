@@ -301,7 +301,7 @@ describe("a sharer's lost connection", () => {
     await biaTab.drop();
     await pass(instance, 5 * SECOND, [ownerTab]);
 
-    const { tab: again, state } = await openRoom(bia, room);
+    const { tab: again, state } = await openRoom(bia, room, { tab: biaTab.id });
     expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
     await pass(instance, 60 * SECOND, [ownerTab, again]);
     expect(ownerTab.queued()).toEqual([]);

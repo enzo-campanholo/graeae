@@ -34,17 +34,17 @@ async function ownerWatchingBia() {
   await connectMedia(ownerTab);
   await watch(ownerTab, biasWebcam);
   await biaTab.next(); // the owner is watching
-  return { instance, owner, bia, room, biasWebcam, ownerId: ownerState.people.you.id, biaId: biasWebcam.member };
+  return { instance, owner, bia, room, ownerTabId: ownerTab.id, biaTabId: biaTab.id, biasWebcam, ownerId: ownerState.people.you.id, biaId: biasWebcam.member };
 }
 
 describe("a restart of the instance mid-session", () => {
   it("keeps everyone present, sharing and watching while they reconnect within the grace period", async () => {
-    const { instance, owner, bia, room, biasWebcam, ownerId, biaId } = await ownerWatchingBia();
+    const { instance, owner, bia, room, ownerTabId, biaTabId, biasWebcam, ownerId, biaId } = await ownerWatchingBia();
 
     await instance.restart();
     await instance.clock.advance(2 * SECOND);
-    const { tab: ownerTab, state: ownerState } = await openRoom(owner, room);
-    const { state: biaState } = await openRoom(bia, room);
+    const { tab: ownerTab, state: ownerState } = await openRoom(owner, room, { tab: ownerTabId });
+    const { state: biaState } = await openRoom(bia, room, { tab: biaTabId });
 
     expect(ownerState.presence).toEqual({ present: [ownerId, biaId], reconnecting: [] });
     expect(ownerState.shares.live).toEqual([biasWebcam]);
@@ -57,11 +57,11 @@ describe("a restart of the instance mid-session", () => {
   });
 
   it("cuts off as usual whoever is not back when the grace period runs out", async () => {
-    const { instance, owner, room, biasWebcam, biaId } = await ownerWatchingBia();
+    const { instance, owner, room, ownerTabId, biasWebcam, biaId } = await ownerWatchingBia();
 
     await instance.restart();
     await instance.clock.advance(2 * SECOND);
-    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: ownerTab } = await openRoom(owner, room, { tab: ownerTabId });
     await pass(instance, 25 * SECOND, [ownerTab]);
     expect(ownerTab.queued()).toEqual([
       { type: "presence", change: { type: "reconnecting", member: biaId } },
@@ -82,10 +82,10 @@ describe("a restart of the instance mid-session", () => {
   });
 
   it("ends the watching of a share whose sharer is not back in time, for a viewer who is", async () => {
-    const { instance, owner, room, biasWebcam } = await ownerWatchingBia();
+    const { instance, owner, room, ownerTabId, biasWebcam } = await ownerWatchingBia();
 
     await instance.restart();
-    const { tab: ownerTab, state } = await openRoom(owner, room);
+    const { tab: ownerTab, state } = await openRoom(owner, room, { tab: ownerTabId });
     expect(state.watching.stage).toEqual([biasWebcam]);
     await pass(instance, 30 * SECOND, [ownerTab]);
 
@@ -126,7 +126,7 @@ describe("the sweep after a restart", () => {
     await publish.reached;
 
     await instance.restart();
-    const { tab: back, state } = await openRoom(bia, room);
+    const { tab: back, state } = await openRoom(bia, room, { tab: biaTab.id });
 
     expect(state.shares.live).toEqual([]);
     // Nothing of the half-made share is left to refuse a new one.
@@ -160,7 +160,7 @@ describe("the sweep after a restart", () => {
     expect(instance.media.connections().flat()).toHaveLength(2);
 
     await instance.restart();
-    const { tab: back, state } = await openRoom(owner, room);
+    const { tab: back, state } = await openRoom(owner, room, { tab: ownerTab.id });
 
     expect(state.watching.stage).toEqual([]);
     await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));

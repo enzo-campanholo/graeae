@@ -24,6 +24,9 @@
 //   A lost connection (a failed socket, a close with `LOST_CLOSE_CODE`, or silence) keeps
 //   it present through the grace period while the tab reconnects; a tab whose grace
 //   period ran out on a socket still open has that socket closed with `SILENT_CLOSE_CODE`.
+//   A tab reconnects by naming the id its full state gave it, and takes its tab back even
+//   when the instance still holds the old socket open: that one is closed with
+//   `TAKEN_BACK_CLOSE_CODE`, and the tab does not leave.
 // - A tab whose device is no longer remembered gets `{ type: "gone" }`, and then the
 //   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
@@ -44,9 +47,13 @@ export type * from "./shares.ts";
 export type * from "./usage.ts";
 export type * from "./watching.ts";
 
-/** Where a tab showing the room at `/r/<address>` opens its socket. */
-export function roomSocketPath(address: string): string {
-  return `/api/socket/${encodeURIComponent(address)}`;
+/**
+ * Where a tab showing the room at `/r/<address>` opens its socket. A page reconnecting
+ * names the `tab` its last full state said it was, to take that tab back.
+ */
+export function roomSocketPath(address: string, tab?: string): string {
+  const path = `/api/socket/${encodeURIComponent(address)}`;
+  return tab === undefined ? path : `${path}?tab=${encodeURIComponent(tab)}`;
 }
 
 /** The whole room as one tab sees it, area by area. */
@@ -61,8 +68,8 @@ export interface RoomView {
 
 /** A message from the instance to a tab. */
 export type ServerMessage =
-  /** The whole room, and this tab's own media connection as the instance holds it. */
-  | { type: "state"; state: RoomView; media: MediaState }
+  /** The whole room, this tab's id, and its own media connection as the instance holds it. */
+  | { type: "state"; tab: string; state: RoomView; media: MediaState }
   /** This tab's device is forgotten: the socket closes next and the page is "nothing here". */
   | { type: "gone" }
   | Heard

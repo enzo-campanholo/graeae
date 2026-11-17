@@ -100,13 +100,50 @@ describe("the mark on a share's icon", () => {
     await ownerTab.next(); // Bia is reconnecting
     expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "reconnecting", share: webcam } });
 
-    const { tab: again, state } = await openRoom(bia, room);
+    const { tab: again, state } = await openRoom(bia, room, { tab: biaTab.id });
 
     expect(state.shares.live).toEqual([webcam]);
     expect(state.watching.watchers).toEqual([{ share: webcam, members: [expect.any(String)] }]);
     expect(await ownerTab.next()).toMatchObject({ type: "presence", change: { type: "reconnected" } });
     expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "reconnected", share: webcam } });
     await pass(instance, 60 * SECOND, [ownerTab, again]);
+    expect(ownerTab.queued()).toEqual([]);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
+  });
+
+  it("goes when the page reconnects naming its tab while the old socket is still open but silent, as on a real network", async () => {
+    const { instance, owner, room, bia, webcam, ownerTab, biaTab } = await biaSharing();
+    const tab = biaTab.id;
+    expect(tab).toEqual(expect.any(String));
+    // The network drops: nothing more from Bia's socket, though the instance never hears it close.
+    await pass(instance, 15 * SECOND, [ownerTab]);
+    await ownerTab.next(); // Bia is reconnecting
+    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "reconnecting", share: webcam } });
+
+    const { tab: again, state } = await openRoom(bia, room, { tab });
+
+    expect(again.received()[0]).toMatchObject({ type: "state", tab, media: { connected: true, sending: ["webcam"] } });
+    expect(state.shares.live).toEqual([webcam]);
+    expect(state.watching.watchers).toEqual([{ share: webcam, members: [expect.any(String)] }]);
+    await biaTab.closed();
+    expect(await ownerTab.next()).toMatchObject({ type: "presence", change: { type: "reconnected" } });
+    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "reconnected", share: webcam } });
+    // The old socket's time running out ends nothing: the tab is the new socket's now.
+    await pass(instance, 60 * SECOND, [ownerTab, again]);
+    expect(ownerTab.queued()).toEqual([]);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
+  });
+
+  it("stays with its tab when another device names that tab", async () => {
+    const { owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    const tab = biaTab.id;
+
+    const { tab: other } = await openRoom(owner, room, { tab });
+
+    expect(other.received()[0]).toMatchObject({ type: "state", media: { connected: false, sending: [] } });
+    expect(other.received()[0]).not.toMatchObject({ tab });
+    await biaTab.heartbeat();
+    await ownerTab.heartbeat();
     expect(ownerTab.queued()).toEqual([]);
     expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
   });
@@ -134,10 +171,25 @@ describe("a tab's media connection across a reconnect", () => {
     await ownerTab.drop();
     await pass(instance, 20 * SECOND, [biaTab]);
 
-    const { tab: again, state } = await openRoom(owner, room);
+    const { tab: again, state } = await openRoom(owner, room, { tab: ownerTab.id });
 
     expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
     expect(state.watching.stage).toEqual([webcam]);
+  });
+
+  it("is not there for a page opened afresh on the device while its lost tab is in its grace period, which can make one and watch", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    await ownerTab.drop();
+    await pass(instance, 5 * SECOND, [biaTab]);
+
+    // A reload, or the tab opened again: the page holds nothing of the lost tab's.
+    const { tab: fresh, state } = await openRoom(owner, room);
+
+    expect(fresh.id).not.toEqual(ownerTab.id);
+    expect(fresh.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+    expect(state.watching.stage).toEqual([]);
+    await connectMedia(fresh);
+    await watch(fresh, webcam);
   });
 
   it("is gone for a tab that comes back after its grace period ran out, which can make a new one and watch again", async () => {
@@ -164,7 +216,7 @@ describe("a tab's media connection across a reconnect", () => {
     made.release();
     await biaTab.heartbeat();
 
-    const { tab: again } = await openRoom(laptop, room);
+    const { tab: again } = await openRoom(laptop, room, { tab: laptopTab.id });
     expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
 
     // It never heard the answer, so it asks again, and this time it hears one.

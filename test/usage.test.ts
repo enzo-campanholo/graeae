@@ -180,7 +180,7 @@ describe("the bytes a tab reports", () => {
 
     await instance.restart();
     // The browser reconnects within its grace period and takes its tab back.
-    const { tab: back } = await openRoom(owner, room);
+    const { tab: back } = await openRoom(owner, room, { tab: tab.id });
     await report(back, 3_000_000);
 
     expect((await usage(owner)).used).toBe(3_150_000);
@@ -236,7 +236,7 @@ describe("where no later total arrives", () => {
 
     await tab.drop();
     await instance.clock.advance(10 * SECOND);
-    const { tab: back } = await openRoom(owner, room);
+    const { tab: back } = await openRoom(owner, room, { tab: tab.id });
     await report(back, 4_000_000);
 
     expect((await usage(owner)).used).toBe(4_200_000);

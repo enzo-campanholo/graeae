@@ -25,8 +25,8 @@ const RETRY_MS = [250, 1_000, 2_000, 4_000, 5_000];
 const RECONNECTING_AFTER_MS = 3_000;
 
 export interface ConnectionOptions<Message> {
-  /** The socket's path, such as `roomSocketPath(address)`. */
-  path: string;
+  /** The socket's path, such as `roomSocketPath(address)`, asked again for each new socket. */
+  path: () => string;
   /** Each message the instance sends, other than answers to heartbeats and `gone`. */
   receive: (message: Message) => void;
   /** Asks the instance over HTTP whether this page is refused now. False when the answer cannot be had. */
@@ -95,7 +95,7 @@ export class Connection<Message extends { type: string }> {
   private connect() {
     clearTimeout(this.retry);
     const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${window.location.host}${this.options.path}`);
+    const socket = new WebSocket(`${scheme}//${window.location.host}${this.options.path()}`);
     this.socket = socket;
     this.queued = [];
     this.waitingSince = Date.now();

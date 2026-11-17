@@ -405,7 +405,7 @@ describe("the device a share was handed over from", () => {
     handOver(phone);
     await until(phone, (message) => message.type === "media");
     await settle(phone);
-    const { tab: back } = await openRoom(bia, room);
+    const { tab: back } = await openRoom(bia, room, { tab: laptop.id });
 
     expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: [] }, state: { shares: { live: [share] } } });
   });
@@ -414,7 +414,7 @@ describe("the device a share was handed over from", () => {
     const { bia, room, laptop } = await biaOnTwoDevices();
     await laptop.drop();
 
-    const { tab: back } = await openRoom(bia, room);
+    const { tab: back } = await openRoom(bia, room, { tab: laptop.id });
 
     expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: ["webcam"] } });
   });

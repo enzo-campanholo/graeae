@@ -26,6 +26,9 @@ export const LOST_CLOSE_CODE = 4000;
 /** The close code of a socket the instance closed because its grace period ran out. */
 export const SILENT_CLOSE_CODE = 4408;
 
+/** The close code of a silent socket the instance closed because its page reconnected on a new one. */
+export const TAKEN_BACK_CLOSE_CODE = 4409;
+
 /** A tab's heartbeat, and the instance's answer to it. */
 export type Heartbeat = { type: "heartbeat" };
 export type Heard = { type: "heard" };

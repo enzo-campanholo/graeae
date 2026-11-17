@@ -20,6 +20,8 @@ import type { Client } from "./harness.ts";
 const WAIT_MS = 2000;
 
 export interface Tab<Message = ServerMessage> {
+  /** The tab's id on the instance, as a room's full state names it; undefined on the list of rooms. */
+  readonly id: string | undefined;
   /** The next message the instance sent this tab, in order. Answers to heartbeats are not among them. */
   next(): Promise<Message>;
   /**
@@ -49,9 +51,16 @@ export function addressOf(room: string): string {
   return room.replace(/^\/r\//, "");
 }
 
-/** Opens a tab on `room` and reads the full state it gets first. */
-export async function openRoom(browser: Client, room: string): Promise<{ tab: Tab; state: RoomView }> {
-  return open<ServerMessage, RoomView>(browser, roomSocketPath(addressOf(room)));
+/**
+ * Opens a tab on `room` and reads the full state it gets first. With `tab`, it is a page
+ * reconnecting, naming the tab the instance told it it was.
+ */
+export async function openRoom(
+  browser: Client,
+  room: string,
+  options: { tab?: string } = {},
+): Promise<{ tab: Tab; state: RoomView }> {
+  return open<ServerMessage, RoomView>(browser, roomSocketPath(addressOf(room), options.tab));
 }
 
 /** Opens a tab on the list of rooms and reads the full list it gets first. */
@@ -66,12 +75,12 @@ async function open<Message extends { type: string }, State>(
   const { response, socket } = await browser.openSocket(path);
   expect(response.status, "the socket was refused").toBe(101);
   const tab = listen<Message>(socket!);
-  const first = (await tab.next()) as Message & { state?: State };
+  const first = (await tab.next()) as Message & { state?: State; tab?: string };
   if (first.type !== "state") throw new Error(`expected the full state first, got ${JSON.stringify(first)}`);
-  return { tab, state: first.state! };
+  return { tab: { ...tab, id: first.tab }, state: first.state! };
 }
 
-function listen<Message>(socket: WebSocket): Tab<Message> {
+function listen<Message>(socket: WebSocket): Omit<Tab<Message>, "id"> {
   const all: Message[] = [];
   const arrived: Message[] = [];
   const waiting: ((message: Message) => void)[] = [];

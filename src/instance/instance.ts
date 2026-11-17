@@ -176,7 +176,7 @@ export class Instance extends DurableObject<Env> {
   }
 
   private async answer(request: Request, visitor: Visitor | null): Promise<Response> {
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
     const { method } = request;
     const refuse = () => nothingHere(this.env.ASSETS, request);
 
@@ -231,10 +231,16 @@ export class Instance extends DurableObject<Env> {
     if (socket) {
       const room = this.people.room(member, socket[1]!);
       if (!room || !upgrade) return refuse();
-      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => ({
-        state: this.roomView(member, room, tab),
-        media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
-      }));
+      return this.signaling.open(
+        member.id,
+        visitor.deviceId,
+        room.address,
+        (tab) => ({
+          state: this.roomView(member, room, tab),
+          media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
+        }),
+        searchParams.get("tab") ?? undefined,
+      );
     }
     return refuse();
   }

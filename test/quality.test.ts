@@ -94,7 +94,7 @@ describe("a Chromium screen share sent at two qualities", () => {
     await ownerTab.next();
 
     await instance.restart();
-    const { state } = await openRoom(owner, room);
+    const { state } = await openRoom(owner, room, { tab: ownerTab.id });
 
     expect(state.watching.stage).toEqual([screen]);
     expect(state.watching.qualities).toEqual([{ share: screen, quality: "720p" }]);

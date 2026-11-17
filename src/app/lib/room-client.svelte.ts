@@ -104,6 +104,12 @@ export class RoomClient {
 
   /** The signaling connection. */
   private readonly socket: Connection<ServerMessage>;
+  /**
+   * The tab this page is on the instance, as the last full state said. A new socket names
+   * it, so a page back within its grace period is the same tab even while the instance
+   * still holds its old socket open.
+   */
+  private tab: string | undefined;
   private readonly media = createMediaClient();
   /** The tab's media connection, once asked for: whether it was made. */
   private connection: Promise<boolean> | null = null;
@@ -146,7 +152,7 @@ export class RoomClient {
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
-      path: roomSocketPath(address),
+      path: () => roomSocketPath(address, this.tab),
       receive: (message) => this.receive(message),
       // A refusal is the "nothing here" answer; a failed request is no answer.
       refused: async () => (await getJson(`/api/rooms/${encodeURIComponent(address)}`)) === null,
@@ -440,7 +446,10 @@ export class RoomClient {
     const before = this.view;
     this.view = applyMessage(this.view, message);
     if (message.type === "state" && before) this.rejoined(before, message.media);
-    if (message.type === "state") this.synced = true;
+    if (message.type === "state") {
+      this.synced = true;
+      this.tab = message.tab;
+    }
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
     // The instance has answered a choice of quality, or the share left the stage. A whole

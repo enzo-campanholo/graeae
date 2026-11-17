@@ -9,12 +9,14 @@
 // The grace period. Every tab beats every 5 seconds. A tab whose socket fails, or closes
 // with `LOST_CLOSE_CODE`, is kept as a lost tab, and its member stays present until 30
 // seconds after it was last heard; a socket that stays open but falls silent is treated
-// the same way and closed when its time runs out. A browser that reconnects to the same
-// room from the same device takes its lost tab back, id and all. After 10 seconds in
-// which none of a present member's tabs in a room was heard, that room is told the member
-// is "reconnecting", and told again when one is heard. Lost tabs and the marks the rooms
-// were told are kept in storage, so they outlast the instance sleeping. The instance's
-// alarm wakes it for each of these moments.
+// the same way and closed when its time runs out. A page that reconnects names the tab
+// its full state gave it, and takes that tab back, id and all, from the same device:
+// whether the tab is lost or its old socket is still open and silent, as a real network
+// drop usually leaves it. A page opened afresh names none and is a new tab. After 10
+// seconds in which none of a present member's tabs in a room was heard, that room is
+// told the member is "reconnecting", and told again when one is heard. Lost tabs and the
+// marks the rooms were told are kept in storage, so they outlast the instance sleeping.
+// The instance's alarm wakes it for each of these moments.
 //
 // A restart. A restart of the instance (a graeae update, or Cloudflare moving it) drops
 // every socket without the instance hearing them close. So the room tabs whose sockets
@@ -30,6 +32,7 @@ import {
   LOST_CLOSE_CODE,
   RECONNECTING_AFTER_MS,
   SILENT_CLOSE_CODE,
+  TAKEN_BACK_CLOSE_CODE,
 } from "../shared/socket/heartbeat.ts";
 import type { ClientMessage, MediaState, RoomView, ServerMessage } from "../shared/socket/index.ts";
 import type { ListMessage, ListState } from "../shared/socket/list.ts";
@@ -149,10 +152,16 @@ export class Signaling {
    * whole room, as `view` builds it for the tab once it is counted. Returns the answer that hands
    * the browser its end of the socket.
    */
-  open(member: string, device: string, address: string, view: (tab: string) => { state: RoomView; media: MediaState }): Response {
+  open(
+    member: string,
+    device: string,
+    address: string,
+    view: (tab: string) => { state: RoomView; media: MediaState },
+    previous?: string,
+  ): Response {
     const arrived = !this.present(address).has(member);
     if (arrived) this.toRoom(address, { type: "presence", change: { type: "arrived", member } });
-    const resumed = this.resume(device, address);
+    const resumed = this.resume(device, address, previous);
 
     const { 0: browserEnd, 1: ours } = new WebSocketPair();
     const tab: Tab = { id: resumed?.id ?? crypto.randomUUID(), member, device, room: address, heardAt: Date.now() };
@@ -160,7 +169,7 @@ export class Signaling {
     ours.serializeAttachment(tab);
     this.saveOpen([...this.openTabs().filter((other) => other.id !== tab.id), tab]);
     this.mark(address, tab.id);
-    send(ours, { type: "state", ...view(tab.id) });
+    send(ours, { type: "state", tab: tab.id, ...view(tab.id) });
     if (arrived) this.presenceChanged(address);
     this.schedule();
     return new Response(null, { status: 101, webSocket: browserEnd });
@@ -429,15 +438,31 @@ export class Signaling {
   }
 
   /**
-   * Takes back the lost tab of `device` on the room at `address`, the one heard last, as
-   * a browser reconnects to that room. Undefined when there is none.
+   * Takes back the tab `previous` of `device` on the room at `address`, which a page
+   * reconnecting names as the tab it was, whether that tab is lost or its old socket is
+   * still open: a dropped network usually leaves the instance's end open and silent until
+   * the grace period runs out, and that socket is closed now without counting as a leave.
+   * A page that names none is opened afresh and holds nothing of any tab's, so it is a new
+   * tab. Undefined when there is none to take back.
    */
-  private resume(device: string, address: string): Tab | undefined {
+  private resume(device: string, address: string, previous?: string): Tab | undefined {
+    if (previous === undefined) return undefined;
+    const ours = (tab: Tab | ListTab | null): tab is Tab =>
+      tab !== null && isRoomTab(tab) && tab.id === previous && tab.device === device && tab.room === address;
+    for (const socket of this.ctx.getWebSockets(tabTag(previous))) {
+      const tab = tabOf(socket);
+      if (!ours(tab)) continue;
+      socket.serializeAttachment({ ...tab, cutOff: true });
+      try {
+        socket.close(TAKEN_BACK_CLOSE_CODE, "");
+      } catch {
+        // Already closed.
+      }
+      return tab;
+    }
     const lost = this.lost();
-    const mine = lost.filter((tab) => tab.device === device && tab.room === address);
-    if (mine.length === 0) return undefined;
-    const resumed = mine.reduce((latest, tab) => (tab.heardAt > latest.heardAt ? tab : latest));
-    this.saveLost(lost.filter((tab) => tab !== resumed));
+    const resumed = lost.find(ours);
+    if (resumed) this.saveLost(lost.filter((tab) => tab !== resumed));
     return resumed;
   }
 

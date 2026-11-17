@@ -174,6 +174,43 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   await owner.close();
 });
 
+test("a sharer whose network drops silently for a few seconds keeps her share, her media connection and her viewers", async ({
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(60_000);
+  const { owner, room, member: rhea, code } = await ownerAndInvited(browser, baseURL, "Rhea");
+  const network = await routed(rhea);
+  await rhea.goto(`/invite/${code}`);
+  await rhea.getByRole("button", { name: "Join as Rhea" }).click();
+  await expect(rhea).toHaveURL(room);
+  const ownerHere = owner.getByRole("region", { name: "Here" });
+  await rhea.getByRole("button", { name: "Share webcam" }).click();
+  await expect(rhea.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await ownerHere.getByRole("button", { name: "Watch Rhea's webcam" }).click();
+  const picture = owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Rhea's webcam, with no picture" });
+  await expect(picture).toBeVisible();
+  await expect(rhea.getByText("Owner watching")).toBeVisible();
+
+  // Her network drops the way a real one does: the instance never hears her socket close.
+  network.online = false;
+  await expect(ownerHere.getByRole("button", { name: "Stop watching Rhea's webcam, reconnecting" })).toBeVisible({
+    timeout: 15_000,
+  });
+  network.online = true;
+
+  // Back in time, she is the same tab: the share, its connection and its viewer are as they were.
+  await expect(ownerHere.getByRole("button", { name: "Stop watching Rhea's webcam" })).toBeVisible({ timeout: 15_000 });
+  await expect(rhea.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
+  await expect(rhea.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(rhea.getByText("Owner watching")).toBeVisible();
+  await expect(picture).toBeVisible();
+  expect(await fake(rhea)).toMatchObject({ connections: 1 });
+
+  await rhea.close();
+  await owner.close();
+});
+
 test("a sharer's tab tells the instance when its media connection falters and recovers", async ({ browser, baseURL }) => {
   const { owner, room, member: kit, code } = await ownerAndInvited(browser, baseURL, "Kit");
   const sent: string[] = [];

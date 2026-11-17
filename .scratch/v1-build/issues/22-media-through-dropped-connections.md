@@ -17,7 +17,7 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 - [x] A viewer who returns after the grace period ran out has their stage restored to what they were watching, where those shares are still live
 - [x] A sharer who returns after the grace period ran out has their share start again by itself, with no picker, if the tab still holds the capture, unless they started it from another device meanwhile
 - [x] That sharer's previous viewers are not carried over
-- [ ] Media falters while the signaling connection is fine: the share stays live for 30 seconds while the browser tries to recover, then ends: the sharer's tab reports the faltering and the recovery, and the backend ends the share
+- [x] Media falters while the signaling connection is fine: the share stays live for 30 seconds while the browser tries to recover, then ends: the sharer's tab reports the faltering and the recovery, and the backend ends the share
 - [x] Seam 1 tests with controlled time; Seam 2 for the marks and the restored stage
 
 ## Comments
@@ -39,3 +39,29 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 1. *Media that falters* (box 8): while sharing, block the sharer's UDP and TCP to Cloudflare for a few seconds (a firewall rule, or unplug and replug the cable quickly), then for over 30 seconds. The short drop should recover with the share still live. The long one should end the share for the viewers, and the next share should start on a new connection. If Chrome reaches "failed" and never recovers from a short drop, an ICE restart (`restartIce()` and a renegotiation through the instance) is the next thing to build; graeae tries none today.
 2. *Media through a lost socket:* while a viewer watches, cut only the signaling socket (DevTools can't do this alone; closing the Wi-Fi for 15 seconds does both, so watch that the picture freezes at most briefly and resumes). The viewer's stage should say "Reconnecting…" and keep the picture.
 3. *Coming back after 30 seconds:* drop a sharer for 40 seconds. Their share should start again on its own with no picker, using the same capture on a new `RTCPeerConnection`. That has only run on the fake. If Chrome refuses to send a track that an old connection sent, `BrowserMediaClient.reset()` is where to look.
+
+**Checked on real media by an agent** on 2026-11-17, on `graeae-test` (the deploy of `9f71b02`), at the owner's request. It used two members invited for it, "bot" sharing and "bot viewer" watching. Each browser was a headless Chromium 157 on Linux, with Chromium's synthetic camera, in a network namespace of its own (slirp4netns), whose firewall (nft) the agent drove. Both browsers' media went over UDP to Cloudflare at `141.101.90.0`, and signaling went to the Worker's own addresses, so each could be cut alone. The harness is not in the repo.
+
+- *Media that falters* (box 8) holds.
+  - A 5-second cut of the sharer's media never left "connected": the picture came back about 2 s after the network.
+  - A 10-second cut went "disconnected" at +7 s, and the tab sent `media.faltering`. On the network's return it sent `media.recovered`, and the viewer had a picture again within 3 s, still watching.
+  - A 45-second cut went "disconnected" at +6 s and "failed" at +16 s. The share ended for the viewer 36 s after the faltering, not 30 s: about 6 s late, from the alarm or the forced close. The tab heard `media.dropped`, and the next share made a new connection that the viewer watched at 20 fps.
+  - **Open:** a 20-second cut never recovered. Chrome gives a connection up as "failed" at about 17 s and does not try again by itself, so the share ended at the 30 s mark. Any drop between about 17 and 30 seconds ends the share. Ticket 25's `media.restart` (an ICE restart through the instance) is the likely way to recover; the owner decides whether to build it.
+- *Coming back after 30 seconds* (40 s with the sharer's whole network cut) holds.
+  - The viewer saw the "reconnecting" marks, then the member left and the share ended.
+  - On the sharer's return the webcam started again with no new capture: `getUserMedia` was called once in the whole run. It went out on a second `RTCPeerConnection` at 20 fps, with nobody's watching carried over. Chrome sends a track that an old connection sent.
+- *Media through a lost socket* found **two bugs**, both fixed here.
+  1. **A real network drop gave the tab a new identity.** When a network drops, the Worker keeps its end of the socket open but silent until the grace period runs out. The instance took a tab back only from tabs it had seen close, so a page reconnecting in time got a new tab, with `media.connected: false`.
+     - A viewer cut from signaling for 15 s lost its picture for about 3 s on reconnect, while it watched again on a new connection. The picture had played throughout the cut, and "Reconnecting…" showed after 3 s, as it should.
+     - A sharer cut from signaling for 15 s, with media fine, saw the share of that kind as "live from elsewhere", so the page stopped the capture. The share stayed listed, marked "reconnecting" with nothing behind it, until the old socket's grace period ran out, about 25 s later.
+  2. **A page opened afresh took the device's lost tab.** This happens on a reload, or the tab opened again, within the grace period after an unclean close. The page got `connected: true` for a media connection it never held, its `connect` went unanswered ("already"), and it could neither watch nor share.
+
+  **The fix.** The full state now names the tab (`{ type: "state", tab }`), and the page names it again when it reconnects (`roomSocketPath(address, tab)`, a `?tab=` query).
+  - The instance takes that tab back whether it is lost or its old socket is still open and silent. The old socket is closed with the new `TAKEN_BACK_CLOSE_CODE` (4409) and does not count as a leave.
+  - A tab named from another device is not taken.
+  - A page that names no tab is a new one: the device-and-room guess is gone. The member stays present all the same, since the lost tab keeps them present until its grace period runs out, and that tab's shares and watching end then.
+  - The spec's presence section says so.
+  - Tests: Seam 1 in `test/dropped.test.ts` covers a silent old socket, another device naming the tab, and a page opened afresh. Seam 2 covers a sharer's silent 12-second drop keeping her share, her one media connection and her viewer (red before the fix). Sixteen Seam 1 tests that reconnect a tab now name it, through the test `Tab`'s new `id`.
+  - `pnpm test` (Seam 1, 427 tests; Seam 2, 36 journeys), `pnpm typecheck` and `pnpm lint` pass.
+
+**Still to do:** deploy this to `graeae-test` and run the two lost-socket checks again: the viewer should keep its picture through the reconnect, and the sharer should keep the share. Then decide on the ICE restart above. The two test members "bot" and "bot viewer" can be removed afterwards.

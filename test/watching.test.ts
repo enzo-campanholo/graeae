@@ -495,7 +495,7 @@ describe("a viewer's lost connection", () => {
     await ownerTab.drop();
     await pass(instance, 25_000, [biaTab]);
 
-    const { state } = await openRoom(owner, room);
+    const { state } = await openRoom(owner, room, { tab: ownerTab.id });
 
     expect(state.watching.stage).toEqual([biasWebcam]);
     expect(instance.media.connections()[1]).toHaveLength(1);

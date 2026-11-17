@@ -100,7 +100,7 @@ describe("the fresh credential", () => {
     await tab.drop();
     await instance.clock.advance(15 * SECOND);
 
-    const { tab: back, state } = await openRoom(owner, room);
+    const { tab: back, state } = await openRoom(owner, room, { tab: tab.id });
     expect(state.people.you.owner).toBe(true);
     await instance.clock.advance(0);
     await back.heartbeat();

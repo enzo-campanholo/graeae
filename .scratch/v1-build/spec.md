@@ -219,6 +219,7 @@ Four deep modules carry the design. Each is described by what it does, not where
 - The browser sends a heartbeat every 5 seconds. There is no idle detection.
 - A clean leave (tab closed, reload, navigating away) ends that tab's presence at once, along with any share it was sending.
 - A lost connection gets a grace period of 30 seconds from the last heartbeat heard. During it the member stays present and nothing is torn down.
+- A page that reconnects within its grace period is the same tab, with its shares, watching and media connection, even while the backend still holds the old connection open, as it does after most real network drops. A page opened afresh (a reload, the tab opened again) is a new tab.
 - After about 10 seconds of silence, other members see a "reconnecting" mark: on the member's name when they have no connected device left in the room, on a share's icon when the lost device is the one sending it. A second device dropping while another stays connected shows nothing.
 - When a grace period runs out, the backend closes that tab's shares and watching.
 - A backend restart treats everyone as in their grace period. Shares and watching survive it.

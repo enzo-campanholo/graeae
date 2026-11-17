@@ -13,7 +13,7 @@ export class ListClient {
   list = $state<ListState | null>(null);
 
   private readonly connection = new Connection<ListMessage>({
-    path: LIST_SOCKET_PATH,
+    path: () => LIST_SOCKET_PATH,
     receive: (message) => {
       this.list = applyListMessage(this.list, message);
     },
