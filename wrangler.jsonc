@@ -7,6 +7,9 @@
   // Only the free workers.dev hostname. A custom hostname is attached in the dashboard,
   // so this file never needs editing.
   "workers_dev": true,
+  // No per-version preview addresses: the instance has one address, and an owner never
+  // tries a version before deploying it.
+  "preview_urls": false,
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
