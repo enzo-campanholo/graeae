@@ -76,6 +76,8 @@
   --input: var(--raised);
   --ring: var(--dim);
   --radius: 6px;
+  /* The system's one shadow, the tooltip's soft drop: it lifts what floats off what it covers. */
+  --lift: 0 4px 16px -4px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -127,6 +129,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --shadow-lift: var(--lift);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }

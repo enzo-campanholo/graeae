@@ -52,7 +52,8 @@
     if (!ready) return;
     creating = true;
     failed = false;
-    const answer = postJson<CreateInviteAnswer>("/api/owner/invites", { name: name.trim(), rooms: ticked });
+    const sent = name;
+    const answer = postJson<CreateInviteAnswer>("/api/owner/invites", { name: sent.trim(), rooms: ticked });
     // The link is handed to the clipboard now, while the press still counts, and
     // arrives there once the instance has made the invite.
     const copied = copy(
@@ -65,7 +66,8 @@
       return;
     }
     made = { invite: value.invite, copied: await copied };
-    name = "";
+    // Whatever was typed while the invite was being made stays.
+    if (name === sent) name = "";
     if (known.state === "loaded") known.data.invites = [value.invite, ...known.data.invites];
   }
 

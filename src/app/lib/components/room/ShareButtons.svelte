@@ -39,10 +39,11 @@
     <IconButton
       label={screenLabel}
       key={screenLive || screenStarting ? undefined : "S"}
-      variant="default"
+      variant={screenLive ? "secondary" : "default"}
       size="icon"
       side="right"
       disabled={screenLive || screenStarting}
+      class={screenLive ? "disabled:text-faint disabled:opacity-100" : undefined}
       onclick={onscreen}
     >
       <Monitor />
@@ -61,7 +62,13 @@
   </div>
 {:else}
   <div class="grid grid-cols-2 gap-1.5">
-    <Button disabled={screenLive || screenStarting} onclick={onscreen}>
+    <!-- Live, it rests as "Webcam live" does: a state, not a dimmed action. -->
+    <Button
+      variant={screenLive ? "secondary" : "default"}
+      class={screenLive ? "disabled:text-muted-foreground disabled:opacity-100" : undefined}
+      disabled={screenLive || screenStarting}
+      onclick={onscreen}
+    >
       <Monitor />{#if screenStarting}Starting{:else if screenLive}Screen live{:else}Share screen<Kbd>S</Kbd>{/if}
     </Button>
     <Button

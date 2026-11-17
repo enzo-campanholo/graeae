@@ -113,7 +113,7 @@
     </aside>
 
     <main class="bg-stage min-w-0 flex-1 overflow-y-auto rounded-xl">
-      <div class="grid max-w-[880px] gap-8 px-10 pt-9 pb-16">
+      <div class="mx-auto grid max-w-[880px] gap-8 px-10 pt-9 pb-16">
         <div class="grid gap-1">
           <h1 class="text-xl font-medium tracking-[-0.01em]">{current.label}</h1>
           <p class="text-muted-foreground">{current.description}</p>
