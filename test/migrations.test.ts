@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
-import { setUpOwner } from "./steps.ts";
+import { addMember, setUpOwner } from "./steps.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
 // schema change. The second needs the first's table, and neither can run twice.
@@ -59,5 +59,24 @@ describe("migration numbering", () => {
   it("is refused when a number is skipped", () => {
     const skipped = [standIns[0]!, { ...standIns[1]!, number: 3 }];
     expect(() => checkNumbering(skipped)).toThrow(/out of order/);
+  });
+});
+
+describe("the access-and-invites migration", () => {
+  const added = migrations.find((migration) => migration.name === "access-and-invites")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance that already has an owner and a room, who can then invite into that room", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+
+    await instance.restart({ migrations });
+
+    expect((await owner.fetch(room)).status).toBe(200);
+    expect(await (await owner.fetch("/api/me")).json()).toMatchObject({ name: "Owner", owner: true });
+    const { browser: bia, to } = await addMember(instance, owner, "Bia");
+    expect(to).toBe(room);
+    expect((await bia.fetch(room)).status).toBe(200);
   });
 });

@@ -33,3 +33,8 @@ async function appPage(assets: Fetcher, request: Request, status: number): Promi
     },
   });
 }
+
+/** The answer to an action that has nothing to say but that it was done. */
+export function done(): Response {
+  return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+}
