@@ -321,6 +321,8 @@ export class Instance extends DurableObject<Env> {
       if (!allowed) return;
       const iceServers = await this.shares.connect(tab);
       if (iceServers === "already") return;
+      // The socket was lost while the connection was being made: the tab may ask again.
+      if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id);
       this.signaling.toTab(
         tab.id,
         iceServers ? { type: "media", change: { type: "connected", iceServers } } : { type: "media", change: { type: "unavailable" } },
@@ -406,8 +408,10 @@ export class Instance extends DurableObject<Env> {
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
     const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
-    ended.push(...(await this.shares.faltered()));
+    const faltered = await this.shares.faltered();
+    ended.push(...faltered.ended);
     for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
     this.schedule();
   }
 

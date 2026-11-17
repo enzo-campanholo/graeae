@@ -7,7 +7,16 @@
 
 import { describe, expect, it } from "vitest";
 import { startInstance, type TestInstance } from "./harness.ts";
-import { addMember, addSecondBrowser, connectMedia, setUpOwner, shareWebcam, startWebcam, watch } from "./steps.ts";
+import {
+  addMember,
+  addSecondBrowser,
+  connectMedia,
+  setUpOwner,
+  shareWebcam,
+  startWebcam,
+  stopWatching,
+  watch,
+} from "./steps.ts";
 import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -186,6 +195,24 @@ describe("media that falters while the signaling connection is fine", () => {
     expect(await biaTab.next()).toEqual({ type: "watching", change: { type: "watchers", share: webcam, members: [] } });
     expect(await biaTab.next()).toEqual({ type: "shares", change: { type: "ended", share: webcam } });
     expect(instance.media.connections().flat()).toEqual([]);
+
+    // Its media connection failed and now carries nothing: the instance lets go of it, and the tab makes a new one.
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    await shareWebcam(biaTab);
+    expect(instance.media.credentials()).toHaveLength(3);
+  });
+
+  it("leaves what the tab watches alone, and keeps its media connection for it", async () => {
+    const { instance, webcam, ownerTab, biaTab } = await biaSharing();
+    ownerTab.send(faltering);
+    await pass(instance, 35 * SECOND, [ownerTab, biaTab]);
+
+    // The owner shares nothing, so nothing ends, and the owner still watches Bia's webcam.
+    expect(ownerTab.queued()).toEqual([]);
+    expect(biaTab.queued()).toEqual([]);
+    ownerTab.send({ type: "media", request: { type: "connect" } });
+    stopWatching(ownerTab, webcam);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: webcam } });
   });
 
   it("leaves the share alone when the browser recovers in time", async () => {

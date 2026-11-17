@@ -34,9 +34,9 @@ export interface MediaState {
 
 export type MediaRequest =
   /**
-   * Make this tab's media connection. A tab whose connection carries nothing yet gets a
-   * new one, since it may have lost the answer with its socket; a tab whose connection
-   * carries a share or a watch, or is being made, gets no answer.
+   * Make this tab's media connection. A tab that has one, or is having one made, gets
+   * no answer; except a tab whose socket was lost before the answer reached it, which
+   * gets a new one if the old one carries nothing yet.
    */
   | { type: "connect" }
   /**
@@ -72,4 +72,10 @@ export type MediaChange =
   /** `share` could not be watched on this tab: a check failed, or the media server did. */
   | { type: "pull-refused"; share: LiveShare }
   /** The media server has the tab's answer, so the tab may start its next negotiation. */
-  | { type: "answered" };
+  | { type: "answered" }
+  /**
+   * The instance let go of this tab's media connection: its media faltered for 30
+   * seconds, which ended its shares, and it carried nothing else. The tab makes a new
+   * one the next time it shares or watches.
+   */
+  | { type: "dropped" };

@@ -323,6 +323,11 @@ export class RoomClient {
 
   private receive(message: ServerMessage) {
     if (message.type === "media") {
+      // Its media faltered too long and the instance let go of it: the next share or watch makes a new one.
+      if (message.change.type === "dropped") {
+        this.resetMedia();
+        return;
+      }
       const index = this.waiting.findIndex((request) => request.accepts(message.change));
       if (index >= 0) this.waiting.splice(index, 1);
       return;
@@ -418,10 +423,6 @@ export class RoomClient {
     const own = this.mine.find((candidate) => candidate.kind === share.kind && candidate.state !== "starting");
     if (!own) return;
     this.tidy(own);
-    // Ended because the media connection faltered too long: the next share needs a new one.
-    if (this.faltering && this.mine.length === 0 && this.pictures.length === 0 && this.asking.length === 0) {
-      this.resetMedia();
-    }
   }
 
   /** Stops `own`'s capture and forgets the share. */

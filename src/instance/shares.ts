@@ -108,6 +108,9 @@ const RETRIES_KEY = "shares:retries";
  */
 const FALTERING_KEY = "shares:faltering";
 
+/** The tabs whose media connection was made after their socket was lost, so they never heard of it. */
+const UNANSWERED_KEY = "shares:unanswered";
+
 /** How long a tab's shares stay live while its media connection falters, before they end. */
 export const FALTERING_MS = 30_000;
 
@@ -279,15 +282,25 @@ export class Shares {
   }
 
   /**
-   * Makes `tab`'s one media connection and mints the relay credential for it. A tab
-   * whose connection carries nothing yet gets a new one in its place: it asks again
-   * because it never heard the answer, its socket lost on the way, and a connection with
-   * no tracks needs no close. "already" when the tab is making one, or has one that
-   * carries a share or a watch; null when the media server fails.
+   * The answer that handed `tab` its media connection never reached it: its socket was
+   * lost on the way. When it asks again, it gets a new connection (`connect`).
+   */
+  unanswered(tab: string) {
+    const tabs = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
+    if (!tabs.includes(tab)) this.kv.put(UNANSWERED_KEY, [...tabs, tab]);
+  }
+
+  /**
+   * Makes `tab`'s one media connection and mints the relay credential for it. A tab that
+   * never heard the answer that handed it its connection (`unanswered`) gets a new one in
+   * its place, if the old one carries nothing yet: a connection with no tracks needs no
+   * close. "already" when the tab is making one or has one; null when the media server
+   * fails.
    */
   async connect(tab: Tab): Promise<IceServer[] | "already" | null> {
     if (this.connectionRow(tab.id)) {
-      if (this.inFlight.has(tab.id)) return "already";
+      const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
+      if (this.inFlight.has(tab.id) || !unanswered.includes(tab.id)) return "already";
       this.forgetConnectionIfEmpty(tab.id);
       if (this.connectionRow(tab.id)) return "already";
     }
@@ -779,21 +792,25 @@ export class Shares {
 
   /**
    * Ends the shares of every tab whose media connection has faltered for 30 seconds, by
-   * the same forced close as an ordinary stop. What the tab watches is left as it is.
-   * Returns the shares that ended.
+   * the same forced close as an ordinary stop. What the tab watches is left as it is. A
+   * connection left carrying nothing is forgotten, since it failed: the tab makes a new
+   * one the next time it shares or watches. Returns the shares that ended, and the tabs
+   * whose connection was forgotten.
    */
-  async faltered(): Promise<Ended[]> {
+  async faltered(): Promise<{ ended: Ended[]; dropped: string[] }> {
     const now = Date.now();
     const faltering = this.falterings();
     const due = Object.keys(faltering).filter((tab) => faltering[tab]! + FALTERING_MS <= now);
-    if (due.length === 0) return [];
+    if (due.length === 0) return { ended: [], dropped: [] };
     for (const tab of due) delete faltering[tab];
     this.saveFalterings(faltering);
     const ended: Ended[] = [];
+    const dropped: string[] = [];
     for (const tab of due) {
       ended.push(...(await this.end(this.records("WHERE tab_id = ? AND live_at IS NOT NULL", tab), null)));
+      if (this.forgetConnectionIfEmpty(tab)) dropped.push(tab);
     }
-    return ended;
+    return { ended, dropped };
   }
 
   /** When the shares of a tab whose media connection falters are next due to end, or null when none are. */
@@ -877,15 +894,24 @@ export class Shares {
       .map((row) => row.member_id);
   }
 
-  private forgetConnectionIfEmpty(tabId: string) {
-    this.sql.exec(
-      `DELETE FROM media_connection WHERE tab_id = ?
-       AND NOT EXISTS (SELECT 1 FROM share WHERE tab_id = ?)
-       AND NOT EXISTS (SELECT 1 FROM watch WHERE tab_id = ?)`,
-      tabId,
-      tabId,
-      tabId,
-    );
+  /** Forgets `tabId`'s media connection if it carries no share or watch. True when it was forgotten. */
+  private forgetConnectionIfEmpty(tabId: string): boolean {
+    const forgotten =
+      this.sql.exec(
+        `DELETE FROM media_connection WHERE tab_id = ?
+         AND NOT EXISTS (SELECT 1 FROM share WHERE tab_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM watch WHERE tab_id = ?)`,
+        tabId,
+        tabId,
+        tabId,
+      ).rowsWritten > 0;
+    const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
+    if (forgotten && unanswered.includes(tabId)) {
+      const left = unanswered.filter((tab) => tab !== tabId);
+      if (left.length > 0) this.kv.put(UNANSWERED_KEY, left);
+      else this.kv.delete(UNANSWERED_KEY);
+    }
+    return forgotten;
   }
 
   private connectionRow(tabId: string) {
