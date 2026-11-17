@@ -3,6 +3,7 @@
 // instance's HTTP routes; the fake media server shows which tracks are really open.
 
 import { describe, expect, it, vi } from "vitest";
+import type { MeAnswer } from "../src/shared/api.ts";
 import { startInstance } from "./harness.ts";
 import { addMember, connectMedia, createRoom, setUpOwner, shareWebcam, startWebcam, stopWebcam } from "./steps.ts";
 import { addressOf, openList, openRoom } from "./sockets.ts";
@@ -241,6 +242,23 @@ describe("a live webcam share", () => {
 
     await biaTab.close();
 
+    expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: biaId } });
+    expect(await ownerTab.next()).toEqual({
+      type: "shares",
+      change: { type: "ended", share: { member: biaId, kind: "webcam" } },
+    });
+    expect(instance.media.connections()).toEqual([[]]);
+  });
+
+  it("ends when the sharer's device is forgotten, its tab closed by the instance", async () => {
+    const { instance, bia, biaTab, ownerTab, biaId } = await twoPresent();
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // it went live
+    const { devices } = await (await bia.fetch("/api/me")).json<MeAnswer>();
+
+    const forgotten = await bia.fetch(`/api/me/devices/${devices[0]!.id}`, { method: "DELETE" });
+
+    expect(forgotten.status).toBe(204);
     expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: biaId } });
     expect(await ownerTab.next()).toEqual({
       type: "shares",

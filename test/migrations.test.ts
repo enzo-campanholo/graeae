@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
-import { addMember, setUpOwner, shareWebcam } from "./steps.ts";
+import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
+import { addMember, invite, pressJoin, setUpOwner, shareWebcam } from "./steps.ts";
 import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
@@ -79,6 +80,31 @@ describe("the access-and-invites migration", () => {
     const { browser: bia, to } = await addMember(instance, owner, "Bia");
     expect(to).toBe(room);
     expect((await bia.fetch(room)).status).toBe(200);
+  });
+});
+
+describe("the invites-for-a-member migration", () => {
+  const added = migrations.find((migration) => migration.name === "invites-for-a-member")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("keeps the owner's pending invites working, and their members can then add devices", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const bia = await invite(owner, "Bia");
+    const caio = await invite(owner, "Caio");
+
+    await instance.restart({ migrations });
+
+    const { invites } = await (await owner.fetch("/api/owner/invites")).json<InvitesAnswer>();
+    expect(invites).toEqual([caio, bia]);
+    const phone = instance.browser();
+    expect(await (await pressJoin(phone, bia.code)).json()).toEqual({ to: room });
+    const made = await phone.fetch("/api/me/devices", { method: "POST" });
+    const { code } = (await made.json<DeviceInviteAnswer>()).invite;
+    const laptop = instance.browser();
+    expect(await (await pressJoin(laptop, code)).json()).toEqual({ to: room });
+    expect(await (await laptop.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
   });
 });
 

@@ -18,7 +18,15 @@ export interface Tab {
   device: string;
   /** The address of the room the tab is showing. */
   room: string;
+  /** Set when the instance closed the socket itself and has already told the room. */
+  cutOff?: true;
 }
+
+/**
+ * The close code of a socket whose device the instance no longer remembers. The page
+ * learns nothing more from it than from any refusal: it becomes "nothing here".
+ */
+export const GONE_CLOSE_CODE = 4404;
 
 /** What a list of rooms' socket remembers about its tab. It shows no room. */
 interface ListTab {
@@ -28,9 +36,9 @@ interface ListTab {
   list: true;
 }
 
-// Tags let the instance find sockets without waking every one of them. A member's and a
-// device's tags are there for cutting them off (tickets 07 and 09); they are on list
-// sockets too.
+// Tags let the instance find sockets without waking every one of them. A device's tag
+// finds the tabs to close when it is forgotten; a member's is there for removal (ticket
+// 09). Both are on list sockets too.
 const roomTag = (address: string) => `room:${address}`;
 const memberTag = (id: string) => `member:${id}`;
 const deviceTag = (id: string) => `device:${id}`;
@@ -94,13 +102,44 @@ export class Signaling {
       // Already closed.
     }
     const tab = attachment(socket);
-    if (!tab || !isRoomTab(tab)) return null;
+    if (!tab || !isRoomTab(tab) || tab.cutOff) return null;
+    this.left(tab);
+    return tab;
+  }
+
+  /**
+   * Closes every tab of the device `id`, rooms and lists alike, which has just been
+   * forgotten. Each room hears that the member left where that was their last tab there.
+   * Returns the room tabs it closed, so the instance can end what they were sending.
+   */
+  closeDevice(id: string): Tab[] {
+    const closed: Tab[] = [];
+    for (const socket of this.ctx.getWebSockets(deviceTag(id))) {
+      const tab = tabOf(socket);
+      if (!tab) continue;
+      if (isRoomTab(tab)) socket.serializeAttachment({ ...tab, cutOff: true } satisfies Tab);
+      // Said as well as done: a close frame can be lost on the way, a message is not.
+      send(socket, { type: "gone" });
+      try {
+        socket.close(GONE_CLOSE_CODE, "");
+      } catch {
+        // Already closed.
+      }
+      if (isRoomTab(tab)) {
+        this.left(tab);
+        closed.push(tab);
+      }
+    }
+    return closed;
+  }
+
+  /** `tab` is gone: the room hears that its member left if it was their last tab there. */
+  private left(tab: Tab) {
     const others = this.tabs(tab.room).filter((other) => other.id !== tab.id);
     if (!others.some((other) => other.member === tab.member)) {
       this.toRoom(tab.room, { type: "presence", change: { type: "left", member: tab.member } }, tab.id);
       this.presenceChanged(tab.room);
     }
-    return tab;
   }
 
   /**

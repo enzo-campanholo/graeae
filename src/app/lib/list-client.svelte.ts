@@ -19,18 +19,29 @@ export class ListClient {
     this.socket = new WebSocket(`${scheme}//${window.location.host}${LIST_SOCKET_PATH}`);
     this.socket.addEventListener("message", (event) => {
       if (typeof event.data !== "string") return;
-      this.list = applyListMessage(this.list, JSON.parse(event.data) as ListMessage);
+      const message = JSON.parse(event.data) as ListMessage;
+      if (message.type === "gone") {
+        this.refused = true;
+        this.close();
+        return;
+      }
+      this.list = applyListMessage(this.list, message);
     });
+    // A socket refused at the start, or closed by the instance later (this device was
+    // forgotten), shows "nothing here" once the instance confirms the refusal.
     this.socket.addEventListener("close", () => {
-      if (this.list === null) void this.checkRefused();
+      if (!this.leaving) void this.checkRefused();
     });
   }
 
+  private leaving = false;
+
   close() {
+    this.leaving = true;
     this.socket.close(1000, "left");
   }
 
-  // A refused socket only shows the browser a failed connection, so ask the instance
+  // A refused or closed socket tells the browser nothing about why, so ask the instance
   // over HTTP, where a refusal is the "nothing here" answer.
   private async checkRefused() {
     const rooms = await getJson("/api/rooms").catch(() => undefined);

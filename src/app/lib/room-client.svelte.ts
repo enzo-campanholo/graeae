@@ -45,6 +45,8 @@ export class RoomClient {
   private connection: Promise<boolean> | null = null;
   /** Requests waiting for their answer in the media area, oldest first. */
   private readonly waiting: ((change: MediaChange) => boolean)[] = [];
+  /** Set when this tab leaves the room itself, so its own close is no refusal. */
+  private leaving = false;
 
   constructor(private readonly address: string) {
     const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -53,8 +55,10 @@ export class RoomClient {
       if (typeof event.data !== "string") return;
       this.receive(JSON.parse(event.data) as ServerMessage);
     });
+    // A socket refused at the start, or closed by the instance later (this device was
+    // forgotten), shows "nothing here" once the instance confirms the refusal.
     this.socket.addEventListener("close", () => {
-      if (this.view === null) void this.checkRefused();
+      if (!this.leaving) void this.checkRefused();
     });
   }
 
@@ -99,11 +103,18 @@ export class RoomClient {
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
+    this.leaving = true;
     this.media.close();
     this.socket.close(1000, "left");
   }
 
   private receive(message: ServerMessage) {
+    if (message.type === "gone") {
+      // This device is no longer remembered: the page becomes "nothing here".
+      this.refused = true;
+      this.close();
+      return;
+    }
     if (message.type === "media") {
       const index = this.waiting.findIndex((accepts) => accepts(message.change));
       if (index >= 0) this.waiting.splice(index, 1);
@@ -157,7 +168,7 @@ export class RoomClient {
     this.mine = this.mine.map((share) => (share.kind === kind ? { ...share, ...patch } : share));
   }
 
-  // A refused socket only shows the browser a failed connection, so ask the instance
+  // A refused or closed socket tells the browser nothing about why, so ask the instance
   // over HTTP, where a refusal is the "nothing here" answer.
   private async checkRefused() {
     const room = await getJson(`/api/rooms/${encodeURIComponent(this.address)}`).catch(() => undefined);

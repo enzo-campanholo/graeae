@@ -37,8 +37,14 @@ export type ListChange =
   /** A room's line as it is now: one already listed is replaced, a new one is added at the end. */
   { type: "listed"; room: ListedRoom };
 
-/** A message from the instance to the list. */
-export type ListMessage = { type: "state"; state: ListState } | { type: "rooms"; change: ListChange };
+/**
+ * A message from the instance to the list. `gone` means this tab's device is forgotten:
+ * the socket closes next and the page is "nothing here".
+ */
+export type ListMessage =
+  | { type: "state"; state: ListState }
+  | { type: "rooms"; change: ListChange }
+  | { type: "gone" };
 
 export function applyList(state: ListState, change: ListChange): ListState {
   switch (change.type) {

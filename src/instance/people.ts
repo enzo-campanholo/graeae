@@ -11,6 +11,9 @@ export const DEVICE_LIFE_MS = 400 * DAY;
 /** An owner's invite can be used until this long after it was made. */
 export const OWNER_INVITE_LIFE_MS = 7 * DAY;
 
+/** A member's "Add a device" invite can be used until this long after it was made. */
+export const DEVICE_INVITE_LIFE_MS = 10 * 60 * 1000;
+
 /** The longest display name, in characters. */
 export const DISPLAY_NAME_MAX = 40;
 
@@ -43,6 +46,17 @@ export interface PendingInvite {
   name: string;
   rooms: Room[];
   expiresAt: number;
+}
+
+/** A member's "Add a device" invite, pending until used or expired. */
+export interface DeviceInvite {
+  code: string;
+  expiresAt: number;
+}
+
+/** What the invite page shows before the press: the display name the browser joins as. */
+export interface OpenInvite {
+  name: string;
 }
 
 export interface Device {
@@ -170,16 +184,32 @@ export class People {
     return invite;
   }
 
-  /** The pending invites, newest first. Expired ones are forgotten here. */
+  /**
+   * Makes an "Add a device" invite for `member`: whichever browser presses it becomes
+   * another device of theirs. No approval and no limit on how many devices they have.
+   */
+  createDeviceInvite(member: Member): DeviceInvite {
+    this.forgetExpiredInvites();
+    const now = Date.now();
+    const invite: DeviceInvite = { code: newInviteCode(), expiresAt: now + DEVICE_INVITE_LIFE_MS };
+    this.sql.exec(
+      `INSERT INTO invite (code, display_name, created_at, expires_at, member_id, kind)
+       VALUES (?, ?, ?, ?, ?, 'device')`,
+      invite.code,
+      member.name,
+      now,
+      invite.expiresAt,
+      member.id,
+    );
+    return invite;
+  }
+
+  /** The owner's pending invites, newest first. Expired invites are forgotten here. */
   pendingInvites(): PendingInvite[] {
-    for (const { code } of this.sql
-      .exec<{ code: string }>("SELECT code FROM invite WHERE expires_at <= ?", Date.now())
-      .toArray()) {
-      this.deleteInvite(code);
-    }
+    this.forgetExpiredInvites();
     return this.sql
       .exec<{ code: string; display_name: string; expires_at: number }>(
-        "SELECT code, display_name, expires_at FROM invite ORDER BY created_at DESC, rowid DESC",
+        "SELECT code, display_name, expires_at FROM invite WHERE kind = 'owner' ORDER BY created_at DESC, rowid DESC",
       )
       .toArray()
       .map((row) => ({
@@ -190,29 +220,26 @@ export class People {
       }));
   }
 
-  /** The pending invite with this code, or null when it was never made, or is used, cancelled or expired. */
-  pendingInvite(code: string): PendingInvite | null {
-    const row = this.sql
-      .exec<{ display_name: string; expires_at: number }>(
-        "SELECT display_name, expires_at FROM invite WHERE code = ? AND expires_at > ?",
-        code,
-        Date.now(),
-      )
-      .toArray()[0];
-    if (!row) return null;
-    return { code, name: row.display_name, rooms: this.inviteRooms(code), expiresAt: row.expires_at };
+  /**
+   * Any pending invite with this code, the owner's or a member's own, as its page shows
+   * it; null when it was never made, or is used, cancelled or expired.
+   */
+  openInvite(code: string): OpenInvite | null {
+    const row = this.inviteRow(code);
+    return row ? { name: row.member?.name ?? row.name } : null;
   }
 
-  /** Cancels a pending invite. False when there is no pending invite with this code. */
+  /** Cancels one of the owner's pending invites. False when there is no such invite with this code. */
   cancelInvite(code: string): boolean {
-    if (!this.pendingInvite(code)) return false;
+    if (this.inviteRow(code)?.member !== null) return false;
     this.deleteInvite(code);
     return true;
   }
 
   /**
-   * Uses up a pending invite: the browser behind `request` becomes the device of a new
-   * member with the invite's display name and access to its rooms. Null, and nothing
+   * Uses up a pending invite. For an owner's invite, the browser behind `request` becomes
+   * the device of a new member with the invite's display name and access to its rooms;
+   * for "Add a device", another device of the member who made it. Null, and nothing
    * changed, when the invite is not pending. Returns the member and the cookie that
    * remembers the new device.
    */
@@ -223,9 +250,11 @@ export class People {
   ): Promise<{ member: Member; cookie: string } | null> {
     const remember = await this.newDevice(request, current);
     // Nothing below waits, so two presses of one invite cannot both use it.
-    const invite = this.pendingInvite(code);
+    const invite = this.inviteRow(code);
     if (!invite) return null;
+    const rooms = this.inviteRooms(code);
     this.deleteInvite(code);
+    if (invite.member) return { member: invite.member, cookie: remember(invite.member) };
     const member: Member = { id: crypto.randomUUID(), name: invite.name, owner: false };
     this.sql.exec(
       "INSERT INTO member (id, display_name, is_owner, created_at) VALUES (?, ?, 0, ?)",
@@ -233,7 +262,7 @@ export class People {
       member.name,
       Date.now(),
     );
-    for (const room of invite.rooms) {
+    for (const room of rooms) {
       this.sql.exec("INSERT INTO access (member_id, room_address) VALUES (?, ?)", member.id, room.address);
     }
     return { member, cookie: remember(member) };
@@ -254,6 +283,17 @@ export class People {
       )
       .toArray()[0];
     return row ? { id: row.id, name: row.display_name, owner: row.is_owner === 1 } : null;
+  }
+
+  /**
+   * Changes `member`'s display name to `name`, trimmed. Null, and nothing changed, when
+   * `name` is not a display name.
+   */
+  rename(member: Member, name: unknown): Member | null {
+    const displayName = toDisplayName(name);
+    if (displayName === null) return null;
+    this.sql.exec("UPDATE member SET display_name = ? WHERE id = ?", displayName, member.id);
+    return { ...member, name: displayName };
   }
 
   /** The rooms a member has access to, oldest first. The owner has access to every room. */
@@ -335,6 +375,15 @@ export class People {
   }
 
   /**
+   * Forgets `member`'s device `deviceId`: its browser is a stranger from now on. False,
+   * and nothing changed, when the member has no such device.
+   */
+  forgetDevice(member: Member, deviceId: string): boolean {
+    const { rowsWritten } = this.sql.exec("DELETE FROM device WHERE id = ? AND member_id = ?", deviceId, member.id);
+    return rowsWritten > 0;
+  }
+
+  /**
    * Gets ready to remember the browser behind `request` as a new device. This is the
    * one step that waits, so callers take it before they check or change anything. The
    * function it returns forgets the device this browser held before, whoever's it was,
@@ -360,6 +409,36 @@ export class People {
       );
       return deviceCookie(token);
     };
+  }
+
+  /**
+   * The pending invite with this code, and the member it is for when it is for one who
+   * already exists; null when it was never made, or is used, cancelled or expired.
+   * `member` is null for an invite that makes a new member.
+   */
+  private inviteRow(code: string): { name: string; member: Member | null } | null {
+    const row = this.sql
+      .exec<{ display_name: string; member_id: string | null; member_name: string | null; is_owner: number | null }>(
+        `SELECT invite.display_name, invite.member_id, member.display_name AS member_name, member.is_owner
+         FROM invite LEFT JOIN member ON member.id = invite.member_id
+         WHERE invite.code = ? AND invite.expires_at > ?`,
+        code,
+        Date.now(),
+      )
+      .toArray()[0];
+    if (!row) return null;
+    if (row.member_id === null) return { name: row.display_name, member: null };
+    // An invite for a member who no longer exists is no invite at all.
+    if (row.member_name === null) return null;
+    return { name: row.member_name, member: { id: row.member_id, name: row.member_name, owner: row.is_owner === 1 } };
+  }
+
+  private forgetExpiredInvites() {
+    for (const { code } of this.sql
+      .exec<{ code: string }>("SELECT code FROM invite WHERE expires_at <= ?", Date.now())
+      .toArray()) {
+      this.deleteInvite(code);
+    }
   }
 
   private inviteRooms(code: string): Room[] {
@@ -393,6 +472,9 @@ export class People {
     return room;
   }
 }
+
+/** The answer's way of telling a browser whose device was just forgotten to drop its cookie. */
+export const FORGET_DEVICE_COOKIE = `${DEVICE_COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`;
 
 function deviceCookie(token: string): string {
   const maxAge = DEVICE_LIFE_MS / 1000;

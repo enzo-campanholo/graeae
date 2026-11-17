@@ -7,6 +7,8 @@ import type { Sample, SampleModule, SampleShare } from "./types.ts";
 
 export { SampleScene };
 
+const DAY = 86_400_000;
+
 const variant = new URLSearchParams(window.location.search).get("sample");
 
 const stage: SampleShare[] = [
@@ -54,10 +56,11 @@ function build(): Sample {
     ],
     you: {
       name: "Marta",
+      owner: true,
       devices: [
-        { id: "a", label: "Chrome on Windows", lastUsed: "Now", current: true },
-        { id: "b", label: "Helium on Windows", lastUsed: "2 days ago", current: false },
-        { id: "c", label: "Firefox on Linux", lastUsed: "3 weeks ago", current: false },
+        { id: "a", browser: "Chrome", os: "Windows", lastUsed: Date.now(), current: true },
+        { id: "b", browser: "Helium", os: "Windows", lastUsed: Date.now() - 2 * DAY, current: false },
+        { id: "c", browser: "Firefox", os: "Linux", lastUsed: Date.now() - 21 * DAY, current: false },
       ],
     },
     invite: { name: "Bia" },
