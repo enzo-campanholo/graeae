@@ -62,7 +62,7 @@ test("a member whose connection dies shows as reconnecting after about 10 second
   online = false;
   // Still present and unmarked for the first few seconds; marked about 10 seconds after
   // the last heartbeat heard, which came up to 5 seconds before the drop.
-  await hana.waitForTimeout(6_000);
+  await hana.waitForTimeout(4_000);
   await expect(hanaRow).not.toContainText("reconnecting");
   await expect(hanaRow).toContainText("· reconnecting", { timeout: 15_000 });
 
