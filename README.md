@@ -112,11 +112,11 @@ pnpm run deploy
 
 `wrangler login` opens a browser to sign in to Cloudflare once. `pnpm run deploy` builds graeae, uploads it with the five secrets, and prints the instance's address, `https://graeae.<your subdomain>.workers.dev`. A deploy with any secret missing fails and names it. A line left blank in `.secrets` is refused before anything is uploaded.
 
+While it builds, a deploy prints a warning that the five secrets are missing and should be added to `.dev.vars`. Ignore it: the build checks for the secrets used to run graeae on your own computer, not the ones on the Worker. Only an error from the upload, after the build, means a secret is really missing.
+
 Always deploy with `pnpm run deploy`. Do not run `wrangler deploy` yourself: it uploads whatever build is lying in `dist/`, and after the tests that is a build with no real media in it.
 
 **Then delete `.secrets`.** The Worker keeps the secrets, and later deploys without the file leave them as they are. A secrets file left on disk is one more place for them to leak from.
-
-While it builds, a deploy prints a warning that the five secrets are missing and should be added to `.dev.vars`. Ignore it: the build checks for the secrets used to run graeae on your own computer, not the ones on the Worker. Only an error from the upload, after the build, means a secret is really missing.
 
 ```sh
 rm .secrets
