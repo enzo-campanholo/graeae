@@ -8,6 +8,9 @@
 // and answers between the media client and the instance, one negotiation at a time, and
 // keeps this tab's own shares and the pictures of what it watches. The media client
 // never talks to the instance itself.
+//
+// Once the tab has its media connection it reports, every few seconds, what that
+// connection's transport has received since it opened, for the usage count.
 
 import type { QualityName } from "../../shared/encoding.ts";
 import {
@@ -22,10 +25,12 @@ import {
   type ShareKind,
   type SharesRequest,
 } from "../../shared/socket/index.ts";
+import { USAGE_REPORT_EVERY_MS } from "../../shared/socket/usage.ts";
 import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
+import { every } from "./ticker.ts";
 
 /** What this tab receives of a share it watches. */
 export interface Picture {
@@ -85,6 +90,8 @@ export class RoomClient {
   private readonly listening = new Map<string, () => void>();
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();
+  /** Stops the usage reports, once the media connection is made. */
+  private stopReporting: (() => void) | null = null;
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
@@ -319,6 +326,7 @@ export class RoomClient {
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
+    this.stopReporting?.();
     for (const stop of this.listening.values()) stop();
     this.listening.clear();
     this.media.close();
@@ -396,9 +404,22 @@ export class RoomClient {
         return false;
       }
       this.media.connect(change.iceServers);
+      this.stopReporting = every(USAGE_REPORT_EVERY_MS, () => void this.report());
       return true;
     })();
     return this.connection;
+  }
+
+  /**
+   * Reports what the media connection has received since it opened, for the usage count.
+   * `final` before the media connection restarts: the next connection counts from zero.
+   * A report sent while the socket is lost is dropped, and the next one makes up for it.
+   */
+  async report({ final = false } = {}) {
+    const totals = await this.media.transport();
+    if (!totals) return;
+    const bytes = Math.max(0, Math.round(totals.received));
+    this.send({ type: "usage", request: { type: "received", bytes, relayed: totals.relayed, ...(final ? { final: true } : {}) } });
   }
 
   /** The next change in the media area that `matches`, which answers a request just sent. */

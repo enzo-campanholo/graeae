@@ -13,6 +13,7 @@
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
 import type { QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily } from "./capture.ts";
+import type { TransportTotals } from "./transport.ts";
 
 /**
  * Something captured on this device, ready to be sent as a share. A screen share is one
@@ -74,6 +75,11 @@ export interface MediaClient {
    * first. Returns the way to stop listening.
    */
   received(video: string, heard: (quality: QualityName | null) => void): () => void;
+  /**
+   * What the media connection's transport has received since it opened, and whether it
+   * is on the relay now, for the usage count. Null before the connection is made.
+   */
+  transport(): Promise<TransportTotals | null>;
   /** Lets go of the watched share on `video`, whose pull the instance has closed. */
   drop(video: string): void;
   /** Turns a live capture's sound on or off, without stopping the share. */
