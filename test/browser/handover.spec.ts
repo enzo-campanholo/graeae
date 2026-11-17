@@ -1,0 +1,115 @@
+import { expect, test, type Browser, type BrowserContext } from "@playwright/test";
+import type { CreateInviteAnswer, DeviceInviteAnswer } from "../../src/shared/api.ts";
+import { SETUP_SECRET } from "./app.ts";
+
+// Hand-over: a member with a share live on one device starts the same kind on another,
+// is offered to stop it there and share from here, and the owner watching it is carried
+// over. The media on every side is fake, so this covers what each member sees, not
+// pictures. Journeys share one instance; this one names its member Vera, whom no other
+// journey uses.
+
+const opened: BrowserContext[] = [];
+
+test.afterEach(async () => {
+  // Pages first, so each member leaves cleanly and their shares end before the next journey.
+  await Promise.all(opened.flatMap((context) => context.pages().map((page) => page.close())));
+  await Promise.all(opened.splice(0).map((context) => context.close()));
+});
+
+async function newBrowser(browser: Browser, baseURL: string | undefined): Promise<BrowserContext> {
+  const context = await browser.newContext({ baseURL });
+  opened.push(context);
+  return context;
+}
+
+test("a share moves to another device on an offer, carrying its viewer, and the first device says why it stopped", async ({
+  browser,
+  baseURL,
+}) => {
+  const ownerContext = await newBrowser(browser, baseURL);
+  const owner = await ownerContext.newPage();
+  await owner.goto(`/setup#${SETUP_SECRET}`);
+  await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
+  const room = owner.url();
+  const made = await ownerContext.request.post("/api/owner/invites", { data: { name: "Vera" } });
+  expect(made.status(), "the invite was refused").toBe(200);
+  const { invite } = (await made.json()) as CreateInviteAnswer;
+
+  // Vera's laptop shares her webcam, and the owner watches it.
+  const laptopContext = await newBrowser(browser, baseURL);
+  const laptop = await laptopContext.newPage();
+  await laptop.goto(`/invite/${invite.code}`);
+  await laptop.getByRole("button", { name: "Join as Vera" }).click();
+  await expect(laptop).toHaveURL(room);
+  await laptop.getByRole("button", { name: "Share webcam" }).click();
+  await expect(laptop.getByText("No one watching")).toBeVisible();
+  const stage = owner.getByRole("main", { name: "Stage" });
+  const bar = owner.getByRole("region", { name: "Here" });
+  await bar.getByRole("button", { name: "Watch Vera's webcam" }).click();
+  const picture = stage.getByRole("img", { name: "Vera's webcam, with no picture" });
+  await expect(picture).toBeVisible();
+  await expect(laptop.getByText("Owner watching")).toBeVisible();
+
+  // Her phone, another of her devices, opens the room.
+  const added = await laptopContext.request.post("/api/me/devices");
+  const { invite: deviceInvite } = (await added.json()) as DeviceInviteAnswer;
+  const phoneContext = await newBrowser(browser, baseURL);
+  const phone = await phoneContext.newPage();
+  await phone.goto(`/invite/${deviceInvite.code}`);
+  await phone.getByRole("button", { name: "Join as Vera" }).click();
+  await expect(phone).toHaveURL(room);
+
+  // "Share webcam" there offers to stop it on the laptop and share from here. Cancel leaves it be.
+  const offer = phone.getByRole("dialog", { name: "Your webcam is already live" });
+  await phone.getByRole("button", { name: "Share webcam" }).click();
+  await expect(offer).toContainText("It's live from another tab or device. Stop it there and share from here?");
+
+  if (process.env.GRAEAE_SCREENSHOTS) {
+    for (const colorScheme of ["dark", "light"] as const) {
+      // The app is dark unless "You" says otherwise, whatever the system prefers.
+      await phone.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
+      await phone.waitForTimeout(400); // the panel arrives, and colours settle, before the picture is taken
+      await phone.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/hand-over-offer-${colorScheme}.png` });
+    }
+    await phone.evaluate(`document.documentElement.classList.toggle("dark", true)`);
+  }
+  await offer.getByRole("button", { name: "Cancel" }).click();
+  await expect(offer).toHaveCount(0);
+  await expect(laptop.getByText("Owner watching")).toBeVisible();
+
+  // Going on moves it: the phone sends it, the owner still watches, and the laptop says why it stopped.
+  await phone.getByRole("button", { name: "Share webcam" }).click();
+  await expect(offer.getByRole("button", { name: "Share from here" })).toBeFocused();
+  await phone.keyboard.press("Enter");
+  await expect(phone.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(phone.getByText("Owner watching")).toBeVisible();
+  await expect(laptop.getByText("Now sharing from your other device.")).toBeVisible();
+  await expect(laptop.getByRole("button", { name: "Stop your webcam" })).toHaveCount(0);
+  await expect(laptop.getByRole("button", { name: "Share webcam" })).toBeEnabled();
+
+  if (process.env.GRAEAE_SCREENSHOTS) {
+    for (const colorScheme of ["dark", "light"] as const) {
+      // The app is dark unless "You" says otherwise, whatever the system prefers.
+      await laptop.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
+      await laptop.waitForTimeout(400); // colours settle before the picture is taken
+      await laptop.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/handed-over-${colorScheme}.png` });
+    }
+    await laptop.evaluate(`document.documentElement.classList.toggle("dark", true)`);
+  }
+  await expect(picture).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Stop watching Vera's webcam" })).toHaveAttribute("aria-pressed", "true");
+
+  // A screen share hands over the same way, with the first-time notice on the way to the picker.
+  await laptop.getByRole("button", { name: "Share screen" }).click();
+  await laptop.getByRole("button", { name: "Choose what to share" }).click();
+  await expect(laptop.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await phone.getByRole("button", { name: "Share screen" }).click();
+  await phone.getByRole("dialog", { name: "Your screen is already live" }).getByRole("button", { name: "Share from here" }).click();
+  await phone.getByRole("button", { name: "Choose what to share" }).click();
+  await expect(phone.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(laptop.getByRole("button", { name: "Share screen" })).toBeEnabled();
+
+  // The note goes when dismissed.
+  await laptop.getByRole("button", { name: "Dismiss" }).click();
+  await expect(laptop.getByText("Now sharing from your other device.")).toHaveCount(0);
+});

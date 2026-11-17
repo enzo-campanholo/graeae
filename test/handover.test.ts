@@ -97,7 +97,7 @@ function tracks(instance: Awaited<ReturnType<typeof startInstance>>) {
 
 describe("handing a webcam share over within a room", () => {
   it("makes the new device's share live and closes the old device's", async () => {
-    const { instance, phone, laptop, share } = await biaOnTwoDevices();
+    const { instance, phone, laptop } = await biaOnTwoDevices();
     const [laptops] = tracks(instance);
 
     handOver(phone);
@@ -388,5 +388,28 @@ describe("a hand-over cut short by a restart", () => {
 
     expect(state.shares.live).toHaveLength(1);
     await vi.waitFor(() => expect(tracks(instance).map((open) => open.length)).toEqual([0, 0, 1]));
+  });
+});
+
+describe("the device a share was handed over from", () => {
+  it("finds on reconnecting within its grace period that it no longer sends the share, though the room still lists it", async () => {
+    const { bia, room, phone, laptop, share } = await biaOnTwoDevices();
+    await laptop.drop();
+
+    handOver(phone);
+    await until(phone, (message) => message.type === "media");
+    await settle(phone);
+    const { tab: back } = await openRoom(bia, room);
+
+    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: [] }, state: { shares: { live: [share] } } });
+  });
+
+  it("is told in the full state which shares it sends", async () => {
+    const { bia, room, laptop } = await biaOnTwoDevices();
+    await laptop.drop();
+
+    const { tab: back } = await openRoom(bia, room);
+
+    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: ["webcam"] } });
   });
 });

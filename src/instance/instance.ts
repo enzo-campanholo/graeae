@@ -207,7 +207,7 @@ export class Instance extends DurableObject<Env> {
       if (!room || !upgrade) return refuse();
       return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => ({
         state: this.roomView(member, room, tab),
-        media: { connected: this.shares.hasConnection(tab) },
+        media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
       }));
     }
     return refuse();

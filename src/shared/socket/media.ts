@@ -30,6 +30,12 @@ export interface IceServer {
 export interface MediaState {
   /** Whether the instance holds a media connection for this tab. */
   connected: boolean;
+  /**
+   * The kinds of share this tab sends that are live. A share of the member's that the
+   * room lists but this tab does not send was ended here, or handed over to another tab
+   * or device, while the tab was away.
+   */
+  sending: ShareKind[];
 }
 
 export type MediaRequest =
