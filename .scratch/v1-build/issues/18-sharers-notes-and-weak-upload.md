@@ -82,3 +82,5 @@ The notes journey follows the new timings. `pnpm test` (Seam 1, 422; Seam 2, 35)
 4. *Cap lifted:* 720p60 should come back about 30 s later, and 1080p 30 s after that. The share must never end.
 
 Send the dumps for each run. They calibrate the four constants named above, and show how long Chrome spends at 480p in software on its own.
+
+**Checked by the owner** on 2026-11-17, on `graeae-test` (version `4c79e0cd`, Chrome on Windows 11): the 48 fps note at 144 Hz and the software-encoding line both work, as the owner had also seen in earlier testing (steps 2 and 3 of "Needs the owner"). The weak-upload runs and the content hint's judgement are still to come.
