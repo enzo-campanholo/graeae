@@ -130,6 +130,15 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   });
   await expect(ownerHere.getByRole("button", { name: "Watch Lou's screen, reconnecting" })).toBeVisible();
   await expect(lousPicture).toBeVisible();
+  if (process.env.GRAEAE_SCREENSHOTS) {
+    for (const colorScheme of ["dark", "light"] as const) {
+      for (const [who, page] of [["owner", owner], ["lou", lou]] as const) {
+        // The app is dark unless "You" says otherwise, whatever the system prefers.
+        await page.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
+        await page.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/reconnecting-${who}-${colorScheme}.png` });
+      }
+    }
+  }
 
   // The grace period runs out: Lou leaves, and her shares end.
   await expect(ownerHere.getByRole("button", { name: /^Lou/ })).toHaveCount(0, { timeout: 30_000 });

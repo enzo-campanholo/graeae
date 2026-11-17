@@ -20,8 +20,8 @@ export interface SamplePerson {
   followed: boolean;
   /** Present, but not heard for about 10 seconds. */
   reconnecting?: boolean;
-  screen: { watched: boolean } | null;
-  webcam: { watched: boolean } | null;
+  screen: { watched: boolean; reconnecting?: boolean } | null;
+  webcam: { watched: boolean; reconnecting?: boolean } | null;
 }
 
 export interface SampleRoom {
