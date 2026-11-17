@@ -7,7 +7,6 @@
 // and steers through `instance.media`.
 
 import {
-  evictDurableObject,
   reset,
   runDurableObjectAlarm,
   runInDurableObject,
@@ -77,8 +76,11 @@ export interface TestInstance extends Client {
   media: FakeMediaControl;
   /**
    * Stops the instance and starts it again on the same storage, as after a deploy or a
-   * Cloudflare restart. `migrations` swaps the code's migrations, to start an instance
-   * holding an older schema on newer code.
+   * Cloudflare restart, at any point in a test. Every socket drops without the instance
+   * hearing it close, and a call to the media server still under way is never answered;
+   * the fake media server keeps its tracks. The instance starts again on the next request
+   * or alarm. `migrations` swaps the code's migrations, to start an instance holding an
+   * older schema on newer code.
    */
   restart(options?: { migrations?: readonly Migration[] }): Promise<void>;
 }
@@ -94,7 +96,8 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
   await reset();
   fakeMediaControl.reset();
 
-  const stub = env.INSTANCE.getByName(INSTANCE_NAME);
+  // A new stub each time: one that has seen the instance restart stays broken.
+  const stub = () => env.INSTANCE.getByName(INSTANCE_NAME);
   const shippedMigrations = Instance.migrations;
   if (options.migrations) Instance.migrations = options.migrations;
 
@@ -121,10 +124,10 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
     async advance(ms) {
       const target = Date.now() + ms;
       for (;;) {
-        const alarm = await runInDurableObject(stub, (_, state) => state.storage.getAlarm());
+        const alarm = await runInDurableObject(stub(), (_, state) => state.storage.getAlarm());
         if (alarm === null || alarm > target) break;
         vi.setSystemTime(Math.max(Date.now(), alarm));
-        await runDurableObjectAlarm(stub);
+        await runDurableObjectAlarm(stub());
       }
       vi.setSystemTime(target);
     },
@@ -160,8 +163,9 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
     media: fakeMediaControl,
     async restart(restartOptions = {}) {
       if (restartOptions.migrations) Instance.migrations = restartOptions.migrations;
-      await evictDurableObject(stub).catch(() => {
-        // Not running, so there is nothing to stop.
+      // Aborting drops the sockets too, which evicting alone would keep, as hibernation does.
+      await runInDurableObject(stub(), (_, state) => state.abort("the test restarts the instance")).catch(() => {
+        // The abort ends the call that made it.
       });
     },
   };

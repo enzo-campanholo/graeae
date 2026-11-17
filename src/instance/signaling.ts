@@ -16,6 +16,12 @@
 // were told are kept in storage, so they outlast the instance sleeping. The instance's
 // alarm wakes it for each of these moments.
 //
+// A restart. A restart of the instance (a graeae update, or Cloudflare moving it) drops
+// every socket without the instance hearing them close. So the room tabs whose sockets
+// are open are kept in storage too, and an instance that starts and finds one with no
+// socket treats it as lost, heard at that moment: everyone is in their grace period, and
+// a browser that reconnects in time takes its tab back, shares and watching with it.
+//
 // The message protocol itself is in `src/shared/socket/`, which the page imports too.
 
 import {
@@ -83,6 +89,7 @@ const LIST_TAG = "list";
 // Storage keys. Lost tabs are rare and short-lived, so each change rewrites the whole list.
 const LOST_KEY = "signaling:lost";
 const MARKS_KEY = "signaling:reconnecting";
+const OPEN_KEY = "signaling:open";
 
 /** The members each room has been told are "reconnecting", by address. */
 type Marks = Record<string, string[]>;
@@ -90,12 +97,40 @@ type Marks = Record<string, string[]>;
 export class Signaling {
   /**
    * `presenceChanged` hears the address of each room whose present members just
-   * changed, once the change is counted, so the lists of rooms can be told.
+   * changed, once the change is counted, so the lists of rooms can be told. `schedule`
+   * is called whenever the next moment this needs the alarm for (`nextMoment`) may have
+   * changed: the instance sets one alarm for the earliest of everything it waits for.
    */
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly presenceChanged: (address: string) => void = () => {},
+    private readonly schedule: () => void = () => {},
   ) {}
+
+  /**
+   * Run as the instance starts. Every room tab that was open when the instance last ran,
+   * and whose socket is gone without its close being heard, was dropped by a restart: it
+   * becomes a lost tab heard now, in its grace period like everyone else. So do the tabs
+   * in `recorded`, which the instance's records of shares and watching name, if they are
+   * neither open nor lost: a restart in the middle of their leaving. Returns the tabs that
+   * became lost, none when the instance only woke from sleep with its sockets still open.
+   */
+  restore(recorded: readonly Omit<Tab, "heardAt">[] = []): Tab[] {
+    const open = this.ctx.storage.kv.get<Tab[]>(OPEN_KEY) ?? [];
+    const lost = this.lost();
+    const known = new Set(lost.map((tab) => tab.id));
+    const restored: Tab[] = [];
+    for (const tab of [...open, ...recorded]) {
+      if (known.has(tab.id) || this.hasSocket(tab.id)) continue;
+      known.add(tab.id);
+      restored.push({ id: tab.id, member: tab.member, device: tab.device, room: tab.room, heardAt: Date.now() });
+    }
+    if (restored.length === 0) return [];
+    this.saveOpen(open.filter((tab) => !restored.some((other) => other.id === tab.id)));
+    this.saveLost([...lost, ...restored]);
+    this.schedule();
+    return restored;
+  }
 
   /**
    * Opens a socket for a tab of `member` on `device` showing the room at `address`, whom
@@ -113,6 +148,7 @@ export class Signaling {
     const tab: Tab = { id: resumed?.id ?? crypto.randomUUID(), member, device, room: address, heardAt: Date.now() };
     this.ctx.acceptWebSocket(ours, [roomTag(address), memberTag(member), deviceTag(device), tabTag(tab.id)]);
     ours.serializeAttachment(tab);
+    this.saveOpen([...this.openTabs().filter((other) => other.id !== tab.id), tab]);
     this.mark(address, tab.id);
     send(ours, { type: "state", state: view(tab.id) });
     if (arrived) this.presenceChanged(address);
@@ -152,11 +188,15 @@ export class Signaling {
     }
     const tab = attachment(socket);
     if (!tab || !isRoomTab(tab) || tab.cutOff) return null;
+    this.forgetOpen([tab.id]);
+    // A restart may have counted it lost already, before its close came through.
+    const lost = this.lost().filter((other) => other.id !== tab.id);
     if (code === undefined || code === 1006 || code === LOST_CLOSE_CODE) {
-      this.saveLost([...this.lost(), tab]);
+      this.saveLost([...lost, tab]);
       this.schedule();
       return null;
     }
+    this.saveLost(lost);
     this.left(tab);
     return tab;
   }
@@ -200,6 +240,7 @@ export class Signaling {
       socket.serializeAttachment({ ...tab, cutOff: true });
       sockets.push(socket);
       if (isRoomTab(tab)) {
+        this.forgetOpen([tab.id]);
         this.left(tab);
         ended.push(tab);
       }
@@ -250,8 +291,8 @@ export class Signaling {
   /**
    * The instance's alarm: ends the presence of every tab whose grace period has run out,
    * closing its socket if it is still open, and marks the members who have fallen silent.
-   * Then sets the alarm for the next such moment. Returns the room tabs whose time ran
-   * out, so the instance can end what they were sending.
+   * Returns the room tabs whose time ran out, so the instance can end what they were
+   * sending. The instance sets the next alarm.
    */
   alarm(): Tab[] {
     const now = Date.now();
@@ -273,6 +314,7 @@ export class Signaling {
         // Already closed.
       }
       if (isRoomTab(tab)) {
+        this.forgetOpen([tab.id]);
         this.left(tab);
         silent.push(tab);
       }
@@ -280,13 +322,17 @@ export class Signaling {
 
     const rooms = new Set([...this.roomTabs().map((tab) => tab.room), ...Object.keys(this.marks())]);
     for (const address of rooms) this.mark(address);
-    this.schedule();
     return [...ended, ...silent];
   }
 
   /** Whether the tab `id` still has its socket open. A tab in its grace period does not. */
   isOpen(id: string): boolean {
     return this.ctx.getWebSockets(tabTag(id)).some((socket) => tabOf(socket) !== null);
+  }
+
+  /** Whether the tab `id` still keeps its member present: its socket is open, or it is lost and in its grace period. */
+  holds(id: string): boolean {
+    return this.isOpen(id) || this.lost().some((tab) => tab.id === id);
   }
 
   /** Sends `message` to the one tab `id`, if it is still open. */
@@ -397,11 +443,11 @@ export class Signaling {
   }
 
   /**
-   * Sets the alarm for the next moment a tab's grace period runs out or a member falls
-   * silent. Heartbeats only push those moments later, so an alarm set here before a
-   * heartbeat is at worst early: it finds nothing to do and sets the next one.
+   * The next moment a tab's grace period runs out or a member falls silent, or null when
+   * nothing is waiting. Heartbeats only push those moments later, so an alarm set for
+   * this before a heartbeat is at worst early: it finds nothing to do.
    */
-  private schedule() {
+  nextMoment(): number | null {
     const now = Date.now();
     const moments: number[] = [];
     for (const tab of [...this.allTabs(), ...this.lost()]) {
@@ -409,8 +455,31 @@ export class Signaling {
       if (isRoomTab(tab)) moments.push(tab.heardAt + RECONNECTING_AFTER_MS);
     }
     const next = Math.min(...moments.filter((moment) => moment > now));
-    if (Number.isFinite(next)) void this.ctx.storage.setAlarm(next);
-    else void this.ctx.storage.deleteAlarm();
+    return Number.isFinite(next) ? next : null;
+  }
+
+  /** Whether the tab `id` has a socket at all, open or closing, that the instance has not cut off. */
+  private hasSocket(id: string): boolean {
+    return this.ctx.getWebSockets(tabTag(id)).some((socket) => {
+      const tab = attachment(socket);
+      return tab !== null && !tab.cutOff;
+    });
+  }
+
+  /** The room tabs on record as open, as they were when they opened. */
+  private openTabs(): Tab[] {
+    return this.ctx.storage.kv.get<Tab[]>(OPEN_KEY) ?? [];
+  }
+
+  private forgetOpen(ids: readonly string[]) {
+    const open = this.openTabs();
+    const kept = open.filter((tab) => !ids.includes(tab.id));
+    if (kept.length !== open.length) this.saveOpen(kept);
+  }
+
+  private saveOpen(tabs: Tab[]) {
+    if (tabs.length > 0) this.ctx.storage.kv.put(OPEN_KEY, tabs);
+    else this.ctx.storage.kv.delete(OPEN_KEY);
   }
 
   /** Every tab that keeps its member present in the room at `address`: open, and lost in its grace period. */
