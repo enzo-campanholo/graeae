@@ -41,3 +41,44 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 - Chrome itself scales the picture down under "resolution first" (1280x720, then 853x480), and at 480 lines switches to `OpenH264`, software, until it scales back up;
 - this ticket's rule counts three limited readings and steps down to 720p, then 720p30, with the note. It stepped back up after about a minute.
 Two qualities had hidden it: the two encodes kept about 12 Mbps flowing, so the estimate never sank. The rule needs a sign of a real limit besides "bandwidth" (loss, a growing round trip, or an estimate that stays low for longer than a ramp takes), and "resolution first" may need rethinking for one quality; the 480-line software fallback suggests a floor. Dumps of the run: ask the owner (webrtc-internals, 16:32 to 16:36 UTC).
+
+**Fixed after ticket 17's check (2026-11-17), with the owner.** An agent read the sharer's webrtc-internals dump of the false step-down second by second (16:32 to 16:36 UTC, one quality, CS2):
+- Chrome's estimate (`availableOutgoingBitrate`) fell by itself, with nothing lost and a round trip of 1 to 9 ms. It went from 17.3 to 5.6 Mbps at 46 s, and from 20.9 to 4.5 Mbps over 191 to 211 s, each fall to about 0.85 times what had just been sent. It then took 15 seconds or more to climb back.
+- `qualityLimitationReason` "bandwidth" only means Chrome lowered the picture because the encoder struggled at the bitrate it aimed at (H.264 QP around 37 or more). In motion at a 4 to 5 Mbps target that took about a second, and it lasted 7 to 15 seconds.
+- The 720p step's own 4 Mbps cap starved the encoder. Chrome kept saying "bandwidth", scaled to 854x480 on OpenH264, and the rule took that for the upload again and stepped to 720p30.
+- Chrome also went to 480p in software on its own once (at 219 s), with no step from graeae.
+
+**Decisions (the owner):**
+- A reading counts as held back by the upload only when all three hold:
+  - Chrome says "bandwidth";
+  - it aims under 90% of the step's own bitrate limit (`OWN_LIMIT_FRACTION`), so a limit from graeae's own cap does not count;
+  - the share sends at least half of the estimate (`SENDING_FRACTION`), so a calm picture after motion does not count.
+- A step down takes **12 such readings within 30 seconds** (`STEP_DOWN_WINDOW_MS`, `STEP_DOWN_READINGS`), after the same 10 s settling window. The earliest step down is now about 32 s into a share, not 14.
+- **No step changes a bitrate limit.** A one-quality share keeps 12 Mbps at 720p and 720p30, since the estimate already holds it under what the upload carries. A two-quality share's 720p quality keeps its 4 Mbps, and a Firefox share its 6.
+- Resolution-first (`maintain-framerate`) stays above the last step. Whether Chrome's own spells at 480p in software last long enough to need a floor is to be judged from the capped runs below.
+
+`readingOf` now also reads the bitrate aimed at (`targetBitrate` over the qualities being sent), the bytes sent (over every quality), and the estimate, from the candidate pair the transport names. When the byte count starts again, the reading is not taken for a calm picture.
+
+`test/sending.test.ts` gains tests for each of these:
+- the healthy upload's spells, which do not step down;
+- a calm reading now and then, which does not hide a weak upload;
+- a limit from the step's own cap;
+- a calm picture;
+- a byte count that starts again;
+- `readingOf` on Chrome's shapes.
+
+The notes journey follows the new timings. `pnpm test` (Seam 1, 422; Seam 2, 35), `pnpm typecheck` and `pnpm lint` pass.
+
+**Known limits, not built:**
+- The window counts readings, not a fraction of them, so readings more than about 2.6 s apart could never step a share down. The real client reads every 2 s from the worker ticker.
+- The estimate is the whole media connection's while the rate is the screen's alone, which is why the margin is half.
+- A browser that reports no target or estimate is judged on "bandwidth" alone. Firefox, as far as is known, reports no `qualityLimitationReason` either, so its share would never step down.
+- A step up still comes after 30 s with nothing held back, a calm picture included. The doubling wait limits how often a step up that does not hold is tried.
+
+**The owner's check, revised** (replaces step 1 of "Needs the owner" above; steps 2 to 4 stand):
+1. *No cap:* play for 4 minutes. No upload note should appear, and the share should stay at 1920x1080.
+2. *A 10 Mbps cap:* the note "720p" should come within about 40 s of steady motion, with the share at 1280x720 and around 60 fps.
+3. *A 3 Mbps cap:* about 40 s later, "720p and 30 fps".
+4. *Cap lifted:* 720p60 should come back about 30 s later, and 1080p 30 s after that. The share must never end.
+
+Send the dumps for each run. They calibrate the four constants named above, and show how long Chrome spends at 480p in software on its own.

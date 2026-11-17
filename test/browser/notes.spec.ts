@@ -151,15 +151,17 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
   const { offers } = await sending(rosa);
   expect(await sending(rosa)).toEqual({ full: true, offers });
 
-  // Once the share has settled, three readings in a row limited by the upload stop 1080p,
-  // on the live share and with no new offer, and the sharer is told.
-  await readings(rosa, 3, sent({ limited: true }), 10);
+  // Once the share has settled, 12 readings within 30 seconds held back by the upload stop
+  // 1080p, on the live share and with no new offer, and the sharer is told.
+  await readings(rosa, 11, sent({ limited: true }), 10);
+  expect(await sending(rosa)).toEqual({ full: true, offers });
+  await readings(rosa, 1, sent({ limited: true }), 32);
   await expect(own.getByText(`${UPLOAD}, so this share goes out at 720p.`)).toBeVisible();
   expect(await sending(rosa)).toEqual({ full: false, offers });
   await expect(owner.getByText(UPLOAD)).toHaveCount(0);
 
   // Still limited once 720p has settled: frame rate drops to 30.
-  await readings(rosa, 3, sent({ limited: true, f: false }), 24);
+  await readings(rosa, 16, sent({ limited: true, f: false }), 34);
   await expect(own.getByText(`${UPLOAD}, so this share goes out at 720p and 30 fps.`)).toBeVisible();
 
   // The note never blocks: it is dismissed, and the share is still live and can be stopped.
@@ -168,12 +170,12 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
   await expect(own.getByRole("button", { name: "Stop your screen" })).toBeEnabled();
 
   // However long it stays weak, the share stays live for its viewer.
-  await readings(rosa, 30, sent({ limited: true, f: false }), 30);
+  await readings(rosa, 30, sent({ limited: true, f: false }), 66);
   await expect(owner.getByRole("img", { name: "Rosa's screen, with no picture" })).toBeVisible();
 
   // The upload recovers: 30 seconds later a step back up, and 30 more, 1080p again.
-  await readings(rosa, 16, sent({ f: false }), 90);
-  await readings(rosa, 16, sent({ f: false }), 122);
+  await readings(rosa, 16, sent({ f: false }), 126);
+  await readings(rosa, 16, sent({ f: false }), 158);
   await expect.poll(() => sending(rosa)).toEqual({ full: true, offers });
   await expect(rosa.getByText(UPLOAD)).toHaveCount(0);
   await expect(owner.getByRole("img", { name: "Rosa's screen, with no picture" })).toBeVisible();
