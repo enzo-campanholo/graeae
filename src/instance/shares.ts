@@ -163,6 +163,10 @@ export interface WatchingListener {
   unwatched(tab: string, share: LiveShare): void;
   /** The members watching `share`, live in the room `room`, are now `members`. */
   watchers(room: string, share: LiveShare, members: string[]): void;
+  /** The watch `watch` put a share sent at up to `maxBitrate` bits per second on the tab `tab`'s stage. */
+  began(watch: string, tab: string, maxBitrate: number): void;
+  /** The watch `watch` of the tab `tab`, which was on its stage, is recorded as ended. */
+  ended(watch: string, tab: string): void;
 }
 
 /** What became of a request to watch a share. */
@@ -511,6 +515,7 @@ export class Shares {
       this.changeWatchers(record, () =>
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
       );
+      this.listener.began(record.id, tab.id, watched.maxBitrate);
       return { watching: true, offer: pulled.offer, video: record.video.mid, audio: record.audio?.mid ?? null };
     } finally {
       this.inFlight.delete(record.id);
@@ -707,6 +712,7 @@ export class Shares {
       return;
     }
     this.changeWatchers(watch, () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id));
+    this.listener.ended(watch.id, watch.tab);
     this.listener.unwatched(watch.tab, watch.share);
   }
 

@@ -13,6 +13,7 @@ import type { IceServer } from "../../../shared/socket/index.ts";
 import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings, type SendEncoding } from "./encodings.ts";
+import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
 
 /** How often a watched share's statistics are read for the quality it arrives at. */
 const RECEIVED_EVERY_MS = 2000;
@@ -133,6 +134,11 @@ export class BrowserMediaClient implements MediaClient {
     void read();
     const timer = setInterval(() => void read(), RECEIVED_EVERY_MS);
     return () => clearInterval(timer);
+  }
+
+  async transport(): Promise<TransportTotals | null> {
+    const stats = await this.connection?.getStats().catch(() => null);
+    return stats ? transportTotals(stats.values() as Iterable<StatsEntry>) : null;
   }
 
   drop(video: string) {

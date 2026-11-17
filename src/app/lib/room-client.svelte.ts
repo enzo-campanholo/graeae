@@ -15,6 +15,12 @@
 // back after its grace period ran out has lost its media connection with everything on
 // it: it makes a new one, starts its shares again with the captures it still holds, and
 // watches again what it watched, where those shares are still live.
+//
+// Once the tab has its media connection it reports, every few seconds, what that
+// connection's transport has received since it opened, for the usage count. A
+// connection the instance dropped sends its final total before the next one is made.
+// One lost with the grace period sends none: the instance has already charged it, and
+// the tab is a new one there.
 
 import type { QualityName } from "../../shared/encoding.ts";
 import {
@@ -29,11 +35,14 @@ import {
   type ServerMessage,
   type ShareKind,
   type SharesRequest,
+  type UsageRequest,
 } from "../../shared/socket/index.ts";
+import { USAGE_REPORT_EVERY_MS } from "../../shared/socket/usage.ts";
 import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
+import { every } from "./ticker.ts";
 
 /** What this tab receives of a share it watches. */
 export interface Picture {
@@ -103,6 +112,16 @@ export class RoomClient {
   private readonly listening = new Map<string, () => void>();
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();
+  /** Stops the usage reports, once the media connection is made. */
+  private stopReporting: (() => void) | null = null;
+  /**
+   * Whether this socket has brought the room's state. Until it has, the tab may be a new
+   * one on the instance, its grace period run out, and a report of the old media
+   * connection's total would be charged to it in full again.
+   */
+  private synced = false;
+  /** The usage reports read but not yet sent, which the next one waits for. */
+  private reporting: Promise<void> = Promise.resolve();
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
@@ -112,6 +131,7 @@ export class RoomClient {
       refused: async () => (await getJson(`/api/rooms/${encodeURIComponent(address)}`)) === null,
       // An answer the lost socket never got will not come on the next one.
       lost: () => {
+        this.synced = false;
         for (const request of this.waiting.splice(0)) request.lost();
       },
     });
@@ -355,6 +375,7 @@ export class RoomClient {
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
+    this.stopReporting?.();
     for (const stop of this.listening.values()) stop();
     this.listening.clear();
     this.media.close();
@@ -365,6 +386,7 @@ export class RoomClient {
     if (message.type === "media") {
       // Its media faltered too long and the instance let go of it: the next share or watch makes a new one.
       if (message.change.type === "dropped") {
+        if (this.made) this.report({ final: true });
         this.resetMedia();
         return;
       }
@@ -375,6 +397,7 @@ export class RoomClient {
     const before = this.view;
     this.view = applyMessage(this.view, message);
     if (message.type === "state" && before) this.rejoined(before, message.media);
+    if (message.type === "state") this.synced = true;
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
     // The instance has answered a choice of quality, or the share left the stage. A whole
@@ -502,6 +525,8 @@ export class RoomClient {
 
   /** Lets go of the media connection, keeping the captures: the next share or watch makes a new one. */
   private resetMedia() {
+    this.stopReporting?.();
+    this.stopReporting = null;
     for (const stop of this.listening.values()) stop();
     this.listening.clear();
     this.media.reset();
@@ -523,6 +548,7 @@ export class RoomClient {
       }
       this.media.connect(change.iceServers, (faltering) => this.falter(faltering));
       this.made = true;
+      this.stopReporting = every(USAGE_REPORT_EVERY_MS, () => this.report());
       return true;
     })().catch(() => {
       // The socket was lost before the answer came: the next share or watch asks again.
@@ -530,6 +556,25 @@ export class RoomClient {
       return false;
     });
     return this.connection;
+  }
+
+  /**
+   * Reports what the media connection has received since it opened, for the usage count:
+   * `final` before it is let go of, and the next connection counts from zero. The totals
+   * are read at once, so a final one is the connection's own even if it is let go of
+   * straight after; reports go out in the order they were read. One due while the socket
+   * is lost, or before a new socket has brought the room, is dropped, and the next makes
+   * up for it.
+   */
+  private report({ final = false } = {}) {
+    const read = this.media.transport();
+    this.reporting = this.reporting.then(async () => {
+      const totals = await read.catch(() => null);
+      if (!totals || !this.synced) return;
+      const bytes = Math.max(0, Math.round(totals.received));
+      const request: UsageRequest = { type: "received", bytes, relayed: totals.relayed };
+      this.send({ type: "usage", request: final ? { ...request, final: true } : request });
+    });
   }
 
   /** The media connection falters, or recovers: the instance gives this tab's shares 30 seconds. */

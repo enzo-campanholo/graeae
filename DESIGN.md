@@ -290,7 +290,7 @@ The first-time notice before the browser's picker, shown once per device. Not a 
 Raised-2 fill, foreground label text, 6px radius, 4px 8px padding, the soft drop shadow, a 400ms delay; holds the label and its key hint.
 
 ### Usage Meter
-A 4px pill track in raised-2 with "Usage" and "x of y" above in labels; the fill is soft, amber from 80% and red from 95%.
+A 4px pill track in raised-2 with "Usage" and "x of y" above in labels; the fill is soft, amber from 80% and red from 95%. In the navigation it reads under 10 GB to a tenth ("0.4 GB"), whole above. The owner page's Usage section gives the same track full width under three figures in 24px medium tabular numerals (Used in foreground; Usage budget and "Projected by the month's end" in soft, the projection amber once it passes the budget), with a faint stretch of the fill at 30% running on to the projected figure. Below it, the reset day: a 64px centred number field with a secondary Save, "Next reset 1 December, at midnight UTC." in soft, and a dim line of help.
 
 ### The Mark and the Loading Slot
 Three circles, the outer two in mark-dot grey and the middle in the eye (6px dots with 4px gaps; 4px/3px small; 12px/10px large). As the loader it passes the lit dot along, each dot holding the eye for a third of a 1.2s loop. `Loading.svelte` is the one loading slot in the app; the owner's friend's eye-passing animation replaces the mark there and the app draws no version of its own. The favicon and the README icon are the same bare three dots with no tile behind them; there the outer dots are muted-text grey (`#8e8e95`), since mark-dot grey would vanish on a dark browser tab.

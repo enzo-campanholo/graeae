@@ -6,14 +6,15 @@
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
 // browser family, what the browser's picker returns, the browser ending a screen share
-// by itself, and the quality the shares it watches arrive at. It is in a build for
-// Seam 2 only.
+// by itself, the quality the shares it watches arrive at, and the bytes its media
+// connection has received for the usage count. It is in a build for Seam 2 only.
 
 import type { QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
 import type { FakeMediaControl } from "./fake-control.ts";
+import type { TransportTotals } from "./transport.ts";
 
 export type { FakeMediaControl, FakePick } from "./fake-control.ts";
 
@@ -40,6 +41,8 @@ function control(): FakeMediaControl {
       recover: () => undefined,
       connections: 0,
       received: "1080p",
+      bytes: 0,
+      relayed: false,
       receive: (quality) => {
         made.received = quality;
         for (const heard of listeners) heard(quality);
@@ -58,6 +61,7 @@ interface FakeCapture extends Capture {
 
 export class FakeMediaClient implements MediaClient {
   private nextMid = 0;
+  private connected = false;
   /** Mids the media server gave the shares this tab watches, which an offer of ours never takes. */
   private readonly pulled = new Set<string>();
 
@@ -88,6 +92,7 @@ export class FakeMediaClient implements MediaClient {
 
   connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
     void iceServers;
+    this.connected = true;
     const fake = control();
     fake.connections += 1;
     fake.falter = () => faltering(true);
@@ -95,6 +100,7 @@ export class FakeMediaClient implements MediaClient {
   }
 
   reset() {
+    this.connected = false;
     const fake = control();
     fake.falter = () => undefined;
     fake.recover = () => undefined;
@@ -126,6 +132,10 @@ export class FakeMediaClient implements MediaClient {
     return () => listeners.delete(heard);
   }
 
+  async transport(): Promise<TransportTotals | null> {
+    return this.connected ? { received: control().bytes, relayed: control().relayed } : null;
+  }
+
   drop(video: string) {
     void video;
   }
@@ -138,7 +148,9 @@ export class FakeMediaClient implements MediaClient {
     if (capture.kind === "screen") control().screenAudio = null;
   }
 
-  close() {}
+  close() {
+    this.connected = false;
+  }
 
   /** The lowest mid this tab's offers have not used, and not given to a pull. */
   private mid(): string {

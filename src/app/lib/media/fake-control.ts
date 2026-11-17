@@ -34,4 +34,8 @@ export interface FakeMediaControl {
   received: QualityName;
   /** Every watched share arrives at `quality` from now on, as when the media server steps a weak link down. */
   receive(quality: QualityName): void;
+  /** What the media connection's transport has received since it opened, as the tab reports it: 0 unless a journey says. */
+  bytes: number;
+  /** Whether the media connection is on the relay. */
+  relayed: boolean;
 }

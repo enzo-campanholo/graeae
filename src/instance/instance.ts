@@ -17,6 +17,7 @@ import type {
   RoomsAnswer,
   RoomSummary,
   SetupAnswer,
+  UsageAnswer,
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
 import type { ClientMessage, LiveShare, RoomView } from "../shared/socket/index.ts";
@@ -29,6 +30,7 @@ import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./peopl
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
 import { Shares, type Covered } from "./shares.ts";
 import { Signaling, type Cut, type Tab } from "./signaling.ts";
+import { Usage } from "./usage.ts";
 
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
 export const INSTANCE_NAME = "instance";
@@ -44,10 +46,12 @@ export class Instance extends DurableObject<Env> {
   private readonly people: People;
   private readonly signaling: Signaling;
   private readonly shares: Shares;
+  private readonly usage: Usage;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
+    this.usage = new Usage(ctx.storage.sql);
     this.signaling = new Signaling(
       ctx,
       (address) => this.relist(address),
@@ -69,6 +73,9 @@ export class Instance extends DurableObject<Env> {
       // Only the sharer learns who is watching.
         watchers: (address, share, members) =>
           this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
+        // The usage count charges a watch at its share's maximum bitrate where no later total arrives.
+        began: (watch, tab, maxBitrate) => this.usage.watching(watch, tab, maxBitrate),
+        ended: (watch, tab) => this.usage.watchEnded(watch, this.signaling.holds(tab)),
       },
       () => this.schedule(),
     );
@@ -273,6 +280,13 @@ export class Instance extends DurableObject<Env> {
     const member = this.people.deviceMember(tab.device);
     const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
 
+    if (message.type === "usage" && type === "received") {
+      // Counted from whichever tab sends it: a report only ever adds to the count.
+      const { bytes, relayed, final } = request as { bytes?: unknown; relayed?: unknown; final?: unknown };
+      if (!isByteCount(bytes) || typeof relayed !== "boolean") return;
+      this.usage.received(tab.id, bytes, relayed, final === true);
+      return;
+    }
     if (message.type === "media" && type === "answer") {
       const { answer } = request as { answer?: unknown };
       if (!isSdp(answer)) return;
@@ -402,6 +416,9 @@ export class Instance extends DurableObject<Env> {
       );
       for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
     } finally {
+      // The tabs cut off report no more: what they watched since their last report is charged.
+      if ("tab" in covered) this.usage.tabGone(covered.tab);
+      for (const tab of cut?.tabs ?? []) this.usage.tabGone(tab.id);
       cut?.tell();
     }
   }
@@ -536,6 +553,13 @@ export class Instance extends DurableObject<Env> {
     const invite = /^\/api\/owner\/invites\/([^/]+)$/.exec(pathname);
     if (invite && method === "DELETE") {
       return this.people.cancelInvite(invite[1]!) ? done() : refuse();
+    }
+    if (pathname === "/api/owner/usage") {
+      return method === "GET" ? json(this.usage.answer() satisfies UsageAnswer) : refuse();
+    }
+    if (pathname === "/api/owner/usage/reset-day" && method === "PUT") {
+      const body = await request.json<{ day?: unknown }>().catch(() => null);
+      return body && this.usage.setResetDay(body.day) ? json(this.usage.answer() satisfies UsageAnswer) : refuse();
     }
     if (pathname === "/api/owner/people" || pathname.startsWith("/api/owner/people/")) {
       return this.peopleAnswer(request, pathname, visitor);
@@ -687,6 +711,11 @@ const SDP_MAX = 64 * 1024;
 
 function isSdp(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= SDP_MAX;
+}
+
+/** A running total of bytes as a tab reports it: a whole number, not negative, and within what a number holds exactly. */
+function isByteCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 /** A transceiver's mid: a short token the browser picks. */
