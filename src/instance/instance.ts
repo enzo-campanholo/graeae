@@ -113,10 +113,11 @@ export class Instance extends DurableObject<Env> {
 
   /**
    * Sets the instance's one alarm for the earliest moment anything waits for: a grace
-   * period running out, a member falling silent, or a failed close's next try.
+   * period running out, a member falling silent, a failed close's next try, or the end
+   * of a share whose media has faltered for 30 seconds.
    */
   private schedule() {
-    const moments = [this.signaling.nextMoment(), this.shares.nextRetry()].filter(
+    const moments = [this.signaling.nextMoment(), this.shares.nextRetry(), this.shares.nextFaltered()].filter(
       (moment): moment is number => moment !== null,
     );
     if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
@@ -187,7 +188,10 @@ export class Instance extends DurableObject<Env> {
     if (socket) {
       const room = this.people.room(member, socket[1]!);
       if (!room || !upgrade) return refuse();
-      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => this.roomView(member, room, tab));
+      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => ({
+        state: this.roomView(member, room, tab),
+        media: { connected: this.shares.hasConnection(tab) },
+      }));
     }
     return refuse();
   }
@@ -304,6 +308,15 @@ export class Instance extends DurableObject<Env> {
       if (type === "unwatch") await this.shares.unwatch(tab, share);
       return;
     }
+    // Media that falters needs no check: it can only end the tab's own shares.
+    if (message.type === "media" && type === "faltering") {
+      this.shares.faltering(tab.id);
+      return;
+    }
+    if (message.type === "media" && type === "recovered") {
+      this.shares.recovered(tab.id);
+      return;
+    }
     if (message.type === "media" && type === "connect") {
       if (!allowed) return;
       const iceServers = await this.shares.connect(tab);
@@ -386,10 +399,14 @@ export class Instance extends DurableObject<Env> {
     this.relist(address);
   }
 
-  /** The alarm: grace periods running out, members falling silent, and failed closes tried again. */
+  /**
+   * The alarm: grace periods running out, members falling silent, failed closes tried
+   * again, and shares whose media has faltered for too long.
+   */
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
     const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
+    ended.push(...(await this.shares.faltered()));
     for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
     this.schedule();
   }

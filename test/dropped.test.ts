@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { startInstance, type TestInstance } from "./harness.ts";
-import { addMember, addSecondBrowser, connectMedia, setUpOwner, shareWebcam, watch } from "./steps.ts";
+import { addMember, addSecondBrowser, connectMedia, setUpOwner, shareWebcam, startWebcam, watch } from "./steps.ts";
 import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -82,7 +82,6 @@ describe("the mark on a share's icon", () => {
     const { state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([{ ...webcam, reconnecting: true }]);
     expect(state.presence.reconnecting).toEqual([]);
-    void biaId;
   });
 
   it("goes when the sending tab reconnects in time, and the share is the same one, still watched", async () => {
@@ -111,5 +110,141 @@ describe("the mark on a share's icon", () => {
     expect(ownerTab.queued()).toContainEqual({ type: "shares", change: { type: "ended", share: webcam } });
     expect(ownerTab.queued()).not.toContainEqual({ type: "shares", change: { type: "reconnected", share: webcam } });
     expect((await openRoom(owner, room)).state.shares.live).toEqual([]);
+  });
+});
+
+describe("a tab's media connection across a reconnect", () => {
+  it("is not there for a tab that opens the room afresh", async () => {
+    const { owner, room } = await biaSharing();
+    const { tab } = await openRoom(owner, room);
+    expect(tab.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+  });
+
+  it("is still there for a tab that reconnects in time, which keeps its stage", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    await ownerTab.drop();
+    await pass(instance, 20 * SECOND, [biaTab]);
+
+    const { tab: again, state } = await openRoom(owner, room);
+
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
+    expect(state.watching.stage).toEqual([webcam]);
+  });
+
+  it("is gone for a tab that comes back after its grace period ran out, which can make a new one and watch again", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    await ownerTab.drop();
+    await pass(instance, 35 * SECOND, [biaTab]);
+
+    const { tab: again, state } = await openRoom(owner, room);
+
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+    expect(state.watching.stage).toEqual([]);
+    await connectMedia(again);
+    await watch(again, webcam);
+  });
+
+  it("is handed over again when the tab lost its socket while it was being made", async () => {
+    const { instance, room, bia, biaTab } = await biaSharing();
+    const { other: laptop } = await addSecondBrowser(instance, bia);
+    const { tab: laptopTab } = await openRoom(laptop, room);
+    const made = instance.media.hold("connect", { done: true });
+    laptopTab.send({ type: "media", request: { type: "connect" } });
+    await made.reached;
+    await laptopTab.drop();
+    made.release();
+    await biaTab.heartbeat();
+
+    const { tab: again } = await openRoom(laptop, room);
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
+
+    // It never heard the answer, so it asks again, and this time it hears one.
+    const iceServers = await connectMedia(again);
+    expect(iceServers.length).toBeGreaterThan(0);
+  });
+});
+
+describe("media that falters while the signaling connection is fine", () => {
+  const faltering = { type: "media", request: { type: "faltering" } } as const;
+  const recovered = { type: "media", request: { type: "recovered" } } as const;
+
+  it("keeps the share live for 30 seconds while the browser tries to recover, then ends it", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    biaTab.send(faltering);
+    await biaTab.heartbeat();
+
+    await pass(instance, 30 * SECOND - 1, [ownerTab, biaTab]);
+    expect(ownerTab.queued()).toEqual([]);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
+
+    await instance.clock.advance(1);
+    await ownerTab.heartbeat();
+    expect(ownerTab.queued()).toEqual([
+      { type: "watching", change: { type: "unwatched", share: webcam } },
+      { type: "shares", change: { type: "ended", share: webcam } },
+    ]);
+    expect(await biaTab.next()).toEqual({ type: "watching", change: { type: "watchers", share: webcam, members: [] } });
+    expect(await biaTab.next()).toEqual({ type: "shares", change: { type: "ended", share: webcam } });
+    expect(instance.media.connections().flat()).toEqual([]);
+  });
+
+  it("leaves the share alone when the browser recovers in time", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    biaTab.send(faltering);
+    await pass(instance, 20 * SECOND, [ownerTab, biaTab]);
+    biaTab.send(recovered);
+    await biaTab.heartbeat();
+
+    await pass(instance, 60 * SECOND, [ownerTab, biaTab]);
+
+    expect(ownerTab.queued()).toEqual([]);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
+  });
+
+  it("counts 30 seconds afresh when it falters again after recovering", async () => {
+    const { instance, owner, room, webcam, ownerTab, biaTab } = await biaSharing();
+    biaTab.send(faltering);
+    await pass(instance, 20 * SECOND, [ownerTab, biaTab]);
+    biaTab.send(recovered);
+    biaTab.send(faltering);
+    await pass(instance, 20 * SECOND, [ownerTab, biaTab]);
+
+    expect(ownerTab.queued()).toEqual([]);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([webcam]);
+  });
+});
+
+describe("a sharer who returns after the grace period ran out", () => {
+  it("can start the share again on a new media connection, and nobody who watched it before is carried over", async () => {
+    const { instance, owner, room, bia, webcam, ownerTab, biaTab } = await biaSharing();
+    await biaTab.drop();
+    await pass(instance, 35 * SECOND, [ownerTab]);
+    expect(ownerTab.queued()).toContainEqual({ type: "watching", change: { type: "unwatched", share: webcam } });
+
+    const { tab: again, state } = await openRoom(bia, room);
+    expect(again.received()[0]).toMatchObject({ media: { connected: false } });
+    expect(state.shares.live).toEqual([]);
+    await shareWebcam(again);
+
+    await again.heartbeat();
+    expect(again.queued()).toEqual([]);
+    const { state: ownerState } = await openRoom(owner, room);
+    expect(ownerState.shares.live).toEqual([webcam]);
+    expect((await openRoom(bia, room)).state.watching.watchers).toEqual([]);
+  });
+
+  it("finds the share live from another device if they started it there meanwhile, and cannot start a second", async () => {
+    const { instance, room, bia, biaId, webcam, ownerTab, biaTab } = await biaSharing();
+    const { other: laptop } = await addSecondBrowser(instance, bia);
+    await biaTab.drop();
+    await pass(instance, 35 * SECOND, [ownerTab]);
+    const { tab: laptopTab } = await openRoom(laptop, room);
+    await shareWebcam(laptopTab);
+
+    const { tab: again, state } = await openRoom(bia, room);
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
+    await connectMedia(again);
+    startWebcam(again);
+    expect(await again.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
   });
 });

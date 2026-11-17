@@ -31,7 +31,7 @@ import {
   RECONNECTING_AFTER_MS,
   SILENT_CLOSE_CODE,
 } from "../shared/socket/heartbeat.ts";
-import type { ClientMessage, RoomView, ServerMessage } from "../shared/socket/index.ts";
+import type { ClientMessage, MediaState, RoomView, ServerMessage } from "../shared/socket/index.ts";
 import type { ListMessage, ListState } from "../shared/socket/list.ts";
 
 /** What each socket remembers about its tab, kept with it through hibernation. */
@@ -149,7 +149,7 @@ export class Signaling {
    * whole room, as `view` builds it for the tab once it is counted. Returns the answer that hands
    * the browser its end of the socket.
    */
-  open(member: string, device: string, address: string, view: (tab: string) => RoomView): Response {
+  open(member: string, device: string, address: string, view: (tab: string) => { state: RoomView; media: MediaState }): Response {
     const arrived = !this.present(address).has(member);
     if (arrived) this.toRoom(address, { type: "presence", change: { type: "arrived", member } });
     const resumed = this.resume(device, address);
@@ -160,7 +160,7 @@ export class Signaling {
     ours.serializeAttachment(tab);
     this.saveOpen([...this.openTabs().filter((other) => other.id !== tab.id), tab]);
     this.mark(address, tab.id);
-    send(ours, { type: "state", state: view(tab.id) });
+    send(ours, { type: "state", ...view(tab.id) });
     if (arrived) this.presenceChanged(address);
     this.schedule();
     return new Response(null, { status: 101, webSocket: browserEnd });

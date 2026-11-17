@@ -28,7 +28,7 @@
 //   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
 import type { Heard, Heartbeat } from "./heartbeat.ts";
-import type { MediaChange, MediaRequest } from "./media.ts";
+import type { MediaChange, MediaRequest, MediaState } from "./media.ts";
 import { applyPeople, type PeopleChange, type PeopleState } from "./people.ts";
 import { applyPresence, type PresenceChange, type PresenceRequest, type PresenceState } from "./presence.ts";
 import { applyRoom, type RoomChange, type RoomState } from "./room.ts";
@@ -61,7 +61,8 @@ export interface RoomView {
 
 /** A message from the instance to a tab. */
 export type ServerMessage =
-  | { type: "state"; state: RoomView }
+  /** The whole room, and this tab's own media connection as the instance holds it. */
+  | { type: "state"; state: RoomView; media: MediaState }
   /** This tab's device is forgotten: the socket closes next and the page is "nothing here". */
   | { type: "gone" }
   | Heard

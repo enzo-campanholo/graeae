@@ -102,6 +102,15 @@ interface Retry {
 /** Retries are kept in the instance's key-value storage, all under one key: there are few, and briefly. */
 const RETRIES_KEY = "shares:retries";
 
+/**
+ * The tabs whose media connection has faltered while their socket is fine, each with
+ * when it said so. Kept like retries: few, and briefly.
+ */
+const FALTERING_KEY = "shares:faltering";
+
+/** How long a tab's shares stay live while its media connection falters, before they end. */
+export const FALTERING_MS = 30_000;
+
 /** The wait before the next try once `tries` tries have failed: 1 s, then doubling, at most 30 s. */
 export function retryDelay(tries: number): number {
   return Math.min(1000 * 2 ** (tries - 1), 30_000);
@@ -264,12 +273,24 @@ export class Shares {
       .map((row) => ({ id: row.tab_id, device: row.device_id, room: row.room_address, member: row.member_id }));
   }
 
+  /** Whether the tab `tab` has a media connection on record, made or being made. */
+  hasConnection(tab: string): boolean {
+    return this.connectionRow(tab) !== undefined;
+  }
+
   /**
-   * Makes `tab`'s one media connection and mints the relay credential for it. "already"
-   * when the tab has one or is making it; null when the media server fails.
+   * Makes `tab`'s one media connection and mints the relay credential for it. A tab
+   * whose connection carries nothing yet gets a new one in its place: it asks again
+   * because it never heard the answer, its socket lost on the way, and a connection with
+   * no tracks needs no close. "already" when the tab is making one, or has one that
+   * carries a share or a watch; null when the media server fails.
    */
   async connect(tab: Tab): Promise<IceServer[] | "already" | null> {
-    if (this.connectionRow(tab.id)) return "already";
+    if (this.connectionRow(tab.id)) {
+      if (this.inFlight.has(tab.id)) return "already";
+      this.forgetConnectionIfEmpty(tab.id);
+      if (this.connectionRow(tab.id)) return "already";
+    }
     this.sql.exec(
       "INSERT INTO media_connection (tab_id, device_id, room_address, media_id, created_at) VALUES (?, ?, ?, NULL, ?)",
       tab.id,
@@ -504,6 +525,7 @@ export class Shares {
    */
   async cutOff(covered: Covered, tabs: readonly string[] = [], subject?: Subject): Promise<Ended[]> {
     const where = whereCovered(covered);
+    if ("tab" in covered) this.recovered(covered.tab);
     const shares = this.records(`WHERE ${where.where} AND live_at IS NOT NULL`, ...where.bindings);
     const touched = new Set([
       ...tabs,
@@ -732,6 +754,61 @@ export class Shares {
   nextRetry(): number | null {
     const moments = this.retries().map((retry) => retry.next);
     return moments.length > 0 ? Math.min(...moments) : null;
+  }
+
+  /**
+   * The tab `tab` says its media connection falters while its socket is fine. The shares
+   * it sends stay live for 30 seconds from the first time it says so, while the browser
+   * tries to recover, and end then (`faltered`) unless it recovers first.
+   */
+  faltering(tab: string) {
+    const faltering = this.falterings();
+    if (faltering[tab] !== undefined) return;
+    this.saveFalterings({ ...faltering, [tab]: Date.now() });
+    this.schedule();
+  }
+
+  /** The tab `tab`'s media connection has recovered, or the tab is gone: its shares no longer wait to end. */
+  recovered(tab: string) {
+    const faltering = this.falterings();
+    if (faltering[tab] === undefined) return;
+    delete faltering[tab];
+    this.saveFalterings(faltering);
+    this.schedule();
+  }
+
+  /**
+   * Ends the shares of every tab whose media connection has faltered for 30 seconds, by
+   * the same forced close as an ordinary stop. What the tab watches is left as it is.
+   * Returns the shares that ended.
+   */
+  async faltered(): Promise<Ended[]> {
+    const now = Date.now();
+    const faltering = this.falterings();
+    const due = Object.keys(faltering).filter((tab) => faltering[tab]! + FALTERING_MS <= now);
+    if (due.length === 0) return [];
+    for (const tab of due) delete faltering[tab];
+    this.saveFalterings(faltering);
+    const ended: Ended[] = [];
+    for (const tab of due) {
+      ended.push(...(await this.end(this.records("WHERE tab_id = ? AND live_at IS NOT NULL", tab), null)));
+    }
+    return ended;
+  }
+
+  /** When the shares of a tab whose media connection falters are next due to end, or null when none are. */
+  nextFaltered(): number | null {
+    const moments = Object.values(this.falterings()).map((since) => since + FALTERING_MS);
+    return moments.length > 0 ? Math.min(...moments) : null;
+  }
+
+  private falterings(): Record<string, number> {
+    return this.kv.get<Record<string, number>>(FALTERING_KEY) ?? {};
+  }
+
+  private saveFalterings(faltering: Record<string, number>) {
+    if (Object.keys(faltering).length > 0) this.kv.put(FALTERING_KEY, faltering);
+    else this.kv.delete(FALTERING_KEY);
   }
 
   /**
