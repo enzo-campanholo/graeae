@@ -1,5 +1,7 @@
 // The shapes of the instance's HTTP answers, shared by the instance and the page.
 
+import type { ShareKind } from "./socket/shares.ts";
+
 export interface RoomSummary {
   address: string;
   name: string;
@@ -125,6 +127,8 @@ export interface MemberEntry {
   rooms: string[];
   /** The addresses of the rooms they are present in now. */
   present: string[];
+  /** What they share now: each live share, with the address of the room it is live in. */
+  sharing: { room: string; kind: ShareKind }[];
   /** Their remembered devices, most recently used first. */
   devices: MemberDevice[];
   /** Their latest visit from any device, in milliseconds since the epoch; null with no device left. */
