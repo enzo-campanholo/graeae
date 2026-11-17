@@ -8,13 +8,24 @@ Spec: [Media connections and records](../spec.md#media-connections-and-records),
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The Cloudflare implementation covers every operation the media layer seam has at this point (media connection, publish, pull, forced close, relay credential), using only the application's secret, sent from the backend
-- [ ] Every close is a forced close, needing nothing from the browser
-- [ ] Relay credentials are minted from the relay key with a 12-hour life
-- [ ] The relay is offered to every media connection from the start, over UDP, TCP and TLS
-- [ ] The real media client captures a webcam at 720p and 30 fps, limited to 1.5 Mbps, and plays a pulled share on the stage
-- [ ] A build or runtime switch selects the fakes for tests; the default is the real implementations, and no request to a deployed instance can select the fakes
-- [ ] All Seam 1 and Seam 2 tests still pass on the fakes
-- [ ] The code paths that only run against Cloudflare are thin and readable against the spec, since no test covers them
+- [x] The Cloudflare implementation covers every operation the media layer seam has at this point (media connection, publish, pull, forced close, relay credential), using only the application's secret, sent from the backend
+- [x] Every close is a forced close, needing nothing from the browser
+- [x] Relay credentials are minted from the relay key with a 12-hour life
+- [x] The relay is offered to every media connection from the start, over UDP, TCP and TLS
+- [x] The real media client captures a webcam at 720p and 30 fps, limited to 1.5 Mbps, and plays a pulled share on the stage
+- [x] A build or runtime switch selects the fakes for tests; the default is the real implementations, and no request to a deployed instance can select the fakes
+- [x] All Seam 1 and Seam 2 tests still pass on the fakes
+- [x] The code paths that only run against Cloudflare are thin and readable against the spec, since no test covers them
+
+## Comments
+
+**Done** on `ticket/12-cloudflare-media-server-and-real-capture`. `pnpm test` (Seam 1, then Seam 2), `pnpm typecheck` and `pnpm lint` pass. No migration. Nothing was tried against Cloudflare: the real code paths are untested by design, and **ticket 13** is where they first run.
+
+- **The switch** is a build-time constant, `__GRAEAE_FAKE_MEDIA__` (declared in `src/shared/fake-media.d.ts`). `vitest.config.ts` sets it true for Seam 1. `vite build --mode fake-media` sets it true for Seam 2; `pnpm test` and `pnpm test:browser` build that way. Every other build is real, and `scripts/deploy.mjs` now builds with `--mode production` explicitly, so a `dist/` left by the tests is never deployed through it. A request cannot reach a build constant, and a real build does not contain the fakes at all: checked by grepping both builds (the fake media server is marked pure so tree-shaking drops it). `pnpm dev` is real and needs real secrets in `.dev.vars` to share; `pnpm dev:fake-media` runs on the fakes. `CLAUDE.md` says so. **Caution:** `pnpm exec wrangler deploy` by hand straight after `pnpm test` would deploy the fake build; the deploy script is the only documented path. **Ticket 26**'s README should not suggest the bare wrangler command.
+- **The Cloudflare media layer** is `src/instance/media/cloudflare.ts`, one HTTPS call per operation, ported from `prototype/quality-proof`: `connect` is `sessions/new`; `publish` is `tracks/new` with local tracks and the browser's offer; `pull` is `tracks/new` with remote tracks built from the instance's records (the sharer's session and track name), giving the media server's offer and each pulled track's mid; `renegotiate` hands over the browser's answer; `close` is `tracks/close` with `force: true`, always. The media server is called with `SFU_APP_SECRET` only, from the backend. The relay credential is `generate-ice-servers` with the relay key and `ttl` 12 hours (the instance's existing `RELAY_CREDENTIAL_TTL_SECONDS`), and every address Cloudflare gives is passed on (STUN, TURN over UDP and TCP, TURNS over TLS) except port 53, which browsers block, as the prototype did. Every call has a 10-second timeout; a call that times out counts as failed, and its record stays.
+- **Decisions in `close`, for ticket 13 to watch:** a 410 ("Session appears to be disconnected", seen once a browser closed in the quality proof) counts as closed, since a session the browser has left carries nothing; otherwise a clean leave after the tab closed would keep the share live until ticket 21. A track that reports an error on close counts as closed only if `GET sessions/{id}` no longer shows it open (anything but `inactive`), since a mid that is not there may report an error too. A request-level failure or a track still open throws, and the record stays, as ticket 10 decided. **Ticket 21** can lift that `GET` into the seam's "which tracks does this connection have".
+- **The real media client** is `src/app/lib/media/browser.ts`. The webcam is asked for 1280x720 at 30 fps (ideal; at most 30), video only. The tab's one `RTCPeerConnection` (`bundlePolicy: "max-bundle"`) is given the relay credential's `iceServers` when it is made, so the relay is offered from the start and the browser takes a direct path when one works. A capture goes out on a `sendonly` transceiver limited to 1.5 Mbps and 30 fps, set again with `setParameters` once the answer is in. A pull applies the media server's offer, takes the picture from the transceiver on the mid it named, and answers. Stopping a capture stops its tracks, sends nothing on its transceiver and marks it inactive for the next offer; a dropped pull is left to the media server's next offer. An offer the instance refused is rolled back before the next negotiation. No codec preference is set: the H.264 order for webcams is **ticket 17**'s, so until then the browser picks.
+- **Untested, for ticket 13:** whether a webcam plays from one browser on another's stage, through the relay too. If a pull fails in a fresh tab that has never shared (a session with no browser offer yet), that is the first place to look: the prototype only ever pulled into a new session the same way, so it is expected to work.
+- **Tests:** the default was first switched to Cloudflare with no switch, and Seam 1 went red (20 of 21 in `test/shares.test.ts` got `unavailable`), then green with the switch. That one red run did make HTTPS calls to Cloudflare with the test's dummy secrets, which were refused; no run since can, since every test build is on the fakes. Under load from another agent (load average 15), three Seam 2 journeys timed out at an invite's join or in reconnecting; each passed when re-run.
