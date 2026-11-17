@@ -67,7 +67,7 @@ describe("a sharer whose connection drops", () => {
 
 describe("the mark on a share's icon", () => {
   it("shows after about 10 seconds when the tab sending it is lost, though another device of the sharer is heard", async () => {
-    const { instance, owner, room, bia, biaId, webcam, ownerTab, biaTab } = await biaSharing();
+    const { instance, owner, room, bia, webcam, ownerTab, biaTab } = await biaSharing();
     const { other: laptop } = await addSecondBrowser(instance, bia);
     const { tab: laptopTab } = await openRoom(laptop, room);
     await ownerTab.next(); // the laptop's device was added
@@ -234,7 +234,7 @@ describe("a sharer who returns after the grace period ran out", () => {
   });
 
   it("finds the share live from another device if they started it there meanwhile, and cannot start a second", async () => {
-    const { instance, room, bia, biaId, webcam, ownerTab, biaTab } = await biaSharing();
+    const { instance, room, bia, biaId, ownerTab, biaTab } = await biaSharing();
     const { other: laptop } = await addSecondBrowser(instance, bia);
     await biaTab.drop();
     await pass(instance, 35 * SECOND, [ownerTab]);
