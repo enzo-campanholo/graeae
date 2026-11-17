@@ -136,7 +136,9 @@ export type Covered =
   /** One device's. */
   | { device: string }
   /** One tab's. */
-  | { tab: string };
+  | { tab: string }
+  /** Every watch, and no share: the usage budget stop. */
+  | { everyWatch: true };
 
 /** A share a cut-off ended, and the room it was live in. */
 export interface Ended {
@@ -151,6 +153,7 @@ interface Where {
 }
 
 function whereCovered(covered: Covered): Where {
+  if ("everyWatch" in covered) return { where: "1 = 1", bindings: [] };
   if ("tab" in covered) return { where: "tab_id = ?", bindings: [covered.tab] };
   if ("device" in covered) return { where: "device_id = ?", bindings: [covered.device] };
   if (covered.room === undefined) return { where: "member_id = ?", bindings: [covered.member] };
@@ -603,7 +606,8 @@ export class Shares {
    * own tracks, then every other pull of those shares, then the covered pulls. Then it
    * sweeps the media connections of the covered tabs and of `tabs`, and forgets each once
    * nothing is left on it: an empty connection a cut-off browser keeps open carries
-   * nothing and cannot gain a track, so it is left alone. Returns the shares that ended.
+   * nothing and cannot gain a track, so it is left alone. The usage budget stop forgets
+   * none: its viewers stay, and may watch again. Returns the shares that ended.
    * A share whose close failed stays live with its record, and so does every pull of it
    * but the covered ones, until a try succeeds; `subject` is who the owner hears about if
    * none has after a minute.
@@ -615,7 +619,10 @@ export class Shares {
   async cutOff(covered: Covered, tabs: readonly string[] = [], subject?: Subject): Promise<Ended[]> {
     const where = whereCovered(covered);
     if ("tab" in covered) this.recovered(covered.tab);
-    const shares = this.records(`WHERE ${where.where} AND live_at IS NOT NULL`, ...where.bindings);
+    // The usage budget stop ends no share, and its viewers' tabs carry on with their media
+    // connections, ready to watch again once the budget allows it.
+    const stop = "everyWatch" in covered;
+    const shares = stop ? [] : this.records(`WHERE ${where.where} AND live_at IS NOT NULL`, ...where.bindings);
     const touched = new Set([
       ...tabs,
       ...("tab" in covered ? [covered.tab] : []),
@@ -624,7 +631,7 @@ export class Shares {
     ]);
     const ended = await this.end(shares, where, subject);
     ended.push(...(await this.sweep([...touched])));
-    for (const tab of touched) this.forgetConnectionIfEmpty(tab);
+    if (!stop) for (const tab of touched) this.forgetConnectionIfEmpty(tab);
     return ended;
   }
 
