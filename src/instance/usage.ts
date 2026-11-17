@@ -6,9 +6,11 @@
 // The rules, each applied as a charge is made:
 // - Each tab with a media connection reports the running total its transport has received
 //   since it opened. The difference from the tab's last report is charged, so the first
-//   report is charged in full and a lost report is made up by the next. A final total,
-//   sent before a connection restart, makes the next total count from zero; so does a
-//   total lower than the last, a restart whose final total was lost.
+//   report is charged in full and a lost report is made up by the next. The next total
+//   counts from zero only once the instance itself has made the tab a new media
+//   connection or restarted its old one (the tab sends its final total before either). A
+//   total lower than the last on the same connection is ignored, so a tab cannot have
+//   what it already reported charged again.
 // - Every reported byte has a fixed 5% added (`SAFETY_MARGIN_PERCENT`), so the count never reads
 //   below Cloudflare's own figure.
 // - Relayed watching is counted twice (`RELAYED_COUNTS_TWICE`): what a tab reports while
@@ -64,14 +66,15 @@ export class Usage {
 
   /**
    * A report from `tab`: its media connection's transport has received `bytes` since it
-   * opened, and goes through the relay now if `relayed`. A `final` total is that
-   * connection's last; the tab's next total counts from zero.
+   * opened, or since it was restarted, and goes through the relay now if `relayed`. A
+   * total lower than the last, on the same connection, is ignored.
    */
-  received(tab: string, bytes: number, relayed: boolean, final: boolean) {
+  received(tab: string, bytes: number, relayed: boolean) {
     const last = this.sql
       .exec<TabRow>("SELECT total, relayed, restarted FROM usage_tab WHERE tab_id = ?", tab)
       .toArray()[0];
-    const from = !last || last.restarted === 1 || bytes < last.total ? 0 : last.total;
+    const from = !last || last.restarted === 1 ? 0 : last.total;
+    if (bytes < from) return;
     this.charge(((bytes - from) * (100 + SAFETY_MARGIN_PERCENT)) / 100 * relayFactor(relayed));
 
     const now = Date.now();
@@ -83,12 +86,22 @@ export class Usage {
       bytes,
       now,
       relayed ? 1 : 0,
-      final ? 1 : 0,
+      0,
     );
     // This total covers everything the tab received until now: watches that ended since
     // the last report need no charge of their own, and those still going start again here.
     this.sql.exec("DELETE FROM usage_watch WHERE tab_id = ? AND ended_at IS NOT NULL", tab);
     this.sql.exec("UPDATE usage_watch SET since = ?, relayed = ? WHERE tab_id = ?", now, relayed ? 1 : 0, tab);
+  }
+
+  /**
+   * The instance made `tab` a new media connection, or restarted its old one: the tab's
+   * next total counts from zero. (The `restarted` column holds this; the name is older.)
+   */
+  newTotal(tab: string) {
+    // An instance started on an older schema than this code's has no totals to reset.
+    if (!this.counting()) return;
+    this.sql.exec("UPDATE usage_tab SET restarted = 1 WHERE tab_id = ?", tab);
   }
 
   /** `tab` began watching a share sent at up to `maxBitrate` bits per second: the watch `watch`. */

@@ -34,3 +34,6 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 - **Left as it was:** setup and pressing an invite on a browser that is already remembered forget that browser's old device, as before, but do not close its open tabs. Ticket 21 (sweep) or 09 may want `closeDevice` there too.
 - The Seam 1 harness now gives a 204 a null body (it logged a warning on every `DELETE`), and a test tab has `closed()`.
 - **Seam 2:** `test/browser/you.spec.ts` (default project): Fia renames from "You" and the owner's bar follows. Fia adds a second browser through the link and presses Join. The new device shows up on the first browser. Forgetting it turns its open room into "nothing here" and moves Fia to "Not here" in the owner's bar. One full `pnpm test` run timed out in this journey (30 s, with no failing step shown) and did not happen again in six runs since. I could not tell whether it was this machine's load or the preview proxy; if it recurs, the trace is in `test-results/`.
+
+
+**Code review fix:** the open point above is fixed. Using the setup secret again and pressing an invite on a browser that is already remembered now cut off the devices they forget, through the cut-off routine (see ticket 28's code review comment).

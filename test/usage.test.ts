@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { UsageAnswer } from "../src/shared/api.ts";
 import type { LiveShare } from "../src/shared/socket/index.ts";
 import { startInstance, type TestBrowser } from "./harness.ts";
-import { addMember, connectMedia, setUpOwner, shareScreen, shareWebcam, stopWatching, watch } from "./steps.ts";
+import { addMember, connectMedia, FAKE_OFFER, setUpOwner, shareScreen, shareWebcam, stopWatching, watch } from "./steps.ts";
 import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -19,6 +19,19 @@ async function report(tab: Tab, received: number, { relayed = false, final = fal
   tab.send({ type: "usage", request: { type: "received", bytes: received, relayed, ...(final ? { final: true } : {}) } });
   // The answer to a heartbeat comes once the instance has read everything sent before it.
   await tab.heartbeat();
+}
+
+/** The ordinary reconnect path: the instance lets the tab's media connection go, and the tab makes a new one. */
+async function newConnection(tab: Tab) {
+  tab.send({ type: "media", request: { type: "reconnect" } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+  await connectMedia(tab);
+}
+
+/** A restart of the tab's media connection, which resets its running total. */
+async function restartConnection(tab: Tab) {
+  tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "restarted", answer: expect.any(String) } });
 }
 
 async function usage(owner: TestBrowser): Promise<UsageAnswer> {
@@ -85,23 +98,58 @@ describe("the bytes a tab reports", () => {
     expect((await usage(owner)).used).toBe(5_250_000);
   });
 
-  it("count from zero again after a final total, sent before a connection restart", async () => {
+  it("count from zero again on the tab's next media connection, after its final total", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 4_000_000);
     await report(tab, 6_000_000, { final: true });
+    await newConnection(tab);
     await report(tab, 1_000_000);
 
     expect((await usage(owner)).used).toBe(7_350_000);
   });
 
-  it("count from zero again when a total is lower than the last, the final one having been lost", async () => {
+  it("count from zero again after a restart of the media connection, after its final total", async () => {
+    const { owner, tab } = await ownerConnected();
+
+    await report(tab, 4_000_000);
+    await report(tab, 6_000_000, { final: true });
+    await restartConnection(tab);
+    await report(tab, 1_000_000);
+
+    expect((await usage(owner)).used).toBe(7_350_000);
+  });
+
+  it("count from zero again on a new media connection when the final total was lost", async () => {
+    const { owner, tab } = await ownerConnected();
+
+    await report(tab, 4_000_000);
+    await newConnection(tab);
+    await report(tab, 1_000_000);
+
+    expect((await usage(owner)).used).toBe(5_250_000);
+  });
+
+  it("are never counted from zero by a lower total on the same media connection", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 4_000_000);
     await report(tab, 1_000_000);
+    await report(tab, 4_000_000);
+    expect((await usage(owner)).used).toBe(4_200_000);
 
+    await report(tab, 5_000_000);
     expect((await usage(owner)).used).toBe(5_250_000);
+  });
+
+  it("are never counted from zero by a final total alone, with no new media connection", async () => {
+    const { owner, tab } = await ownerConnected();
+
+    await report(tab, 4_000_000, { final: true });
+    await report(tab, 4_000_000, { final: true });
+    await report(tab, 4_000_000);
+
+    expect((await usage(owner)).used).toBe(4_200_000);
   });
 
   it("are counted twice while the media connection is on the relay", async () => {

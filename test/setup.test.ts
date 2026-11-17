@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
+import type { LiveShare, ServerMessage } from "../src/shared/socket/index.ts";
 import { SETUP_SECRET, startInstance } from "./harness.ts";
-import { answer, setUpOwner, useSetupSecret } from "./steps.ts";
+import { openRoom, type Tab } from "./sockets.ts";
+import { addMember, answer, setUpOwner, shareWebcam, useSetupSecret, watch } from "./steps.ts";
+
+/** Reads `tab`'s messages until `wanted` arrives, and returns every message read on the way, `wanted` last. */
+async function until(tab: Tab, wanted: (message: ServerMessage) => boolean): Promise<ServerMessage[]> {
+  const read: ServerMessage[] = [];
+  for (;;) {
+    const message = await tab.next();
+    read.push(message);
+    if (wanted(message)) return read;
+  }
+}
 
 const THIRTY_ONE_CHARACTERS = "0123456789abcdef0123456789abcde";
 
@@ -43,6 +55,42 @@ describe("the setup secret", () => {
     expect((await second.fetch(to)).status).toBe(200);
     expect((await first.fetch(to)).status).toBe(404);
     expect((await copied.fetch("/")).status).toBe(404);
+  });
+
+  it("used again cuts off every other owner device: its tabs close, and its shares and watching end", async () => {
+    const instance = await startInstance();
+    const stolen = instance.browser();
+    const room = await setUpOwner(stolen);
+    const { browser: bia } = await addMember(instance, stolen, "Bia");
+    const { tab: onStolen, state } = await openRoom(stolen, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    const ownersWebcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
+    const biasWebcam: LiveShare = { member: biaState.people.you.id, kind: "webcam" };
+    await until(onStolen, (message) => message.type === "presence");
+    await shareWebcam(onStolen);
+    await until(biaTab, (message) => message.type === "shares");
+    await shareWebcam(biaTab);
+    await until(onStolen, (message) => message.type === "shares");
+    await watch(biaTab, ownersWebcam);
+    await until(onStolen, (message) => message.type === "watching" && message.change.type === "watchers");
+    await watch(onStolen, biasWebcam);
+    await until(biaTab, (message) => message.type === "watching" && message.change.type === "watchers");
+
+    expect((await useSetupSecret(instance.browser(), SETUP_SECRET)).status).toBe(200);
+
+    expect(await onStolen.next()).toEqual({ type: "gone" });
+    await onStolen.closed();
+    const heard = await until(biaTab, (message) => message.type === "shares");
+    expect(heard).toEqual(
+      expect.arrayContaining([
+        { type: "presence", change: { type: "left", member: ownersWebcam.member } },
+        { type: "watching", change: { type: "unwatched", share: ownersWebcam } },
+        { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
+        { type: "shares", change: { type: "ended", share: ownersWebcam } },
+      ]),
+    );
+    // Bia's own webcam is all that is left on the media server.
+    expect(instance.media.connections().flat()).toHaveLength(1);
   });
 
   it("is taken only from the setup page's own request, never from an address", async () => {
