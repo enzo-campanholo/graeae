@@ -21,7 +21,7 @@ import type {
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
 import type { BudgetLevel, ClientMessage, LiveShare, RoomView, UsageState } from "../shared/socket/index.ts";
-import { isQualityChoice } from "../shared/socket/watching.ts";
+import { checkRequest, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { mediaLayer } from "./media/index.ts";
@@ -94,7 +94,7 @@ export class Instance extends DurableObject<Env> {
         },
         // A hand-over carried this tab's watching over to the new share: it answers the new pull.
         moved: (tab, share, { offer, video, audio, quality }) => {
-          const change = { type: "moved" as const, share, offer, video, ...(audio === null ? {} : { audio }) };
+          const change = { type: "moved" as const, share, offer, video, ...withAudio(audio) };
           this.signaling.toTab(tab, { type: "media", change });
           if (quality !== null) this.signaling.toTab(tab, { type: "watching", change: { type: "quality", share, quality } });
         },
@@ -317,97 +317,51 @@ export class Instance extends DurableObject<Env> {
    * from a tab that fails a check, gets the refusal its area has, or nothing.
    */
   private async request(tab: Tab, message: ClientMessage) {
-    const request: unknown = (message as { request?: unknown }).request;
-    if (typeof request !== "object" || request === null) return;
-    const { type } = request as { type?: unknown };
+    const request = checkRequest(message);
+    if (!request) return;
     const member = this.people.deviceMember(tab.device);
     const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
+    const handle = this.handlers[request.name] as (tab: Tab, request: CheckedRequest, allowed: boolean) => Promise<void> | void;
+    await handle(tab, request, allowed);
+  }
 
-    if (message.type === "usage" && type === "received") {
+  /**
+   * What the instance does with each request a tab sends, once checked. `allowed` says
+   * whether the tab's device and access still hold; a request that only ever takes
+   * something away, or only completes the tab's own negotiation, needs no check.
+   */
+  private readonly handlers: {
+    [Name in RequestName]: (tab: Tab, request: Checked<Name>, allowed: boolean) => Promise<void> | void;
+  } = {
+    "usage.received": (tab, { bytes, relayed }, allowed) => {
       // Checked like any request that adds something: here, to the count. A tab's `final`
       // total needs nothing of its own, since only a new or restarted media connection,
       // which the instance makes itself, counts from zero again.
       if (!allowed) return;
-      const { bytes, relayed } = request as { bytes?: unknown; relayed?: unknown };
-      if (!isByteCount(bytes) || typeof relayed !== "boolean") return;
       this.usage.received(tab.id, bytes, relayed);
       this.checkBudget();
-      return;
-    }
-    if (message.type === "media" && type === "answer") {
-      const { answer } = request as { answer?: unknown };
-      if (!isSdp(answer)) return;
+    },
+    "media.answer": async (tab, { answer }) => {
       // An answer only completes the tab's own negotiation, so it needs no check. A failed
       // one leaves the pull with no media flowing; the watch stays, as on any media trouble.
       await this.shares.renegotiate(tab, answer);
       this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
-      return;
-    }
-    if (message.type === "watching") {
-      const share = asLiveShare((request as { share?: unknown }).share);
-      if (!share) return;
-      if (type === "watch") {
-        // Refused while the usage budget is used up, including a pull that was under way when it ran out.
-        const budgetAllows = () => this.usage.level() !== "used up";
-        const watched =
-          allowed && budgetAllows()
-            ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id) && budgetAllows())
-            : { watching: false as const };
-        if (watched === null) return;
-        if (!watched.watching) {
-          this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
-          return;
-        }
-        this.signaling.toTab(tab.id, {
-          type: "media",
-          change: {
-            type: "pulled",
-            share,
-            offer: watched.offer,
-            video: watched.video,
-            ...(watched.audio === null ? {} : { audio: watched.audio }),
-          },
-        });
-        this.signaling.toTab(tab.id, { type: "watching", change: { type: "watched", share } });
-      }
-      // Stopping needs no check: it only ever takes something away.
-      if (type === "unwatch") await this.shares.unwatch(tab, share);
-      if (type === "quality") {
-        const { quality } = request as { quality?: unknown };
-        if (!isQualityChoice(quality)) return;
-        // The tab hears the quality it now watches at: the one it chose, or the one it had.
-        const now = allowed ? await this.shares.setQuality(tab, share, quality) : this.shares.quality(tab, share);
-        if (now !== null) this.signaling.toTab(tab.id, { type: "watching", change: { type: "quality", share, quality: now } });
-      }
-      return;
-    }
+    },
     // A restart needs no check: like an answer, it only renews the tab's own path to the media server.
-    if (message.type === "media" && type === "restart") {
-      const { offer } = request as { offer?: unknown };
-      if (!isSdp(offer)) return;
+    "media.restart": async (tab, { offer }) => {
       const answer = await this.shares.restart(tab, offer);
       if (answer !== null) this.usage.newTotal(tab.id);
       this.signaling.toTab(
         tab.id,
         answer === null ? { type: "media", change: { type: "restart-refused" } } : { type: "media", change: { type: "restarted", answer } },
       );
-      return;
-    }
+    },
     // Nor does a reconnect: it only ever takes away.
-    if (message.type === "media" && type === "reconnect") {
-      await this.reconnectMedia(tab);
-      return;
-    }
+    "media.reconnect": (tab) => this.reconnectMedia(tab),
     // Media that falters needs no check: it can only end the tab's own shares.
-    if (message.type === "media" && type === "faltering") {
-      this.shares.faltering(tab.id);
-      return;
-    }
-    if (message.type === "media" && type === "recovered") {
-      this.shares.recovered(tab.id);
-      return;
-    }
-    if (message.type === "media" && type === "connect") {
+    "media.faltering": (tab) => this.shares.faltering(tab.id),
+    "media.recovered": (tab) => this.shares.recovered(tab.id),
+    "media.connect": async (tab, _, allowed) => {
       if (!allowed) return;
       const iceServers = await this.shares.connect(tab, () => this.relay.mint());
       if (iceServers === "already") return;
@@ -422,34 +376,46 @@ export class Instance extends DurableObject<Env> {
         tab.id,
         iceServers ? { type: "media", change: { type: "connected", iceServers } } : { type: "media", change: { type: "unavailable" } },
       );
-      return;
-    }
-    if (message.type !== "shares") return;
-    if (type === "start") {
-      const { kind, offer, video, audio, browser, handOver } = request as {
-        kind?: unknown;
-        offer?: unknown;
-        video?: unknown;
-        audio?: unknown;
-        browser?: unknown;
-        handOver?: unknown;
-      };
-      if (kind !== "webcam" && kind !== "screen") return;
-      // A screen share's audio is left out when the browser's picker gave no sound.
-      const mids = !isMid(video) ? null : audio === undefined ? { video } : isMid(audio) ? { video, audio } : null;
+    },
+    "watching.watch": async (tab, { share }, allowed) => {
+      // Refused while the usage budget is used up, including a pull that was under way when it ran out.
+      const budgetAllows = () => this.usage.level() !== "used up";
+      const watched =
+        allowed && budgetAllows()
+          ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id) && budgetAllows())
+          : { watching: false as const };
+      if (watched === null) return;
+      if (!watched.watching) {
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
+        return;
+      }
+      this.signaling.toTab(tab.id, {
+        type: "media",
+        change: { type: "pulled", share, offer: watched.offer, video: watched.video, ...withAudio(watched.audio) },
+      });
+      this.signaling.toTab(tab.id, { type: "watching", change: { type: "watched", share } });
+    },
+    // Stopping needs no check: it only ever takes something away.
+    "watching.unwatch": (tab, { share }) => this.shares.unwatch(tab, share),
+    "watching.quality": async (tab, { share, quality }, allowed) => {
+      // The tab hears the quality it now watches at: the one it chose, or the one it had.
+      const now = allowed ? await this.shares.setQuality(tab, share, quality) : this.shares.quality(tab, share);
+      if (now !== null) this.signaling.toTab(tab.id, { type: "watching", change: { type: "quality", share, quality: now } });
+    },
+    "shares.start": async (tab, { kind, details }, allowed) => {
       // A screen share goes out as its browser's family sends one; a webcam alike from every browser.
-      const family = kind === "webcam" ? "chromium" : browser === "chromium" || browser === "firefox" ? browser : null;
+      const family = kind === "webcam" ? "chromium" : (details?.browser ?? null);
       const started =
-        allowed && isSdp(offer) && mids && family
+        allowed && details && family
           ? await this.shares.start(
               tab,
               tab.member,
               kind,
-              offer,
-              mids,
+              details.offer,
+              details.mids,
               encodingPlan(family, kind),
               () => this.signaling.isOpen(tab.id),
-              { handOver: handOver === true },
+              { handOver: details.handOver },
             )
           : { live: false as const };
       if (!started.live) {
@@ -458,22 +424,19 @@ export class Instance extends DurableObject<Env> {
       }
       this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
       this.shareChanged(tab.room, { type: "started", share: started.share });
-      // A hand-over: the new share is live, so the old one ends and its viewers here move to this one,
+      // A hand-over: the new share is live, so the old one ends and its watchers here move to this one,
       // unless the usage budget is used up: a move is a new watch, and is refused like one.
       if (started.handOver) {
         const movable = (other: string) => this.signaling.isOpen(other) && this.usage.level() !== "used up";
         this.sharesEnded(await this.shares.handOver(started.id, movable));
       }
-      return;
-    }
-    if (type === "stop") {
-      const { kind } = request as { kind?: unknown };
-      if (kind !== "webcam" && kind !== "screen") return;
-      // Stopping needs no check: it only ever takes something away.
+    },
+    // Stopping needs no check: it only ever takes something away.
+    "shares.stop": async (tab, { kind }) => {
       const ended = await this.shares.stop(tab, kind);
       if (ended) this.sharesEnded([ended]);
-    }
-  }
+    },
+  };
 
   /**
    * Tells the rooms and the lists of rooms which shares ended. A share a hand-over
@@ -891,23 +854,6 @@ export class Instance extends DurableObject<Env> {
   }
 }
 
-/** The longest SDP offer the instance passes on. A real one is a few kilobytes. */
-const SDP_MAX = 64 * 1024;
-
-function isSdp(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= SDP_MAX;
-}
-
-/** A running total of bytes as a tab reports it: a whole number, not negative, and within what a number holds exactly. */
-function isByteCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-/** A transceiver's mid: a short token the browser picks. */
-function isMid(value: unknown): value is string {
-  return typeof value === "string" && /^[A-Za-z0-9_.-]{1,32}$/.test(value);
-}
-
 function withCookie(response: Response, cookie: string): Response {
   response.headers.append("Set-Cookie", cookie);
   return response;
@@ -917,13 +863,9 @@ function roomPath(address: string): string {
   return `/r/${address}`;
 }
 
-/** A share as a tab names it, by its sharer's member id and its kind. */
-function asLiveShare(value: unknown): LiveShare | null {
-  if (typeof value !== "object" || value === null) return null;
-  const { member, kind } = value as { member?: unknown; kind?: unknown };
-  if (typeof member !== "string" || member.length === 0 || member.length > 64) return null;
-  if (kind !== "webcam" && kind !== "screen") return null;
-  return { member, kind };
+/** A pull's screen audio transceiver, as a message carries it: left out when the share has none. */
+function withAudio(audio: string | null): { audio?: string } {
+  return audio === null ? {} : { audio };
 }
 
 /**

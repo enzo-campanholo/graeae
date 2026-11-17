@@ -25,6 +25,11 @@ import { unknownChange } from "./area.ts";
 /** The two kinds of share (GLOSSARY.md): a screen share or a webcam share. */
 export type ShareKind = "screen" | "webcam";
 
+/** Whether `value` names one of the two kinds of share. */
+export function isShareKind(value: unknown): value is ShareKind {
+  return value === "screen" || value === "webcam";
+}
+
 /** A live share, named by its sharer and kind: a member has one of each kind at most. */
 export interface LiveShare {
   /** The sharer's member id. */
