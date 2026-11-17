@@ -5,7 +5,7 @@ export interface RoomSummary {
   name: string;
 }
 
-/** Who the visiting device belongs to. */
+/** Who the visiting device belongs to. Also the answer to `POST /api/me/name` with `{ name }`, the member renamed. */
 export interface Me {
   name: string;
   owner: boolean;
