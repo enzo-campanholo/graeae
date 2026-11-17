@@ -5,7 +5,9 @@
 // On a weak upload the share steps down by itself, since the browser has no setting for
 // a resolution floor: the 1080p quality stops first, so every viewer gets 720p60; if that
 // does not fit, frame rate drops to 30; below 720p30 the browser degrades as it sees fit.
-// It steps back up when the upload recovers. It never ends a share.
+// It steps back up when the upload recovers. It never ends a share. The step-down is
+// switched off (`STEP_DOWN`): the browser's estimate of the upload could not tell a
+// weak upload from a healthy one.
 //
 // The sharer's notes are driven by the same readings: capture stuck near 48 fps, software
 // encoding, and an upload that cannot carry 1080p.
@@ -15,6 +17,20 @@
 
 import type { EncodingPlan } from "../../../shared/encoding.ts";
 import { sendEncodings } from "./encodings.ts";
+
+/**
+ * The step-down, the one place it is switched on or off. Off: a share always goes out at
+ * its full plan, the browser alone gives up what it must on a weak upload (resolution
+ * first), and its sharer gets no note on the upload. The notes on 48 fps and on software
+ * encoding stay.
+ *
+ * Off since the owner's check on Cloudflare (ticket 18). On a 288 Mbps upload, with
+ * nothing lost and a round trip of a few milliseconds, the browser's estimate of the
+ * upload sat at 5 to 10 Mbps by itself for minutes, saying "bandwidth" for up to a minute
+ * at a time; under a 10 Mbps cap it read the same. Nothing in a sender's statistics told
+ * the two apart, so every step down and every note on the upload was false.
+ */
+export const STEP_DOWN = false;
 
 // The spec gives no thresholds for stepping down or up. These are graeae's, all here.
 
@@ -99,6 +115,8 @@ export interface Reading {
 /** What a live share is sending and what its sharer is told, from the readings so far. */
 export interface Sending {
   readonly plan: EncodingPlan;
+  /** Whether this share steps down on a weak upload (`STEP_DOWN`). */
+  readonly stepDown: boolean;
   /** The steps this share can take, from its full plan down. */
   readonly steps: readonly Step[];
   readonly step: Step;
@@ -132,8 +150,15 @@ export interface SharerNotes {
   upload: Exclude<Step, "full"> | null;
 }
 
-/** A share of `plan` that starts sending at `at`. */
-export function startSending(plan: EncodingPlan, at: number): Sending {
+/**
+ * A share of `plan` that starts sending at `at`, stepping down on a weak upload if
+ * `stepDown` says so: the media clients take `STEP_DOWN`, and the tests say.
+ */
+export function startSending(
+  plan: EncodingPlan,
+  at: number,
+  { stepDown = STEP_DOWN }: { stepDown?: boolean } = {},
+): Sending {
   const top = plan.qualities[0]!;
   const fps = Math.max(...plan.qualities.map((quality) => quality.maxFramerate));
   const steps: Step[] = ["full"];
@@ -141,6 +166,7 @@ export function startSending(plan: EncodingPlan, at: number): Sending {
   if (fps > STEPPED.lastFramerate) steps.push("720p30");
   return {
     plan,
+    stepDown,
     steps,
     step: "full",
     changedAt: at,
@@ -175,6 +201,7 @@ export function nextSending(sending: Sending, reading: Reading): Sending {
     next = { ...next, steppedUpAt: null, upWait: STEP_UP_AFTER_MS };
 
   const index = next.steps.indexOf(next.step);
+  if (!next.stepDown) return next;
   if (heldBackAt.length >= STEP_DOWN_READINGS && index < next.steps.length - 1) {
     const failed = next.steppedUpAt !== null;
     return {
@@ -334,15 +361,17 @@ export interface Follower {
  * Follows a live share of `plan`, captured `captureHeight` lines high, that starts
  * sending at `at`: it goes out at its full plan and with no note at once, and each
  * reading given to the returned function may step it down or up, through
- * `follower.apply`, and change the sharer's notes, through `follower.notes`.
+ * `follower.apply`, and change the sharer's notes, through `follower.notes`. It steps
+ * only if `stepDown` says so, `STEP_DOWN` unless a journey says otherwise.
  */
 export function follow(
   plan: EncodingPlan,
   captureHeight: number | undefined,
   at: number,
   follower: Follower,
+  { stepDown = STEP_DOWN }: { stepDown?: boolean } = {},
 ): (reading: Reading) => void {
-  let sending = startSending(plan, at);
+  let sending = startSending(plan, at, { stepDown });
   let told = JSON.stringify(sharerNotes(sending));
   follower.apply(stepEncodings(plan, sending.step, captureHeight), degradationPreference(sending));
   follower.notes(sharerNotes(sending));

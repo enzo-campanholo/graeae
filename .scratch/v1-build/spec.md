@@ -97,7 +97,7 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 60. As a sharer, I want my share to stop when I press stop, use the browser's own "stop sharing" bar, close the shared tab or window, or leave, so that every way of stopping works.
 61. As a sharer on a 144 Hz monitor, I want a dismissible note on my own share when capture settles near 48 fps, telling me that 120 Hz gives 60, so that I can fix choppy motion.
 62. As a sharer whose share is software encoded, I want a quiet note saying so, so that I understand a cost to my game.
-63. As a sharer on a weak upload, I want resolution to give way before frame rate and a dismissible note that my upload cannot carry 1080p, so that motion stays smooth and I know why it is softer.
+63. *(The step-down and its note are switched off by build ticket 18; ticket 30.)* As a sharer on a weak upload, I want resolution to give way before frame rate and a dismissible note that my upload cannot carry 1080p, so that motion stays smooth and I know why it is softer.
 64. As a sharer, I want graeae never to end my share for quality reasons, so that a bad minute does not cost me my viewers.
 65. As a sharer on a larger monitor, I want my screen scaled down to 1080p, so that my upload stays inside 20 Mbps.
 
@@ -265,6 +265,7 @@ All numbers are fixed. Neither the sharer nor the owner gets a setting.
 - **With two qualities on,** a viewer on a weak link is stepped down to 720p60 by the media server, alone, and the viewer's "Auto / 1080p / 720p" choice sets the preferred quality on the media server mid-watch. The sharer tells the instance it sends two qualities when it starts the share, so the instance's side stays tested while the switch is off.
 - **Every share has a single quality** while the switch is off, so a weak viewer can pull one down for everyone. Accepted.
 - **A sharer on a weak upload.** The share scales down to 720p60 (with two qualities, the 1080p quality stops first and every viewer gets 720p60). If that does not fit, frame rate drops to 30. Below 720p30 the browser degrades as it sees fit. The browser has no setting for a resolution floor, so the media client watches the share's statistics and steps it down itself. Bitrate, frame rate and scale are changed on the live share without renegotiating.
+- **The step-down is switched off** (`STEP_DOWN` in `src/app/lib/media/sending.ts`), and with it the note that the upload cannot carry 1080p: the browser alone gives up what it must, resolution first. The owner's check on Cloudflare (ticket 18) found the browser's estimate of the upload at 5 to 10 Mbps for minutes on a 288 Mbps upload, with nothing lost, reading the same as under a 10 Mbps cap, so every step down and every note was false. Left alone, Chrome also scales a game share below 720 lines in spells of 15 to 60 seconds, and encodes it in software there. Ticket 30 looks for a sign that tells a weak upload apart.
 - **Upload budget.** 12 + 1.5 = 13.5 Mbps for a screen and a webcam (17.5 with two qualities), inside the assumed 20 Mbps floor.
 
 ### Media connections and records
@@ -338,7 +339,7 @@ One routine serves every case:
 - **Bar foot.** The member's own shares as small previews, each with the names of the members watching and a stop button, plus the share buttons.
 - **Following a member.** Clicking a name watches everything that member shares and keeps doing so: a share they start later joins the stage by itself. Following ends when the viewer changes what they watch in any other way (a single icon, a shortcut, stop watching, another name). The shortcuts are one-off and follow nobody.
 - **Stage grid.** 1 column for one share, 2 for up to four, 3 for up to six, 4 beyond. Focusing a share makes it large and drops the others to a strip beneath.
-- **Notes to a sharer** appear on or beside their own share, are shown only to them, and are driven by measurement: video only; software encoded; capturing at 48 fps on a 144 Hz monitor ("Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60"); upload cannot carry 1080p.
+- **Notes to a sharer** appear on or beside their own share, are shown only to them, and are driven by measurement: video only; software encoded; capturing at 48 fps on a 144 Hz monitor ("Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60"); upload cannot carry 1080p (switched off with the step-down; ticket 30).
 - **The first-time notice** before the picker is shown once per device. On Chromium it gives the audio tip; on Firefox it gives the Firefox line instead. It carries no borderless-mode tip.
 - **Click counts to hold:** 1 to watch a member, 1 to share a webcam, 3 to share a screen (4 the first time on a device).
 - No phone layout is designed.
@@ -522,6 +523,7 @@ Not designed, and free for the implementer to settle without reopening a decisio
 - The friend's GPU in Quality proof is an RTX 5060 Ti, not a GTX 980.
 - H.264 high profile, then main, from Quality proof and Quality adaptation, was replaced by baseline profile (`42001f`) in build ticket 17. Quality proof sent one quality; with two, the media server answers main and high with VP8. The media server relabels baseline as constrained baseline to viewers, as it did high profile (under Unverified facts).
 - The two qualities for a Chromium screen share from Quality adaptation are switched off by build ticket 17, for the media server's freezes on the lower one; ticket 29 tries them as two tracks.
+- The step-down on a weak upload and its note, from Quality adaptation, are switched off by build ticket 18: the browser's estimate of the upload could not tell a weak upload from a healthy one; ticket 30.
 
 ### Unverified facts the design rests on
 

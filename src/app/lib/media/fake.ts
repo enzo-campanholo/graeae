@@ -17,7 +17,7 @@ import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
 import type { FakeMediaControl } from "./fake-control.ts";
 import type { TransportTotals } from "./transport.ts";
-import { follow, NotesBoard, readingOf, type SharerNotes } from "./sending.ts";
+import { follow, NotesBoard, readingOf, STEP_DOWN, type SharerNotes } from "./sending.ts";
 
 export type { FakeMediaControl, FakePick } from "./fake-control.ts";
 
@@ -40,6 +40,7 @@ function control(): FakeMediaControl {
     const made: FakeMediaControl = {
       browser: "chromium",
       twoQualities: TWO_QUALITIES,
+      stepDown: STEP_DOWN,
       picker: { surface: "tab", audio: true },
       asked: [],
       screenAudio: null,
@@ -163,12 +164,18 @@ export class FakeMediaClient implements MediaClient {
     this.offered = null;
     if (!capture) return;
     // Its statistics come from the journey, at times counted from the share's start.
-    const sending = follow(this.plan(capture.kind), undefined, 0, {
-      apply: (encodings, degradation) => {
-        control().sent = { ...control().sent, [capture.kind]: { encodings, degradation } };
+    const sending = follow(
+      this.plan(capture.kind),
+      undefined,
+      0,
+      {
+        apply: (encodings, degradation) => {
+          control().sent = { ...control().sent, [capture.kind]: { encodings, degradation } };
+        },
+        notes: (notes) => this.board.tell(capture, notes),
       },
-      notes: (notes) => this.board.tell(capture, notes),
-    });
+      { stepDown: control().stepDown },
+    );
     reading.set(capture.kind, sending);
   }
 

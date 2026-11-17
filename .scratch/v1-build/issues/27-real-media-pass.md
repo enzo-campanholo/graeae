@@ -18,7 +18,8 @@ Windows 11, a supported Chromium browser, a game running, monitor at 120 Hz:
 - [ ] The browser's own "stop sharing" bar ends the share for the viewer
 - [ ] A viewer sets "720p" and the mark appears; "Auto" returns to 1080p
 - [ ] At 144 Hz the 48 fps note appears; at 120 Hz it does not
-- [ ] With the sharer's upload throttled, the share drops to 720p60, the note appears, and the share is not ended
+- [ ] With the sharer's upload throttled, the share is not ended (the step-down and its note are switched off by ticket 18; ticket 30)
+- [ ] Share a desktop or a document: text is sharp enough with the "motion" content hint (ticket 18's open judgement)
 - [ ] Hand a screen share over to a second device: the viewer is carried over after a short gap
 - [ ] Remove a member who is sharing and watching: both stop within about 2 seconds
 - [ ] Deploy while a share is being watched: at most a "reconnecting" flicker

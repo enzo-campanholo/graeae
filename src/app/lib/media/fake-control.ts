@@ -20,6 +20,11 @@ export interface FakeMediaControl {
    * `src/shared/encoding.ts` says, unless a journey says otherwise before it shares.
    */
   twoQualities: boolean;
+  /**
+   * Whether a live share steps down on a weak upload: as `STEP_DOWN` in `sending.ts`
+   * says, unless a journey says otherwise before it shares.
+   */
+  stepDown: boolean;
   /** What the picker returns next. A tab with its sound, unless a journey says otherwise. */
   picker: FakePick;
   /** Every request made of the picker, oldest first. */

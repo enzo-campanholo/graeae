@@ -19,9 +19,13 @@ import { encodingPlan, type EncodingPlan } from "../src/shared/encoding.ts";
 // A Chromium screen share sent at two qualities, whose 1080p quality is the first to stop.
 const chromiumScreen = encodingPlan("chromium", "screen", { twoQualities: true });
 
-/** A share whose first reading comes once its first 10 seconds have passed. */
-function start(plan: EncodingPlan): Sending {
-  return startSending(plan, -10_000);
+/**
+ * A share whose first reading comes once its first 10 seconds have passed, with the
+ * step-down switched on unless it says otherwise: off in `STEP_DOWN` since the owner's
+ * check, but tested on.
+ */
+function start(plan: EncodingPlan, { stepDown = true }: { stepDown?: boolean } = {}): Sending {
+  return startSending(plan, -10_000, { stepDown });
 }
 
 /** `sending` after `count` readings, one every 2 seconds from `from` seconds on, each `reading`. */
@@ -32,6 +36,26 @@ function after(sending: Sending, count: number, reading: Omit<Reading, "at">, fr
 
 const limited = { limited: true };
 const calm = { limited: false };
+
+describe("the step-down switched off", () => {
+  it("never steps a share down or tells its sharer of the upload, and still gives up resolution first", () => {
+    // Switched off since the owner's check: on a 288 Mbps upload, the browser's estimate
+    // sat at 5 to 10 Mbps by itself, as under a 10 Mbps cap.
+    for (const plan of [chromiumScreen, encodingPlan("chromium", "screen", { twoQualities: false })]) {
+      const sending = after(start(plan, { stepDown: false }), 100, { limited: true, target: 5_000_000 }, 0);
+      expect(sending.step).toBe("full");
+      expect(sharerNotes(sending).upload).toBeNull();
+      expect(degradationPreference(sending)).toBe("maintain-framerate");
+    }
+  });
+
+  it("keeps the other notes", () => {
+    let sending = after(start(chromiumScreen, { stepDown: false }), 5, { captureFps: 48, software: true }, 0);
+    expect(sharerNotes(sending)).toEqual({ at48: true, software: true, upload: null });
+    sending = after(sending, 5, { captureFps: 60, software: false }, 10);
+    expect(sharerNotes(sending)).toEqual({ at48: false, software: false, upload: null });
+  });
+});
 
 describe("a share on a weak upload", () => {
   it("starts at its full plan with no note", () => {
@@ -73,7 +97,7 @@ describe("a share on a weak upload", () => {
   });
 
   it("does not count the upload's limit for the first 10 seconds of a share, while the browser finds out what the upload carries", () => {
-    let sending = after(startSending(chromiumScreen, 0), 16, limited, 0);
+    let sending = after(startSending(chromiumScreen, 0, { stepDown: true }), 16, limited, 0);
     expect(sending.step).toBe("full");
     sending = after(sending, 1, limited, 32);
     expect(sending.step).toBe("720p");

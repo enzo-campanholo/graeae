@@ -8,12 +8,12 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 
 **Blocked by:** 17
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] A capture that settles near 48 fps shows a dismissible note: "Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60"
 - [x] That note is driven by the measured rate, so it stops appearing when the browser captures 60
 - [x] A software-encoded share shows a quiet note saying so
-- [ ] The media client watches the share's statistics and steps down itself: the 1080p quality stops first, so every viewer gets 720p60; if that does not fit, frame rate drops to 30
+- [x] The media client watches the share's statistics and steps down itself: the 1080p quality stops first, so every viewer gets 720p60; if that does not fit, frame rate drops to 30 (built and tested on the fakes, then switched off after the owner's check on Cloudflare, with the note on the upload; ticket 30)
 - [x] Bitrate, frame rate and scale are changed on the live share without renegotiating
 - [x] The share steps back up when the upload recovers. The spec gives no thresholds for stepping down or up; choose them, and keep them as named constants in one place
 - [x] A dismissible note tells the sharer when their upload cannot carry 1080p
@@ -84,3 +84,10 @@ The notes journey follows the new timings. `pnpm test` (Seam 1, 422; Seam 2, 35)
 Send the dumps for each run. They calibrate the four constants named above, and show how long Chrome spends at 480p in software on its own.
 
 **Checked by the owner** on 2026-11-17, on `graeae-test` (version `4c79e0cd`, Chrome on Windows 11): the 48 fps note at 144 Hz and the software-encoding line both work, as the owner had also seen in earlier testing (steps 2 and 3 of "Needs the owner"). The weak-upload runs and the content hint's judgement are still to come.
+
+**The owner's capped run, and the switch** (2026-11-17, `graeae-test` version `4c79e0cd`, a 10-minute CS2 match, one quality, a viewer in a second tab). Read from the sharer's webrtc-internals dump (17:48:48 to 18:00:32 UTC, the rolling window it keeps):
+- **Uncapped (to about 17:57:45).** The rule stepped down four times, and stepped back up each time within 1 to 2 minutes, so to the owner the note seemed never to go. Chrome said "bandwidth" in spells of 40 to 60 seconds, mostly at 854x480 on OpenH264, sending about 85% of its estimate below its own target; all three of the new conditions held. Nothing was lost and the round trip stayed under 15 ms. The estimate reached 15 to 20 Mbps within most minutes, but from 17:48 to 17:51 it stayed at 5 to 11 Mbps.
+- **Under a 10 Mbps cap on `chrome.exe`'s upload (from about 17:57:45).** The estimate stayed at 5 to 7 Mbps and the share sent at most 6.4 Mbps, still with nothing lost. The rule stepped down, and then stepped up again under the cap, since Chrome stops saying "bandwidth" at 720p30.
+- **The owner's upload** measured 288 Mbps, with 4 ms of latency under load. So every step down in both dumps was false. The uncapped stretch from 17:48 to 17:51 and the capped stretch look the same in a sender's statistics. A threshold on the estimate's peak over 2 minutes would have told them apart by one reading (10.9 Mbps against 7.1). The cause of the low estimate on a fast link, Chrome or the media server's feedback, is unknown.
+- **Decision (the owner):** the step-down is switched off with `STEP_DOWN` in `src/app/lib/media/sending.ts`, and with it the note on the upload. A share always goes out at its full plan, `maintain-framerate` (resolution first), and Chrome alone adapts. The rule stays built and tested behind the switch: `startSending` and `follow` take `stepDown`, and the fake media client takes it from its control (`graeaeFakeMedia.stepDown`, the switch unless a journey says otherwise). `test/sending.test.ts` gains the switch off: no step and no note on a long weak spell, resolution still first, and the other notes kept. The notes journey checks the same on the page, and the weak-upload journey switches it on. The spec (user story 63, Encoding and quality, Notes to a sharer, superseded), `DESIGN.md` and ticket 27's checklist say so. **Ticket 30** looks for a sign that tells a weak upload apart, and for what to do about Chrome's spells at 480p in software.
+- **Checked:** the 48 fps note and the software line (above). **Not judged:** the "motion" content hint on a desktop or a document, moved to ticket 27's checklist.

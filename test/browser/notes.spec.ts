@@ -132,6 +132,13 @@ test("a sharer is told, on their own share alone, of capture stuck at 48 fps and
   await expect(owner.getByText(SOFTWARE)).toHaveCount(0);
   await readings(quim, 1, sent({ fps: 60 }), 42);
   await expect(quim.getByText(SOFTWARE)).toHaveCount(0);
+
+  // With the step-down switched off, as it is, a long spell the browser says is limited by
+  // the upload changes nothing and tells nothing.
+  const { offers } = await sending(quim);
+  await readings(quim, 40, sent({ limited: true }), 44);
+  await expect(quim.getByText(UPLOAD)).toHaveCount(0);
+  expect(await sending(quim)).toEqual({ full: true, offers });
 });
 
 test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and never ends", async ({
@@ -141,9 +148,12 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const rosa = await join("Rosa");
   const own = rosa.getByRole("figure").filter({ has: rosa.getByRole("button", { name: "Stop your screen" }) });
-  // Sent at two qualities, so the 1080p one is the first to stop.
+  // Sent at two qualities, so the 1080p one is the first to stop, with the step-down
+  // switched on (`STEP_DOWN`, off since the owner's check).
   await rosa.evaluate(() => {
-    (globalThis as unknown as Fake).graeaeFakeMedia.twoQualities = true;
+    const fake = (globalThis as unknown as Fake).graeaeFakeMedia;
+    fake.twoQualities = true;
+    fake.stepDown = true;
   });
   await shareScreen(rosa);
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Rosa's screen" }).click();
