@@ -1,35 +1,40 @@
 <script lang="ts">
   // The list of rooms, at the root address for a member with more than one: who is
-  // present in each and how many shares are live. Looking does not make you present.
+  // present in each, kept live over the list's own connection. Looking does not make
+  // you present anywhere. How many shares are live in each arrives with ticket 10.
   import { sample } from "$sample";
   import PlainPage from "$lib/components/plain/PlainPage.svelte";
-  import { load, type Load } from "$lib/api.js";
-  import type { RoomsAnswer } from "../../shared/api.ts";
+  import { ListClient } from "$lib/list-client.svelte.js";
+  import { andList } from "$lib/words.js";
   import { navigate } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
-  let known = $state<Load<RoomsAnswer>>({ state: "loading" });
+  // The page's one connection to the list, for as long as it shows it.
+  let client = $state<ListClient | null>(null);
 
-  if (!sample) {
-    load<RoomsAnswer>("/api/rooms", (value) => {
-      // A member with one room has nothing to choose, so they go straight into it.
-      if (value.state === "loaded" && value.data.rooms.length === 1) {
-        navigate(`/r/${value.data.rooms[0]!.address}`, { replace: true });
-      } else {
-        known = value;
-      }
-    });
-  }
+  $effect(() => {
+    if (sample) return;
+    const opened = new ListClient();
+    client = opened;
+    return () => opened.close();
+  });
 
-  // Who is present and what is live in each room arrive with the list of rooms' own ticket.
+  const list = $derived(client?.list ?? null);
+  const refused = $derived(client?.refused ?? false);
+
+  // A member with one room has nothing to choose, so they go straight into it.
+  $effect(() => {
+    if (list?.rooms.length === 1) navigate(`/r/${list.rooms[0]!.address}`, { replace: true });
+  });
+
   const rooms = $derived(
     sample?.rooms ??
-      (known.state === "loaded" ? known.data.rooms.map((room) => ({ ...room, present: [], live: 0 })) : null),
+      (list && list.rooms.length !== 1 ? list.rooms.map((room) => ({ ...room, live: 0 })) : null),
   );
-  const gear = $derived(!!sample || (known.state === "loaded" && known.data.me.owner));
+  const gear = $derived(!!sample || !!list?.you.owner);
 </script>
 
-{#if known.state === "refused"}
+{#if refused}
   <NothingHere />
 {:else}
   <PlainPage title="Rooms" {gear}>
@@ -51,7 +56,7 @@
               <span class="grid min-w-0 flex-1 gap-0.5">
                 <span class="truncate font-medium">{room.name}</span>
                 <span class={["truncate text-xs", room.present.length ? "text-muted-foreground" : "text-dim"]}>
-                  {room.present.length ? room.present.join(", ") : "No one here"}
+                  {room.present.length ? andList(room.present) : "No one here"}
                 </span>
               </span>
               {#if room.live > 0}

@@ -21,6 +21,7 @@
   import type { Me } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
   import Invites from "./owner/Invites.svelte";
+  import OwnerRooms from "./owner/Rooms.svelte";
 
   let { section }: { section: OwnerSection } = $props();
 
@@ -109,6 +110,7 @@
           <p class="text-muted-foreground">{current.description}</p>
         </div>
         {#if section === "invites" && !sample}<Invites />{/if}
+        {#if section === "rooms" && !sample}<OwnerRooms />{/if}
       </div>
     </main>
   </div>

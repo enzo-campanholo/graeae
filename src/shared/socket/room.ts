@@ -9,9 +9,16 @@ export interface RoomState {
   name: string;
 }
 
-/** Changes to the room itself. None yet: ticket 08 adds renaming. */
-export type RoomChange = never;
+export type RoomChange =
+  /** The owner renamed the room. Its address stays as it was. */
+  { type: "renamed"; name: string };
 
 export function applyRoom(state: RoomState, change: RoomChange): RoomState {
-  return unknownChange(state, change);
+  switch (change.type) {
+    case "renamed":
+      return { ...state, name: change.name };
+    default:
+      // A union of one kind does not narrow to `never`, but its `type` does.
+      return unknownChange(state, change.type);
+  }
 }

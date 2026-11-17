@@ -11,8 +11,11 @@ export interface Person {
 }
 
 export interface PeopleState {
-  /** The member the tab belongs to, who is always among `members`. */
-  you: { id: string; owner: boolean };
+  /**
+   * The member the tab belongs to, who is always among `members`, and how many rooms they
+   * have access to: the bar links back to the list of rooms only when it is more than one.
+   */
+  you: { id: string; owner: boolean; rooms: number };
   /** Every member with access to the room, the owner among them, in no particular order. */
   members: Person[];
 }
@@ -21,7 +24,9 @@ export type PeopleChange =
   /** A member gained access to the room, for instance by pressing an invite to it. */
   | { type: "added"; person: Person }
   /** A member changed their display name. Ticket 07 sends it. */
-  | { type: "renamed"; member: string; name: string };
+  | { type: "renamed"; member: string; name: string }
+  /** The tab's own member now has access to this many rooms. Sent to that member's tabs alone. */
+  | { type: "access"; rooms: number };
 
 export function applyPeople(state: PeopleState, change: PeopleChange): PeopleState {
   switch (change.type) {
@@ -37,6 +42,8 @@ export function applyPeople(state: PeopleState, change: PeopleChange): PeopleSta
           person.id === change.member ? { ...person, name: change.name } : person,
         ),
       };
+    case "access":
+      return { ...state, you: { ...state.you, rooms: change.rooms } };
     default:
       return unknownChange(state, change);
   }
