@@ -15,6 +15,7 @@ import { env, exports } from "cloudflare:workers";
 import { onTestFinished, vi } from "vitest";
 import { Instance, INSTANCE_NAME } from "../src/instance/instance.ts";
 import type { Migration } from "../src/instance/migrations.ts";
+import type { RelayLives } from "../src/instance/relay.ts";
 import { fakeMediaControl, type FakeMediaControl } from "../src/instance/media/fake.ts";
 
 const ORIGIN = "https://graeae.test";
@@ -49,6 +50,11 @@ export interface StartOptions {
   migrations?: readonly Migration[];
   /** Secrets to change from the test's defaults. `undefined` leaves one unset. */
   secrets?: Partial<Record<SecretName, string | undefined>>;
+  /**
+   * A relay credential's life and when it is renewed, shortened as on a test deploy.
+   * Defaults to the real 12 and 11 hours.
+   */
+  relayLives?: RelayLives;
 }
 
 export interface Client {
@@ -100,6 +106,8 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
   const stub = () => env.INSTANCE.getByName(INSTANCE_NAME);
   const shippedMigrations = Instance.migrations;
   if (options.migrations) Instance.migrations = options.migrations;
+  const shippedLives = Instance.relayLives;
+  if (options.relayLives) Instance.relayLives = options.relayLives;
 
   // The instance reads its secrets from its bindings, which it gets when it starts.
   const bindings = env as unknown as Record<string, string | undefined>;
@@ -115,6 +123,7 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
 
   onTestFinished(() => {
     Instance.migrations = shippedMigrations;
+    Instance.relayLives = shippedLives;
     for (const [name, value] of Object.entries(shippedSecrets)) setBinding(bindings, name, value);
     vi.useRealTimers();
   });

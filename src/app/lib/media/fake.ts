@@ -45,6 +45,9 @@ function control(): FakeMediaControl {
       falter: () => undefined,
       recover: () => undefined,
       connections: 0,
+      iceServers: null,
+      restarts: 0,
+      restartFails: false,
       received: "1080p",
       bytes: 0,
       relayed: false,
@@ -103,10 +106,10 @@ export class FakeMediaClient implements MediaClient {
   }
 
   connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
-    void iceServers;
     this.connected = true;
     const fake = control();
     fake.connections += 1;
+    fake.iceServers = iceServers;
     fake.falter = () => faltering(true);
     fake.recover = () => faltering(false);
   }
@@ -114,12 +117,30 @@ export class FakeMediaClient implements MediaClient {
   reset() {
     this.connected = false;
     const fake = control();
+    fake.iceServers = null;
     fake.falter = () => undefined;
     fake.recover = () => undefined;
     this.nextMid = 0;
     this.pulled.clear();
     for (const kind of [...reading.keys()]) this.unfollow(kind);
     this.offered = null;
+  }
+
+  renew(iceServers: IceServer[]) {
+    if (this.connected) control().iceServers = iceServers;
+  }
+
+  async restart(iceServers: IceServer[]): Promise<string> {
+    if (!this.connected) throw new Error("The media connection is not made yet");
+    const fake = control();
+    fake.iceServers = iceServers;
+    fake.restarts += 1;
+    return "v=0 a stand-in offer restarting ICE";
+  }
+
+  async restarted(answer: string) {
+    void answer;
+    if (control().restartFails) throw new Error("The fake was told the restart fails");
   }
 
   async offer(capture: Capture): Promise<Offer> {

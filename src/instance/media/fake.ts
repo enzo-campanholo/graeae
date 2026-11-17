@@ -18,6 +18,7 @@ export type FakeOperation =
   | "pull"
   | "setQuality"
   | "renegotiate"
+  | "restart"
   | "close"
   | "tracks"
   | "relayCredential";
@@ -150,6 +151,14 @@ class FakeMediaServer implements MediaLayer {
     return this.call("renegotiate", () => {
       this.connection(connection);
       this.answers.get(connection)!.push(answer);
+    });
+  }
+
+  restart(connection: MediaConnectionId, offer: string): Promise<string> {
+    return this.call("restart", () => {
+      this.connection(connection);
+      void offer;
+      return "v=0 a stand-in answer to a restart";
     });
   }
 

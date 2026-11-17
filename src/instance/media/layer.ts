@@ -70,6 +70,13 @@ export interface MediaLayer {
   renegotiate(connection: MediaConnectionId, answer: string): Promise<void>;
 
   /**
+   * Hands the media server the browser's SDP `offer` restarting the ICE of the media
+   * connection `connection`, as it takes up a fresh relay credential, and returns the
+   * media server's answer. Every track on it stays as it is.
+   */
+  restart(connection: MediaConnectionId, offer: string): Promise<string>;
+
+  /**
    * Force-closes `tracks` on `connection`: the media stops at once, with nothing needed
    * from the browser. Closing a track that is not there is no error.
    */

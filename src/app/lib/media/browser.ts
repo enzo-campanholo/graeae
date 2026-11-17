@@ -22,6 +22,9 @@ import { every } from "../ticker.ts";
 /** How often a watched share's statistics are read for the quality it arrives at. */
 const RECEIVED_EVERY_MS = 2000;
 
+/** How long a restarted connection has to find its path again before the restart counts as failed. */
+const RESTART_WAIT_MS = 15_000;
+
 export class BrowserMediaClient implements MediaClient {
   readonly browser: BrowserFamily = browserFamily(navigator.userAgent);
   private connection: RTCPeerConnection | null = null;
@@ -68,8 +71,7 @@ export class BrowserMediaClient implements MediaClient {
     this.connection = connection;
     // "disconnected" is the browser losing its path and looking for another by itself;
     // "failed" is it giving up. Either way the instance gives the shares 30 seconds.
-    // No ICE restart is attempted: it would need a renegotiation the media server has not
-    // been proven to take (ticket 22's note for the owner).
+    // No ICE restart is attempted here: the only one is the relay credential's (`restart`).
     let was = false;
     connection.addEventListener("connectionstatechange", () => {
       if (connection !== this.connection) return;
@@ -77,6 +79,51 @@ export class BrowserMediaClient implements MediaClient {
       const now = state === "disconnected" || state === "failed" ? true : state === "connected" ? false : was;
       if (now !== was) faltering(now);
       was = now;
+    });
+  }
+
+  renew(iceServers: IceServer[]) {
+    const connection = this.connection;
+    if (!connection || connection.signalingState === "closed") return;
+    try {
+      // Used the next time the browser gathers candidates; the path in use is left alone.
+      connection.setConfiguration({ ...connection.getConfiguration(), iceServers });
+    } catch {
+      // A browser that refuses keeps its credential until it runs out, an hour later.
+    }
+  }
+
+  async restart(iceServers: IceServer[]): Promise<string> {
+    this.renew(iceServers);
+    const connection = await this.settled();
+    const offer = await connection.createOffer({ iceRestart: true });
+    await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
+    if (!connection.localDescription) throw new Error("The browser made no restart offer");
+    return connection.localDescription.sdp;
+  }
+
+  async restarted(answer: string) {
+    const connection = this.peer();
+    await connection.setRemoteDescription({ type: "answer", sdp: stereoOpus(answer) });
+    // The browser checks the new candidates, through the relay with the fresh credential,
+    // and moves to the pair it finds. It may stay "connected" on the old pair meanwhile.
+    await new Promise<void>((resolve, reject) => {
+      const done = (error?: Error) => {
+        clearTimeout(timer);
+        connection.removeEventListener("iceconnectionstatechange", check);
+        connection.removeEventListener("icegatheringstatechange", check);
+        if (error) reject(error);
+        else resolve();
+      };
+      const check = () => {
+        const state = connection.iceConnectionState;
+        if (state === "failed" || state === "closed") done(new Error(`The restart ended ${state}`));
+        else if ((state === "connected" || state === "completed") && connection.iceGatheringState === "complete") done();
+      };
+      const timer = setTimeout(() => done(new Error("The restart found no path in time")), RESTART_WAIT_MS);
+      connection.addEventListener("iceconnectionstatechange", check);
+      connection.addEventListener("icegatheringstatechange", check);
+      check();
     });
   }
 
