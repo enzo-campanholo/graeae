@@ -43,3 +43,36 @@ export interface DeviceSummary {
 export interface MeAnswer extends Me {
   devices: DeviceSummary[];
 }
+
+/** An owner's invite nobody has used or cancelled, and that has not expired. */
+export interface PendingInvite {
+  /** The invite's address is `/invite/<code>`. */
+  code: string;
+  /** The display name the invited person will have. */
+  name: string;
+  /** The rooms they will get access to, oldest first. */
+  rooms: RoomSummary[];
+  /** When it stops working, in milliseconds since the epoch. */
+  expiresAt: number;
+}
+
+/** `GET /api/owner/invites`: the instance's rooms to choose from, and the pending invites, newest first. */
+export interface InvitesAnswer {
+  rooms: RoomSummary[];
+  invites: PendingInvite[];
+}
+
+/** `POST /api/owner/invites` with `{ name, rooms? }`: the invite just made. */
+export interface CreateInviteAnswer {
+  invite: PendingInvite;
+}
+
+/** `GET /api/invites/<code>`: what the invite page shows before the press. */
+export interface InviteAnswer {
+  name: string;
+}
+
+/** `POST /api/invites/<code>`: the press. Where the new member goes next. */
+export interface JoinAnswer {
+  to: string;
+}

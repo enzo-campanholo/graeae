@@ -1,22 +1,61 @@
 <script lang="ts">
-  // The invite page: one button. Opening it uses nothing up; only the press does.
+  // The invite page: one button. Opening it uses nothing up; only the press does, and
+  // the press remembers this browser and goes straight into the room.
   import { sample } from "$sample";
+  import Loading from "$lib/components/Loading.svelte";
   import Mark from "$lib/components/Mark.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { load, postJson, type Load } from "$lib/api.js";
+  import type { InviteAnswer, JoinAnswer } from "../../shared/api.ts";
+  import { navigate, type Params } from "../router/router.svelte.ts";
+  import NothingHere from "./NothingHere.svelte";
 
-  const invite = sample?.invite ?? null;
+  let { params }: { params: Params } = $props();
+
+  const path = $derived(`/api/invites/${encodeURIComponent(params.invite ?? "")}`);
+
+  let known = $state<Load<InviteAnswer>>(sample ? { state: "loaded", data: sample.invite } : { state: "loading" });
+  let joining = $state(false);
+
+  $effect(() => {
+    if (sample) return;
+    let current = true;
+    load<InviteAnswer>(path, (value) => {
+      if (current) known = value;
+    });
+    return () => {
+      current = false;
+    };
+  });
+
+  async function join() {
+    if (sample) return;
+    joining = true;
+    const answer = await postJson<JoinAnswer>(path, {}).catch(() => null);
+    // Refused at the press: used, cancelled or expired since the page was opened.
+    if (answer === null) known = { state: "refused" };
+    else navigate(answer.to, { replace: true });
+  }
 </script>
 
 <svelte:head>
-  <title>graeae</title>
+  {#if known.state !== "refused"}<title>graeae</title>{/if}
 </svelte:head>
 
-<main class="grid min-h-dvh place-items-center p-6">
-  <div class="grid justify-items-center gap-6 text-center">
-    <Mark size="lg" />
-    <div class="grid justify-items-center gap-3">
-      <Button size="lg" class="min-w-48">{invite ? `Join as ${invite.name}` : "Join"}</Button>
-      <p class="text-muted-foreground max-w-72 text-xs">This browser will be remembered as yours.</p>
+{#if known.state === "refused"}
+  <NothingHere />
+{:else}
+  <main class="grid min-h-dvh place-items-center p-6">
+    <div class="grid justify-items-center gap-6 text-center">
+      {#if known.state === "loading"}
+        <Loading />
+      {:else}
+        <Mark size="lg" />
+        <div class="grid justify-items-center gap-3">
+          <Button size="lg" class="min-w-48" disabled={joining} onclick={join}>Join as {known.data.name}</Button>
+          <p class="text-muted-foreground max-w-72 text-xs">This browser will be remembered as yours.</p>
+        </div>
+      {/if}
     </div>
-  </div>
-</main>
+  </main>
+{/if}
