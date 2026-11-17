@@ -324,10 +324,13 @@ export class Instance extends DurableObject<Env> {
     const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
 
     if (message.type === "usage" && type === "received") {
-      // Counted from whichever tab sends it: a report only ever adds to the count.
-      const { bytes, relayed, final } = request as { bytes?: unknown; relayed?: unknown; final?: unknown };
+      // Checked like any request that adds something: here, to the count. A tab's `final`
+      // total needs nothing of its own, since only a new or restarted media connection,
+      // which the instance makes itself, counts from zero again.
+      if (!allowed) return;
+      const { bytes, relayed } = request as { bytes?: unknown; relayed?: unknown };
       if (!isByteCount(bytes) || typeof relayed !== "boolean") return;
-      this.usage.received(tab.id, bytes, relayed, final === true);
+      this.usage.received(tab.id, bytes, relayed);
       this.checkBudget();
       return;
     }
@@ -383,6 +386,7 @@ export class Instance extends DurableObject<Env> {
       const { offer } = request as { offer?: unknown };
       if (!isSdp(offer)) return;
       const answer = await this.shares.restart(tab, offer);
+      if (answer !== null) this.usage.newTotal(tab.id);
       this.signaling.toTab(
         tab.id,
         answer === null ? { type: "media", change: { type: "restart-refused" } } : { type: "media", change: { type: "restarted", answer } },
@@ -408,6 +412,7 @@ export class Instance extends DurableObject<Env> {
       const iceServers = await this.shares.connect(tab, () => this.relay.mint());
       if (iceServers === "already") return;
       if (iceServers) {
+        this.usage.newTotal(tab.id);
         this.relay.minted(tab.id);
         this.schedule();
       }

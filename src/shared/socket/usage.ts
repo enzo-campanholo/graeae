@@ -4,7 +4,9 @@
 // bytes its media connection's transport has received since it opened, and whether that
 // connection is on the relay. The instance counts usage from these reports alone (spec,
 // Usage and the usage budget). A tab about to restart its media connection sends the total
-// so far as final, and its next connection's totals start again from zero.
+// so far as final, and its next connection's totals start again from zero. The instance
+// counts from zero only once it has made or restarted that connection itself: a lower
+// total on the same connection is ignored.
 //
 // The room hears how far the month has gone into the usage budget, and only once it
 // matters to the member: the owner's tabs from 80%, everyone's from 95%. At the limit
@@ -31,7 +33,9 @@ export type UsageRequest =
   /**
    * `bytes` is the running total this tab's media connection's transport has received
    * since it opened; `relayed`, whether the connection goes through the relay now.
-   * `final` says it is the last total of this connection: the next starts from zero.
+   * `final` says it is the last total of this connection, before the tab makes a new one
+   * or restarts it; the instance needs nothing from it, since it made or restarted the
+   * connection itself.
    */
   { type: "received"; bytes: number; relayed: boolean; final?: true };
 
