@@ -36,6 +36,14 @@ export interface MediaClient {
   offer(capture: Capture): Promise<Offer>;
   /** Applies the media server's answer to the last offer: the capture is now being sent. */
   accept(answer: string): Promise<void>;
+  /**
+   * Applies the media server's `offer` to receive a watched share on the transceiver
+   * `video`, and makes the answer to send back. `stream` is the share's picture; null
+   * when there is none to show.
+   */
+  pull(offer: string, video: string): Promise<{ answer: string; stream: MediaStream | null }>;
+  /** Lets go of the watched share on `video`, whose pull the instance has closed. */
+  drop(video: string): void;
   /** Stops sending `capture` and stops capturing it. Safe to call more than once. */
   stop(capture: Capture): void;
   /** Stops every capture and closes the media connection, as the tab leaves the room. */

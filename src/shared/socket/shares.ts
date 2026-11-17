@@ -1,6 +1,6 @@
 // The shares area: the room's live shares. A share is live from the moment the instance
 // has registered it with the media server until it ends, whether or not anyone watches.
-// Ticket 11 adds who watches what.
+// Who watches what is the watching area's.
 //
 // Starting and stopping a share are the sharer's tab's requests. The answer to a start
 // that only the sharer's tab needs (the media server's half of the negotiation, or a

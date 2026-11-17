@@ -5,7 +5,7 @@
 import { fakeMediaServer } from "./fake.ts";
 import type { MediaLayer } from "./layer.ts";
 
-export type { MediaConnectionId, MediaLayer, Track } from "./layer.ts";
+export type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
 
 export function mediaLayer(env: Env): MediaLayer {
   void env;

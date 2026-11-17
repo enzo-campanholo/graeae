@@ -35,6 +35,7 @@ describe("a tab on a room", () => {
       people: { you, members: [{ id: you.id, name: "Owner" }] },
       presence: { present: [you.id], reconnecting: [] },
       shares: { live: [] },
+      watching: { stage: [], watchers: [] },
       usage: {},
     });
   });

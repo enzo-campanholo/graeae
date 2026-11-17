@@ -88,10 +88,10 @@ export class Signaling {
    * Opens a socket for a tab of `member` on `device` showing the room at `address`, whom
    * the caller has already checked. Tells the room's other tabs if the member has just
    * arrived, or is heard again after the "reconnecting" mark, then sends the new tab the
-   * whole room, as `view` builds it once the tab is counted. Returns the answer that hands
+   * whole room, as `view` builds it for the tab once it is counted. Returns the answer that hands
    * the browser its end of the socket.
    */
-  open(member: string, device: string, address: string, view: () => RoomView): Response {
+  open(member: string, device: string, address: string, view: (tab: string) => RoomView): Response {
     const arrived = !this.present(address).has(member);
     if (arrived) this.toRoom(address, { type: "presence", change: { type: "arrived", member } });
     const resumed = this.resume(device, address);
@@ -101,7 +101,7 @@ export class Signaling {
     this.ctx.acceptWebSocket(ours, [roomTag(address), memberTag(member), deviceTag(device), tabTag(tab.id)]);
     ours.serializeAttachment(tab);
     this.mark(address, tab.id);
-    send(ours, { type: "state", state: view() });
+    send(ours, { type: "state", state: view(tab.id) });
     if (arrived) this.presenceChanged(address);
     this.schedule();
     return new Response(null, { status: 101, webSocket: browserEnd });
@@ -270,6 +270,14 @@ export class Signaling {
     for (const socket of this.ctx.getWebSockets(roomTag(address))) {
       const tab = tabOf(socket);
       if (tab && tab.id !== exceptTab) send(socket, message);
+    }
+  }
+
+  /** Sends `message` to every open tab of `member` on the room at `address`. */
+  toMemberIn(address: string, member: string, message: ServerMessage) {
+    for (const socket of this.ctx.getWebSockets(memberTag(member))) {
+      const tab = tabOf(socket);
+      if (tab && isRoomTab(tab) && tab.room === address) send(socket, message);
     }
   }
 

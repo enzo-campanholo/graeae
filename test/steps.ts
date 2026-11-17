@@ -10,7 +10,7 @@ import type {
 } from "../src/shared/api.ts";
 import { SETUP_SECRET, type TestBrowser, type TestInstance } from "./harness.ts";
 import type { Tab } from "./sockets.ts";
-import type { IceServer } from "../src/shared/socket/index.ts";
+import type { IceServer, LiveShare } from "../src/shared/socket/index.ts";
 
 /** What the setup page sends: the part of `/setup#<secret>` after the `#`. */
 export function useSetupSecret(browser: TestBrowser, secret = SETUP_SECRET, headers: HeadersInit = {}) {
@@ -146,3 +146,34 @@ export async function shareWebcam(tab: Tab) {
   const started = await tab.next();
   expect(started).toMatchObject({ type: "shares", change: { type: "started", share: { kind: "webcam" } } });
 }
+
+/** What the page sends when a member clicks a share's icon to watch it, once its media connection is made. */
+export function startWatching(tab: Tab, share: LiveShare) {
+  tab.send({ type: "watching", request: { type: "watch", share } });
+}
+
+/** What the page sends to stop watching a share: its icon again, or "stop watching" on the stage. */
+export function stopWatching(tab: Tab, share: LiveShare) {
+  tab.send({ type: "watching", request: { type: "unwatch", share } });
+}
+
+/**
+ * Has `tab` watch `share`, as the page does on a click of its icon once the tab's media
+ * connection is made: ask, read the media server's offer and the share arriving on the
+ * stage, and answer the offer. Returns the mid the share is pulled on.
+ */
+export async function watch(tab: Tab, share: LiveShare): Promise<string> {
+  startWatching(tab, share);
+  const pulled = await tab.next();
+  if (pulled.type !== "media" || pulled.change.type !== "pulled") {
+    throw new Error(`expected the pull, got ${JSON.stringify(pulled)}`);
+  }
+  expect(pulled.change).toEqual({ type: "pulled", share, offer: expect.any(String), video: expect.any(String) });
+  expect(await tab.next()).toEqual({ type: "watching", change: { type: "watched", share } });
+  tab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "answered" } });
+  return pulled.change.video;
+}
+
+/** What the fake media client answers to the media server's offer for a pull. */
+export const FAKE_ANSWER = "v=0 a stand-in answer";
