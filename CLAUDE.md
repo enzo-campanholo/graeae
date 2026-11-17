@@ -23,7 +23,7 @@ Node and pnpm come from `shell.nix`: run commands as `nix-shell --run '<command>
 - `pnpm typecheck`, `pnpm lint`.
 - `pnpm run deploy`: see `scripts/deploy.mjs`.
 
-Seam 1 tests use the harness in `test/harness.ts`: HTTP, sockets and the test's clock only.
+Seam 1 tests use the harness in `test/harness.ts`: HTTP, sockets, the test's clock, and the fake media server's controls (`instance.media`) only. `test/harness.test.ts`, the harness's own test, may reach inside the instance.
 
 ## Migrations
 
