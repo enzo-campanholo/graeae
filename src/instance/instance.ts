@@ -445,8 +445,8 @@ export class Instance extends DurableObject<Env> {
    * under the same name.
    */
   private sharesEnded(ended: readonly Ended[]) {
-    for (const { room, share, tab, replacedIn } of ended) {
-      if (replacedIn !== undefined) this.signaling.toTab(tab, { type: "media", change: { type: "handed-over", kind: share.kind } });
+    for (const { room, share, tabId, replacedIn } of ended) {
+      if (replacedIn !== undefined) this.signaling.toTab(tabId, { type: "media", change: { type: "handed-over", kind: share.kind } });
       if (replacedIn !== room) this.shareChanged(room, { type: "ended", share });
     }
   }
@@ -456,7 +456,7 @@ export class Instance extends DurableObject<Env> {
    * nothing it asks is granted any more: whatever it was sending and watching is cut off.
    */
   private async left(tab: Tab) {
-    await this.cutOff({ tab: tab.id });
+    await this.cutOff({ tabId: tab.id });
   }
 
   /**
@@ -467,7 +467,7 @@ export class Instance extends DurableObject<Env> {
    */
   private async reconnectMedia(tab: Tab) {
     try {
-      const ended = await this.shares.cutOff({ tab: tab.id });
+      const ended = await this.shares.cutOff({ tabId: tab.id });
       for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
     } finally {
       this.checkBudget();
@@ -497,7 +497,7 @@ export class Instance extends DurableObject<Env> {
       this.sharesEnded(ended);
     } finally {
       // The tabs cut off report no more: what they watched since their last report is charged.
-      if ("tab" in covered) this.usage.tabGone(covered.tab);
+      if ("tabId" in covered) this.usage.tabGone(covered.tabId);
       for (const tab of cut?.tabs ?? []) this.usage.tabGone(tab.id);
       this.checkBudget();
       cut?.tell();

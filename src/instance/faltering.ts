@@ -16,19 +16,19 @@ export class Falterings {
     private readonly schedule: () => void,
   ) {}
 
-  /** The tab `tab` says its media connection falters. Only the first time it says so counts. */
-  falters(tab: string) {
+  /** The tab `tabId` says its media connection falters. Only the first time it says so counts. */
+  falters(tabId: string) {
     const faltering = this.all();
-    if (faltering[tab] !== undefined) return;
-    this.save({ ...faltering, [tab]: Date.now() });
+    if (faltering[tabId] !== undefined) return;
+    this.save({ ...faltering, [tabId]: Date.now() });
     this.schedule();
   }
 
-  /** The tab `tab`'s media connection has recovered, or the tab is gone. */
-  recovered(tab: string) {
+  /** The tab `tabId`'s media connection has recovered, or the tab is gone. */
+  recovered(tabId: string) {
     const faltering = this.all();
-    if (faltering[tab] === undefined) return;
-    delete faltering[tab];
+    if (faltering[tabId] === undefined) return;
+    delete faltering[tabId];
     this.save(faltering);
     this.schedule();
   }
@@ -37,9 +37,9 @@ export class Falterings {
   takeDue(): string[] {
     const now = Date.now();
     const faltering = this.all();
-    const due = Object.keys(faltering).filter((tab) => faltering[tab]! + FALTERING_MS <= now);
+    const due = Object.keys(faltering).filter((tabId) => faltering[tabId]! + FALTERING_MS <= now);
     if (due.length === 0) return [];
-    for (const tab of due) delete faltering[tab];
+    for (const tabId of due) delete faltering[tabId];
     this.save(faltering);
     return due;
   }

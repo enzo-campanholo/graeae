@@ -95,7 +95,7 @@ export type Covered =
   /** One device's. */
   | { device: string }
   /** One tab's. */
-  | { tab: string }
+  | { tabId: string }
   /** Every watch, and no share: the usage budget stop. */
   | { everyWatch: true };
 
@@ -104,7 +104,7 @@ export interface Ended {
   room: string;
   share: LiveShare;
   /** The tab that sent it. */
-  tab: string;
+  tabId: string;
   /**
    * Set when a hand-over replaced it with a share that is live: the room that one is live
    * in. Within one room the share carries on under the same name, so the room is not told
@@ -130,7 +130,7 @@ interface Where {
 
 function whereCovered(covered: Covered): Where {
   if ("everyWatch" in covered) return { where: "1 = 1", bindings: [] };
-  if ("tab" in covered) return { where: "tab_id = ?", bindings: [covered.tab] };
+  if ("tabId" in covered) return { where: "tab_id = ?", bindings: [covered.tabId] };
   if ("device" in covered) return { where: "device_id = ?", bindings: [covered.device] };
   if (covered.room === undefined) return { where: "member_id = ?", bindings: [covered.member] };
   return { where: "member_id = ? AND room_address = ?", bindings: [covered.member, covered.room] };
@@ -138,16 +138,16 @@ function whereCovered(covered: Covered): Where {
 
 /** What the instance hears of watching as it changes, to tell the tabs concerned. */
 export interface WatchingListener {
-  /** The tab `tab` no longer watches `share`: its pull is closed. */
-  unwatched(tab: string, share: LiveShare): void;
+  /** The tab `tabId` no longer watches `share`: its pull is closed. */
+  unwatched(tabId: string, share: LiveShare): void;
   /** The members watching `share`, live in the room `room`, are now `members`. */
   watchers(room: string, share: LiveShare, members: string[]): void;
-  /** The watch `watch` put a share sent at up to `maxBitrate` bits per second on the tab `tab`'s stage. */
-  began(watch: string, tab: string, maxBitrate: number): void;
-  /** The watch `watch` of the tab `tab`, which was on its stage, is recorded as ended. */
-  ended(watch: string, tab: string): void;
-  /** A hand-over moved the tab `tab`'s watch of `share` to the new share, pulled as `moved` says. */
-  moved(tab: string, share: LiveShare, moved: Moved): void;
+  /** The watch `watch` put a share sent at up to `maxBitrate` bits per second on the tab `tabId`'s stage. */
+  began(watch: string, tabId: string, maxBitrate: number): void;
+  /** The watch `watch` of the tab `tabId`, which was on its stage, is recorded as ended. */
+  ended(watch: string, tabId: string): void;
+  /** A hand-over moved the tab `tabId`'s watch of `share` to the new share, pulled as `moved` says. */
+  moved(tabId: string, share: LiveShare, moved: Moved): void;
 }
 
 /** What became of a request to watch a share. */
@@ -240,9 +240,9 @@ export class Shares {
     );
   }
 
-  /** The live shares the tab `tab` sends. */
-  liveFrom(tab: string): LiveShare[] {
-    return this.current(`WHERE tab_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid`, tab).map(toLiveShare);
+  /** The live shares the tab `tabId` sends. */
+  liveFrom(tabId: string): LiveShare[] {
+    return this.current(`WHERE tab_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid`, tabId).map(toLiveShare);
   }
 
   /** Every live share of `member`, wherever it is live, oldest first. */
@@ -252,18 +252,18 @@ export class Shares {
     );
   }
 
-  /** The shares the tab `tab` watches, in the order it began watching them. */
-  stage(tab: string): LiveShare[] {
-    return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL ORDER BY watching_at, rowid", tab).map(
+  /** The shares the tab `tabId` watches, in the order it began watching them. */
+  stage(tabId: string): LiveShare[] {
+    return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL ORDER BY watching_at, rowid", tabId).map(
       (watch) => watch.share,
     );
   }
 
-  /** The shares on the tab `tab`'s stage it watches at a quality other than "Auto", in the order it began watching them. */
-  qualities(tab: string): ChosenQuality[] {
+  /** The shares on the tab `tabId`'s stage it watches at a quality other than "Auto", in the order it began watching them. */
+  qualities(tabId: string): ChosenQuality[] {
     return this.watches(
       "WHERE tab_id = ? AND watching_at IS NOT NULL AND quality != 'auto' ORDER BY watching_at, rowid",
-      tab,
+      tabId,
     ).map((watch) => ({ share: watch.share, quality: watch.quality as ChosenQuality["quality"] }));
   }
 
@@ -294,18 +294,18 @@ export class Shares {
       .map((row) => ({ id: row.tab_id, device: row.device_id, room: row.room_address, member: row.member_id }));
   }
 
-  /** Whether the tab `tab` has a media connection on record, made or being made. */
-  hasConnection(tab: string): boolean {
-    return this.connectionRow(tab) !== undefined;
+  /** Whether the tab `tabId` has a media connection on record, made or being made. */
+  hasConnection(tabId: string): boolean {
+    return this.connectionRow(tabId) !== undefined;
   }
 
   /**
-   * The answer that handed `tab` its media connection never reached it: its socket was
+   * The answer that handed `tabId` its media connection never reached it: its socket was
    * lost on the way. When it asks again, it gets a new connection (`connect`).
    */
-  unanswered(tab: string) {
+  unanswered(tabId: string) {
     const tabs = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
-    if (!tabs.includes(tab)) this.kv.put(UNANSWERED_KEY, [...tabs, tab]);
+    if (!tabs.includes(tabId)) this.kv.put(UNANSWERED_KEY, [...tabs, tabId]);
   }
 
   /**
@@ -543,7 +543,7 @@ export class Shares {
    * watchers, until a try succeeds; it is no longer listed, since the new one is.
    * `connected` says whether a tab's signaling connection is open.
    */
-  async handOver(id: string, connected: (tab: string) => boolean): Promise<Ended[]> {
+  async handOver(id: string, connected: (tabId: string) => boolean): Promise<Ended[]> {
     const to = this.records("WHERE id = ? AND live_at IS NOT NULL", id)[0];
     if (!to?.replaces) return [];
     const from = this.records("WHERE id = ? AND live_at IS NOT NULL", to.replaces)[0];
@@ -566,7 +566,7 @@ export class Shares {
     }
     // The sharer's tabs on the room hear who watches the share under its one name, once.
     if (sameRoom && pulls.length > 0) this.listener.watchers(to.room, toLiveShare(to), this.watcherIds(to.id, to.member));
-    return [{ room: from.room, share: toLiveShare(from), tab: from.tab, replacedIn: to.room }];
+    return [{ room: from.room, share: toLiveShare(from), tabId: from.tab, replacedIn: to.room }];
   }
 
   /**
@@ -577,7 +577,7 @@ export class Shares {
    * the old share until a try succeeds, and is not moved. If the new pull fails, or the tab
    * leaves or the new share ends meanwhile, the share leaves the stage.
    */
-  private async move(watch: WatchRecord, to: ShareRecord, connected: (tab: string) => boolean) {
+  private async move(watch: WatchRecord, to: ShareRecord, connected: (tabId: string) => boolean) {
     if (!(await this.closeWatch(watch, { moving: true }))) return;
     const record = newWatch(watch, to, to.qualities === 2 ? watch.quality : "auto");
     const watcherMediaId = this.connectionRow(watch.tab)?.media_id;
@@ -719,7 +719,7 @@ export class Shares {
    * The cut-off, which every clean leave goes through too: ends the live shares `covered`
    * takes in and closes the watching it takes in. In order, it force-closes the shares'
    * own tracks, then every other pull of those shares, then the covered pulls. Then it
-   * sweeps the media connections of the covered tabs and of `tabs`, and forgets each once
+   * sweeps the media connections of the covered tabs and of `tabIds`, and forgets each once
    * nothing is left on it: an empty connection a cut-off browser keeps open carries
    * nothing and cannot gain a track, so it is left alone. The usage budget stop forgets
    * none: its watchers stay, and may watch again. Returns the shares that ended.
@@ -731,16 +731,16 @@ export class Shares {
    * any more, and the covered tabs are no longer open: a share or pull of theirs still
    * waiting for the media server closes itself when it returns.
    */
-  async cutOff(covered: Covered, tabs: readonly string[] = [], subject?: Subject): Promise<Ended[]> {
+  async cutOff(covered: Covered, tabIds: readonly string[] = [], subject?: Subject): Promise<Ended[]> {
     const where = whereCovered(covered);
-    if ("tab" in covered) this.recovered(covered.tab);
+    if ("tabId" in covered) this.recovered(covered.tabId);
     // The usage budget stop ends no share, and its watchers' tabs carry on with their media
     // connections, ready to watch again once the budget allows it.
     const stop = "everyWatch" in covered;
     const shares = stop ? [] : this.records(`WHERE ${where.where} AND live_at IS NOT NULL`, ...where.bindings);
     const touched = new Set([
-      ...tabs,
-      ...("tab" in covered ? [covered.tab] : []),
+      ...tabIds,
+      ...("tabId" in covered ? [covered.tabId] : []),
       ...shares.map((share) => share.tab),
       ...this.watches(`WHERE ${where.where}`, ...where.bindings).map((watch) => watch.tab),
     ]);
@@ -769,7 +769,7 @@ export class Shares {
       try {
         if (await this.closeTracks(share, { subject, gone })) {
           closed.push(share);
-          ended.push({ room: share.room, share: toLiveShare(share), tab: share.tab, ...(replacedIn ? { replacedIn } : {}) });
+          ended.push({ room: share.room, share: toLiveShare(share), tabId: share.tab, ...(replacedIn ? { replacedIn } : {}) });
         }
       } finally {
         this.ending.delete(share.id);
@@ -861,7 +861,7 @@ export class Shares {
   }
 
   /**
-   * The sweep: asks the media server which tracks each media connection of `tabs` really
+   * The sweep: asks the media server which tracks each media connection of `tabIds` really
    * has, or of every tab without it, as after a restart. A track no record accounts for is
    * force-closed. A record whose track is gone is dropped, and what it was ends as if
    * closed: a live share ends for its watchers too. A record left half-made by a call that
@@ -870,11 +870,11 @@ export class Shares {
    * connection the media server cannot be asked about now is left as it is. Returns the
    * shares that ended.
    */
-  async sweep(tabs?: readonly string[]): Promise<Ended[]> {
+  async sweep(tabIds?: readonly string[]): Promise<Ended[]> {
     const rows = this.sql
       .exec<{ tab_id: string; media_id: string | null }>("SELECT tab_id, media_id FROM media_connection")
       .toArray()
-      .filter((row) => tabs === undefined || tabs.includes(row.tab_id));
+      .filter((row) => tabIds === undefined || tabIds.includes(row.tab_id));
     const ended: Ended[] = [];
     for (const row of rows) {
       if (typeof row.media_id === "string") ended.push(...(await this.sweepConnection(row.tab_id, row.media_id)));
@@ -883,12 +883,12 @@ export class Shares {
     return ended;
   }
 
-  private async sweepConnection(tab: string, mediaId: string): Promise<Ended[]> {
+  private async sweepConnection(tabId: string, mediaId: string): Promise<Ended[]> {
     // What the records held before the question: a record made while it was being
     // answered cannot be judged by the answer.
     const before = new Set([
-      ...this.records("WHERE tab_id = ?", tab).map((share) => share.id),
-      ...this.watches("WHERE tab_id = ?", tab).map((watch) => watch.id),
+      ...this.records("WHERE tab_id = ?", tabId).map((share) => share.id),
+      ...this.watches("WHERE tab_id = ?", tabId).map((watch) => watch.id),
     ]);
     let open: Track[];
     try {
@@ -897,8 +897,8 @@ export class Shares {
       return [];
     }
     const busy = (id: string) => this.inFlight.has(id) || this.ending.has(id) || this.closing.has(id);
-    const shares = this.records("WHERE tab_id = ?", tab);
-    const watches = this.watches("WHERE tab_id = ?", tab);
+    const shares = this.records("WHERE tab_id = ?", tabId);
+    const watches = this.watches("WHERE tab_id = ?", tabId);
     const openTrack = (name: string) => open.find((track) => track.name === name);
 
     // Every track a record whose call is done, or still under way, accounts for.
@@ -947,7 +947,7 @@ export class Shares {
    * `present` says whether a tab is still open or in its grace period: the media
    * connection of one that is not is forgotten once nothing is left on it.
    */
-  async retry(present: (tab: string) => boolean): Promise<Ended[]> {
+  async retry(present: (tabId: string) => boolean): Promise<Ended[]> {
     const ended: Ended[] = [];
     const touched = new Set<string>();
     for (const due of this.retries.due()) {
@@ -989,17 +989,17 @@ export class Shares {
   }
 
   /**
-   * The tab `tab` says its media connection falters while its socket is fine. The shares
+   * The tab `tabId` says its media connection falters while its socket is fine. The shares
    * it sends stay live for 30 seconds from the first time it says so, while the browser
    * tries to recover, and end then (`faltered`) unless it recovers first.
    */
-  faltering(tab: string) {
-    this.falterings.falters(tab);
+  faltering(tabId: string) {
+    this.falterings.falters(tabId);
   }
 
-  /** The tab `tab`'s media connection has recovered, or the tab is gone: its shares no longer wait to end. */
-  recovered(tab: string) {
-    this.falterings.recovered(tab);
+  /** The tab `tabId`'s media connection has recovered, or the tab is gone: its shares no longer wait to end. */
+  recovered(tabId: string) {
+    this.falterings.recovered(tabId);
   }
 
   /**
