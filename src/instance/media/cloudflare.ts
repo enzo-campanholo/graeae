@@ -17,6 +17,7 @@
 // | pull           | POST sessions/{id}/tracks/new, remote tracks; gives the server's offer |
 // | setQuality     | PUT sessions/{id}/tracks/update, the pulled track's simulcast choice  |
 // | renegotiate    | PUT sessions/{id}/renegotiate, the browser's answer                   |
+// | restart        | POST sessions/{id}/tracks/new, the browser's ICE restart offer alone  |
 // | close          | PUT sessions/{id}/tracks/close, force: true                           |
 // | tracks         | GET sessions/{id}                                                     |
 //
@@ -142,6 +143,17 @@ export class CloudflareMediaServer implements MediaLayer {
     await this.sfu("PUT", `/sessions/${connection}/renegotiate`, {
       sessionDescription: { type: "answer", sdp: answer },
     });
+  }
+
+  async restart(connection: MediaConnectionId, offer: string): Promise<string> {
+    // Unproven against Cloudflare (ticket 25's note for the owner): an offer with no new
+    // tracks, which restarts ICE on the session. A refusal sends the tab down the ordinary
+    // reconnect path, so a media server that will not take it costs a reconnect, no more.
+    const answer = await this.sfu("POST", `/sessions/${connection}/tracks/new`, {
+      sessionDescription: { type: "offer", sdp: offer },
+    });
+    if (answer.sessionDescription?.type !== "answer") throw new Error("The media server gave no answer to a restart");
+    return answer.sessionDescription.sdp;
   }
 
   async close(connection: MediaConnectionId, tracks: readonly Track[]): Promise<void> {

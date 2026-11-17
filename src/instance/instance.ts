@@ -27,6 +27,7 @@ import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
+import { Relay, RELAY_LIVES, type RelayLives } from "./relay.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
 import { Shares, type Covered } from "./shares.ts";
 import { Signaling, type Cut, type Tab } from "./signaling.ts";
@@ -45,16 +46,25 @@ const BUDGET_TOLD_KEY = "usage:told";
 export class Instance extends DurableObject<Env> {
   /** The migrations this code ships with. The test harness swaps them to start on an older schema. */
   static migrations: readonly Migration[] = migrations;
+  /** A relay credential's life and when it is renewed. The test harness shortens them, as the owner may on a test deploy. */
+  static relayLives: RelayLives = RELAY_LIVES;
 
   private readonly people: People;
   private readonly signaling: Signaling;
   private readonly shares: Shares;
   private readonly usage: Usage;
+  private readonly relay: Relay;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
     this.usage = new Usage(ctx.storage.sql);
+    const media = mediaLayer(env);
+    // Made first, since the signaling may set the alarm as it starts; it reads the tabs only when asked.
+    this.relay = new Relay(ctx.storage.kv, media, {
+      connected: (tab) => this.shares.hasConnection(tab),
+      reachable: (tab) => this.signaling.isOpen(tab),
+    }, Instance.relayLives);
     this.signaling = new Signaling(
       ctx,
       (address) => this.relist(address),
@@ -70,7 +80,7 @@ export class Instance extends DurableObject<Env> {
     this.shares = new Shares(
       ctx.storage.sql,
       ctx.storage.kv,
-      mediaLayer(env),
+      media,
       {
         unwatched: (tab, share) => this.signaling.toTab(tab, { type: "watching", change: { type: "unwatched", share } }),
       // Only the sharer learns who is watching.
@@ -131,12 +141,18 @@ export class Instance extends DurableObject<Env> {
   /**
    * Sets the instance's one alarm for the earliest moment anything waits for: a grace
    * period running out, a member falling silent, a failed close's next try, or the end
-   * of a share whose media has faltered for 30 seconds, or the month resetting while the
-   * room has been warned about the usage budget.
+   * of a share whose media has faltered for 30 seconds, the month resetting while the
+   * room has been warned about the usage budget, or a tab due a fresh relay credential.
    */
   private schedule() {
     const reset = this.told() === null ? null : this.usage.resetsAt();
-    const moments = [this.signaling.nextMoment(), this.shares.nextRetry(), this.shares.nextFaltered(), reset].filter(
+    const moments = [
+      this.signaling.nextMoment(),
+      this.shares.nextRetry(),
+      this.shares.nextFaltered(),
+      reset,
+      this.relay.next(),
+    ].filter(
       (moment): moment is number => moment !== null,
     );
     if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
@@ -345,6 +361,22 @@ export class Instance extends DurableObject<Env> {
       }
       return;
     }
+    // A restart needs no check: like an answer, it only renews the tab's own path to the media server.
+    if (message.type === "media" && type === "restart") {
+      const { offer } = request as { offer?: unknown };
+      if (!isSdp(offer)) return;
+      const answer = await this.shares.restart(tab, offer);
+      this.signaling.toTab(
+        tab.id,
+        answer === null ? { type: "media", change: { type: "restart-refused" } } : { type: "media", change: { type: "restarted", answer } },
+      );
+      return;
+    }
+    // Nor does a reconnect: it only ever takes away.
+    if (message.type === "media" && type === "reconnect") {
+      await this.reconnectMedia(tab);
+      return;
+    }
     // Media that falters needs no check: it can only end the tab's own shares.
     if (message.type === "media" && type === "faltering") {
       this.shares.faltering(tab.id);
@@ -356,8 +388,12 @@ export class Instance extends DurableObject<Env> {
     }
     if (message.type === "media" && type === "connect") {
       if (!allowed) return;
-      const iceServers = await this.shares.connect(tab);
+      const iceServers = await this.shares.connect(tab, () => this.relay.mint());
       if (iceServers === "already") return;
+      if (iceServers) {
+        this.relay.minted(tab.id);
+        this.schedule();
+      }
       // The socket was lost while the connection was being made: the tab may ask again.
       if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id);
       this.signaling.toTab(
@@ -409,6 +445,24 @@ export class Instance extends DurableObject<Env> {
    */
   private async left(tab: Tab) {
     await this.cutOff({ tab: tab.id });
+  }
+
+  /**
+   * The ordinary reconnect path for a tab still present, after its media connection's
+   * restart failed: everything its media connection carries is cut off and the connection
+   * let go of, then the tab hears `dropped` and makes a new one. Unlike a leave, the tab
+   * still reports what it receives, so its usage is left to its own totals.
+   */
+  private async reconnectMedia(tab: Tab) {
+    try {
+      const ended = await this.shares.cutOff({ tab: tab.id });
+      for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    } finally {
+      this.checkBudget();
+      // A close that failed keeps the connection on record, and is tried again. Until the
+      // tab leaves, its next `connect` then gets no answer, as for any tab that has one.
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped" } });
+    }
   }
 
   /**
@@ -503,7 +557,7 @@ export class Instance extends DurableObject<Env> {
 
   /**
    * The alarm: grace periods running out, members falling silent, failed closes tried
-   * again, and shares whose media has faltered for too long.
+   * again, shares whose media has faltered for too long, and fresh relay credentials.
    */
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
@@ -512,6 +566,9 @@ export class Instance extends DurableObject<Env> {
     ended.push(...faltered.ended);
     for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
     for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
+    await this.relay.renew((tab, iceServers) =>
+      this.signaling.toTab(tab, { type: "media", change: { type: "renewed", iceServers } }),
+    );
     // The month may have reset.
     this.checkBudget();
     this.schedule();

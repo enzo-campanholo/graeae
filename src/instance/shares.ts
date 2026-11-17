@@ -33,9 +33,6 @@ import { sameShare, type ChosenQuality, type QualityChoice } from "../shared/soc
 import type { MediaLayer, Pulled, Track } from "./media/index.ts";
 import type { Tab } from "./signaling.ts";
 
-/** A relay credential lasts 12 hours. */
-export const RELAY_CREDENTIAL_TTL_SECONDS = 12 * 60 * 60;
-
 /** A share as the instance recorded it. */
 interface ShareRecord {
   id: string;
@@ -316,13 +313,13 @@ export class Shares {
   }
 
   /**
-   * Makes `tab`'s one media connection and mints the relay credential for it. A tab that
-   * never heard the answer that handed it its connection (`unanswered`) gets a new one in
-   * its place, if the old one carries nothing yet: a connection with no tracks needs no
-   * close. "already" when the tab is making one or has one; null when the media server
-   * fails.
+   * Makes `tab`'s one media connection and has `mint` mint the relay credential for it. A
+   * tab that never heard the answer that handed it its connection (`unanswered`) gets a
+   * new one in its place, if the old one carries nothing yet: a connection with no tracks
+   * needs no close. "already" when the tab is making one or has one; null when the media
+   * server or the relay fails.
    */
-  async connect(tab: Tab): Promise<IceServer[] | "already" | null> {
+  async connect(tab: Tab, mint: () => Promise<IceServer[]>): Promise<IceServer[] | "already" | null> {
     if (this.connectionRow(tab.id)) {
       const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
       if (this.inFlight.has(tab.id) || !unanswered.includes(tab.id)) return "already";
@@ -340,7 +337,7 @@ export class Shares {
     try {
       const mediaId = await this.media.connect();
       this.sql.exec("UPDATE media_connection SET media_id = ? WHERE tab_id = ?", mediaId, tab.id);
-      return await this.media.relayCredential(RELAY_CREDENTIAL_TTL_SECONDS);
+      return await mint();
     } catch {
       // A media connection with no tracks carries nothing, so it needs no close.
       this.sql.exec("DELETE FROM media_connection WHERE tab_id = ?", tab.id);
@@ -585,6 +582,21 @@ export class Shares {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Hands the media server `tab`'s offer restarting its media connection's ICE, and
+   * returns the media server's answer. Null when the tab has no media connection, or the
+   * media server failed it. Every share and watch on the connection stays as it is.
+   */
+  async restart(tab: Tab, offer: string): Promise<string | null> {
+    const mediaId = this.connectionRow(tab.id)?.media_id;
+    if (typeof mediaId !== "string") return null;
+    try {
+      return await this.media.restart(mediaId, offer);
+    } catch {
+      return null;
     }
   }
 
