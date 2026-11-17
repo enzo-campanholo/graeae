@@ -1,7 +1,7 @@
 // Steps many tests take, each done only the way a browser would do it.
 
 import { expect } from "vitest";
-import type { CreateInviteAnswer, JoinAnswer, PendingInvite } from "../src/shared/api.ts";
+import type { CreateInviteAnswer, CreateRoomAnswer, JoinAnswer, PendingInvite } from "../src/shared/api.ts";
 import { SETUP_SECRET, type TestBrowser, type TestInstance } from "./harness.ts";
 
 /** What the setup page sends: the part of `/setup#<secret>` after the `#`. */
@@ -50,11 +50,25 @@ export function pressJoin(browser: TestBrowser, code: string) {
   return browser.fetch(`/api/invites/${code}`, { method: "POST" });
 }
 
-/** Invites `name` and has a fresh browser join as them. Returns that browser and the room it lands in. */
-export async function addMember(instance: TestInstance, owner: TestBrowser, name: string) {
-  const { code } = await invite(owner, name);
+/**
+ * Invites `name` (to `rooms`, by address, or to the first room) and has a fresh browser
+ * join as them. Returns that browser and where it lands.
+ */
+export async function addMember(instance: TestInstance, owner: TestBrowser, name: string, rooms?: string[]) {
+  const { code } = await invite(owner, name, rooms);
   const browser = instance.browser();
   const joined = await pressJoin(browser, code);
   expect(joined.status).toBe(200);
   return { browser, to: (await joined.json<JoinAnswer>()).to };
+}
+
+/** Has the owner create a room called `name`, and returns its address. */
+export async function createRoom(owner: TestBrowser, name: string): Promise<string> {
+  const response = await owner.fetch("/api/owner/rooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  expect(response.status).toBe(200);
+  return (await response.json<CreateRoomAnswer>()).room.address;
 }

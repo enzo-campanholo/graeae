@@ -1,6 +1,6 @@
 <script lang="ts">
-  // A room: the bar of people on the left and the stage filling the rest. This is the
-  // shell; the room's state, watching and sharing arrive with their own tickets.
+  // A room: the bar of people on the left and the stage filling the rest. Who is here
+  // comes live over the tab's socket; watching and sharing arrive with their own tickets.
   import { sample, SampleScene } from "$sample";
   import BarHeader from "$lib/components/room/BarHeader.svelte";
   import Bar from "$lib/components/room/Bar.svelte";
@@ -14,10 +14,10 @@
   import StageEmpty from "$lib/components/room/StageEmpty.svelte";
   import StageTile from "$lib/components/room/StageTile.svelte";
   import Loading from "$lib/components/Loading.svelte";
-  import { load, type Load } from "$lib/api.js";
   import { isShortcut } from "$lib/keys.js";
+  import { RoomClient } from "$lib/room-client.svelte.js";
   import { readStored, writeStored } from "$lib/stored.js";
-  import type { RoomAnswer } from "../../shared/api.ts";
+  import type { Person } from "../../shared/socket/index.ts";
   import type { Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -25,24 +25,34 @@
 
   const room = sample?.room ?? null;
 
-  // The room as the instance knows it. Who is here and what is live arrive with presence.
-  let known = $state<Load<RoomAnswer>>({ state: "loading" });
+  // The tab's one connection to the room, for as long as the page shows it. Leaving the
+  // page closes it, which ends this tab's presence at once.
+  let client = $state<RoomClient | null>(null);
 
   $effect(() => {
     if (sample) return;
-    const path = `/api/rooms/${encodeURIComponent(params.room ?? "")}`;
-    let current = true;
-    known = { state: "loading" };
-    load<RoomAnswer>(path, (value) => {
-      if (current) known = value;
-    });
-    return () => {
-      current = false;
-    };
+    const opened = new RoomClient(params.room ?? "");
+    client = opened;
+    return () => opened.close();
   });
 
-  const answer = $derived(known.state === "loaded" ? known.data : null);
-  const name = $derived(room?.name ?? answer?.room.name ?? null);
+  const view = $derived(client?.view ?? null);
+  const refused = $derived(client?.refused ?? false);
+  const name = $derived(room?.name ?? view?.room.name ?? null);
+
+  // The bar's people: those present first, then, dimmed, those with access who are not.
+  // Each group is in alphabetical order, and your own row closes the present ones.
+  const byName = (a: Person, b: Person) => a.name.localeCompare(b.name);
+  const people = $derived.by(() => {
+    if (!view) return null;
+    const present = new Set(view.presence.present);
+    const others = view.people.members.filter((person) => person.id !== view.people.you.id);
+    return {
+      you: view.people.members.find((person) => person.id === view.people.you.id)?.name ?? "",
+      here: others.filter((person) => present.has(person.id)).toSorted(byName),
+      away: others.filter((person) => !present.has(person.id)).toSorted(byName),
+    };
+  });
 
   // Whether the bar is folded into the rail is kept on this device.
   const FOLDED_KEY = "graeae:rail";
@@ -67,23 +77,25 @@
 </script>
 
 <svelte:head>
-  {#if known.state !== "refused"}<title>{name ? `${name} · graeae` : "graeae"}</title>{/if}
+  {#if !refused}<title>{name ? `${name} · graeae` : "graeae"}</title>{/if}
 </svelte:head>
 
 <svelte:window {onkeydown} />
 
-{#if known.state === "refused"}
+{#if refused}
   <NothingHere />
 {:else}
   <div class="flex h-dvh py-2 pr-2">
     {#if folded}
       <Rail
-        people={(room?.people ?? []).map((person) => ({
-          id: person.id,
-          name: person.name,
-          followed: person.followed,
-          sharing: !!(person.screen || person.webcam),
-        }))}
+        people={room
+          ? room.people.map((person) => ({
+              id: person.id,
+              name: person.name,
+              followed: person.followed,
+              sharing: !!(person.screen || person.webcam),
+            }))
+          : (people?.here ?? []).map(({ id, name }) => ({ id, name, followed: false, sharing: false }))}
         onexpand={() => fold(false)}
       >
         {#snippet foot()}
@@ -96,16 +108,27 @@
           <BarHeader
             {name}
             home={room?.home}
-            gear={room?.gear ?? answer?.me.owner}
+            gear={room?.gear ?? view?.people.you.owner}
             oncollapse={() => fold(true)}
           />
         {/snippet}
 
-        {#if answer}
+        {#if people}
           <section aria-label="Here">
-            <PeopleHeading label="Here" count={1} />
-            <PersonRow name={answer.me.name} you />
+            <PeopleHeading label="Here" count={people.here.length + 1} />
+            {#each people.here as person (person.id)}
+              <PersonRow name={person.name} />
+            {/each}
+            <PersonRow name={people.you} you />
           </section>
+          {#if people.away.length}
+            <section class="mt-4" aria-label="Not here">
+              <PeopleHeading label="Not here" count={people.away.length} />
+              {#each people.away as person (person.id)}
+                <PersonRow name={person.name} away />
+              {/each}
+            </section>
+          {/if}
         {:else if room}
           <section aria-label="Here">
             <PeopleHeading label="Here" count={room.people.length + 1} />
@@ -149,7 +172,7 @@
       {/each}
       {#snippet empty()}
         <!-- Until the room is known, the stage says only that it is loading. -->
-        {#if room || answer}<StageEmpty {live} />{:else}<Loading />{/if}
+        {#if room || view}<StageEmpty {live} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>

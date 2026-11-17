@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
   CreateInviteAnswer,
+  CreateRoomAnswer,
   InviteAnswer,
   InvitesAnswer,
   JoinAnswer,
@@ -8,12 +9,15 @@ import type {
   MeAnswer,
   RoomAnswer,
   RoomsAnswer,
+  RoomSummary,
   SetupAnswer,
 } from "../shared/api.ts";
+import type { RoomView } from "../shared/socket/index.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { People, type Member, type Visitor } from "./people.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
+import { Signaling } from "./signaling.ts";
 
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
 export const INSTANCE_NAME = "instance";
@@ -27,10 +31,12 @@ export class Instance extends DurableObject<Env> {
   static migrations: readonly Migration[] = migrations;
 
   private readonly people: People;
+  private readonly signaling: Signaling;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
+    this.signaling = new Signaling(ctx);
     // Nothing reaches the instance until its storage is on this code's schema.
     void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
   }
@@ -89,6 +95,13 @@ export class Instance extends DurableObject<Env> {
       const room = this.people.room(member, roomData[1]!);
       return room ? json({ room, me } satisfies RoomAnswer) : refuse();
     }
+    const socket = /^\/api\/socket\/([^/]+)$/.exec(pathname);
+    if (socket) {
+      const room = this.people.room(member, socket[1]!);
+      const upgrade = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
+      if (!room || !upgrade) return refuse();
+      return this.signaling.open(member.id, visitor.deviceId, room.address, () => this.roomView(member, room));
+    }
     if (pathname === "/api/me") {
       const devices = this.people.devices(member).map((device) => ({
         ...device,
@@ -97,6 +110,32 @@ export class Instance extends DurableObject<Env> {
       return json({ ...me, devices } satisfies MeAnswer);
     }
     return refuse();
+  }
+
+  override webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
+    this.signaling.received(socket, data);
+  }
+
+  override webSocketClose(socket: WebSocket, code: number, reason: string) {
+    this.signaling.closed(socket, code, reason);
+  }
+
+  override webSocketError(socket: WebSocket) {
+    this.signaling.closed(socket);
+  }
+
+  /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
+  private roomView(member: Member, room: RoomSummary): RoomView {
+    return {
+      room,
+      people: {
+        you: { id: member.id, owner: member.owner },
+        members: this.people.membersOf(room.address).map(({ id, name }) => ({ id, name })),
+      },
+      presence: { present: [...this.signaling.present(room.address)] },
+      shares: {},
+      usage: {},
+    };
   }
 
   /** The owner page and the owner's actions. Only the owner's devices get this far. */
@@ -123,6 +162,11 @@ export class Instance extends DurableObject<Env> {
       }
       return refuse();
     }
+    if (pathname === "/api/owner/rooms" && method === "POST") {
+      const body = await request.json<{ name?: unknown }>().catch(() => null);
+      const room = body && this.people.newRoom(body.name);
+      return room ? json({ room } satisfies CreateRoomAnswer) : refuse();
+    }
     const invite = /^\/api\/owner\/invites\/([^/]+)$/.exec(pathname);
     if (invite && method === "DELETE") {
       return this.people.cancelInvite(invite[1]!) ? done() : refuse();
@@ -146,6 +190,10 @@ export class Instance extends DurableObject<Env> {
   private async join(request: Request, visitor: Visitor | null, code: string): Promise<Response> {
     const joined = await this.people.join(request, visitor, code);
     if (!joined) return nothingHere(this.env.ASSETS, request);
+    const { id, name } = joined.member;
+    for (const room of this.people.rooms(joined.member)) {
+      this.signaling.toRoom(room.address, { type: "people", change: { type: "added", person: { id, name } } });
+    }
     return withCookie(json({ to: this.landing(joined.member) } satisfies JoinAnswer), joined.cookie);
   }
 
