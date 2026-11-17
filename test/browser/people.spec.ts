@@ -1,7 +1,8 @@
 import { expect, test, type Browser, type BrowserContext } from "@playwright/test";
 import { SETUP_SECRET } from "./app.ts";
 
-// The owner page's People section, with a second browser removed while it is present.
+// The owner page's People section, with a second browser removed while it is present
+// and sharing, and its share leaving the stage of the owner watching it.
 // It needs the owner's two rooms, so it runs in the "several rooms" project after
 // rooms.spec.ts (see playwright.config.ts). Its member is Jo, whom no other journey uses.
 
@@ -61,11 +62,23 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(second).toBeChecked();
   await expect(jo.getByRole("link", { name: "Rooms" })).toBeVisible();
 
+  // Jo shares their webcam in the first room, and the owner watches it there.
+  await jo.getByRole("button", { name: "Share webcam" }).click();
+  await expect(jo.getByText("No one watching")).toBeVisible();
+  const ownerRoom = await ownerContext.newPage();
+  await ownerRoom.goto(jo.url());
+  const stage = ownerRoom.getByRole("main", { name: "Stage" });
+  const picture = stage.getByRole("img", { name: "Jo's webcam, with no picture" });
+  await ownerRoom.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Jo's webcam" }).click();
+  await expect(picture).toBeVisible();
+  await expect(jo.getByText("Owner watching")).toBeVisible();
+
   // Unticking the first room asks first; the tick stays until then, and Cancel keeps it.
   await first.click();
   const confirm = admin.getByRole("alertdialog", { name: "Remove Jo from First room?" });
   await expect(confirm).toContainText("Jo is in First room now.");
   await expect(confirm).toContainText("within about 2 seconds");
+  await expect(confirm).toContainText("Their webcam share there ends for everyone watching.");
   await expect(confirm).toContainText("They keep Late nights.");
   await expect(first).toBeChecked();
   await confirm.getByRole("button", { name: "Cancel" }).click();
@@ -73,9 +86,11 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(first).toBeChecked();
   await expect(jo.getByRole("heading", { name: "First room" })).toBeVisible();
 
-  // Confirmed, Jo's page there becomes "nothing here", with no message.
+  // Confirmed, Jo's webcam leaves the owner's stage, and Jo's page there becomes "nothing here", with no message.
   await first.click();
   await confirm.getByRole("button", { name: "Remove" }).click();
+  await expect(picture).toHaveCount(0, { timeout: CUT_OFF_MS });
+  await expect(stage.getByText("No one is sharing yet.")).toBeVisible();
   await expect(jo.getByRole("heading", { name: "Nothing here" })).toBeVisible({ timeout: CUT_OFF_MS });
   await expect(confirm).toBeHidden();
   await expect(first).not.toBeChecked();
@@ -88,6 +103,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   const final = admin.getByRole("alertdialog", { name: "Remove Jo from graeae?" });
   // The confirm asks the instance afresh, so it knows where Jo is now.
   await expect(final).toContainText("Jo is present in Late nights.");
+  await expect(final).toContainText("They share nothing now.");
   await expect(final).toContainText("Their device is forgotten. Coming back takes a new invite.");
   await final.getByRole("button", { name: "Remove" }).click();
   await expect(jo.getByRole("heading", { name: "Nothing here" })).toBeVisible({ timeout: CUT_OFF_MS });

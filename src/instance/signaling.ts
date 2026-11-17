@@ -38,8 +38,20 @@ export interface Tab {
   room: string;
   /** When the instance last heard from the tab: its opening or its latest heartbeat. */
   heardAt: number;
-  /** Set when the instance closed the socket itself and has already told the room. */
+  /** Set once the instance has cut the tab off or closed its socket itself, and has already told the room. */
   cutOff?: true;
+}
+
+/**
+ * Tabs the instance has just cut off, the first step of a cut-off: they are no longer
+ * present and nothing they send is read. Their sockets stay open until the cut-off has
+ * closed what they were sending and watching, its last step, when `tell` tells each one
+ * it is gone and closes it.
+ */
+export interface Cut {
+  /** The room tabs cut off, open and lost, so the instance can end what they were sending and watching. */
+  tabs: Tab[];
+  tell(): void;
 }
 
 /**
@@ -150,54 +162,62 @@ export class Signaling {
   }
 
   /**
-   * Closes every tab of the device `id`, rooms and lists alike, which has just been
-   * forgotten, and ends any of its lost tabs' grace periods. Each room hears that the
-   * member left where that was their last tab there. Returns the room tabs it ended, so
-   * the instance can end what they were sending.
+   * Cuts off every tab of the device `id`, rooms and lists alike, which has just been
+   * forgotten, and ends any of its lost tabs' grace periods. See `Cut`.
    */
-  closeDevice(id: string): Tab[] {
-    return this.cutOff(deviceTag(id), () => true);
+  cutDevice(id: string): Cut {
+    return this.cut(deviceTag(id), () => true);
   }
 
   /**
-   * Closes the tabs of `member` showing the room at `address`, who has just lost access to
-   * it, and ends any of their lost tabs' grace periods there. Without `address`, closes
-   * every tab of theirs, rooms and lists alike: they have been removed from the instance.
-   * Returns the room tabs it ended, as `closeDevice` does.
+   * Cuts off the tabs of `member` showing the room at `address`, who has just lost access
+   * to it, and ends any of their lost tabs' grace periods there. Without `address`, cuts
+   * off every tab of theirs, rooms and lists alike: they have been removed from the
+   * instance. See `Cut`.
    */
-  closeMember(member: string, address?: string): Tab[] {
-    return this.cutOff(memberTag(member), (tab) => address === undefined || (isRoomTab(tab) && tab.room === address));
+  cutMember(member: string, address?: string): Cut {
+    return this.cut(memberTag(member), (tab) => address === undefined || (isRoomTab(tab) && tab.room === address));
   }
 
   /**
    * Cuts off every tab whose socket carries `tag` and which `covers` takes in, and every
-   * lost tab with the same tag that it takes in. Each open one is told it is gone, then
-   * closed. Each room hears that the member left where that was their last tab there.
+   * lost tab with the same tag that it takes in. From this instant each open one is no
+   * longer present, nothing it sends is read and it is sent nothing, though its socket
+   * stays open until `Cut.tell`. Each room hears that the member left where that was
+   * their last tab there.
    */
-  private cutOff(tag: string, covers: (tab: Tab | ListTab) => boolean): Tab[] {
+  private cut(tag: string, covers: (tab: Tab | ListTab) => boolean): Cut {
     const tagged = (tab: Tab) => [roomTag(tab.room), memberTag(tab.member), deviceTag(tab.device)].includes(tag);
     const lost = this.lost();
     const ended = lost.filter((tab) => tagged(tab) && covers(tab));
     if (ended.length > 0) this.saveLost(lost.filter((tab) => !ended.includes(tab)));
     for (const tab of ended) this.left(tab);
 
+    const sockets: WebSocket[] = [];
     for (const socket of this.ctx.getWebSockets(tag)) {
       const tab = tabOf(socket);
       if (!tab || !covers(tab)) continue;
       socket.serializeAttachment({ ...tab, cutOff: true });
-      // Said as well as done: a close frame can be lost on the way, a message is not.
-      send(socket, { type: "gone" });
-      try {
-        socket.close(GONE_CLOSE_CODE, "");
-      } catch {
-        // Already closed.
-      }
+      sockets.push(socket);
       if (isRoomTab(tab)) {
         this.left(tab);
         ended.push(tab);
       }
     }
-    return ended;
+    return {
+      tabs: ended,
+      tell() {
+        for (const socket of sockets) {
+          // Said as well as done: a close frame can be lost on the way, a message is not.
+          send(socket, { type: "gone" });
+          try {
+            socket.close(GONE_CLOSE_CODE, "");
+          } catch {
+            // Already closed.
+          }
+        }
+      },
+    };
   }
 
   /**
