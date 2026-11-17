@@ -4,13 +4,16 @@ import { SETUP_SECRET } from "./app.ts";
 
 // Watching from the bar, and how the stage lays out what is watched. The media on every
 // side is fake, so these cover what the owner sees, not pictures. Journeys share one
-// instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia and Yan, whom no
-// other journey uses. Only webcams can be shared from a browser so far, so every share
-// here is a webcam.
+// instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia, Yan, Zoe, Lia
+// and Noa, whom no other journey uses. Only webcams can be shared from a browser so far,
+// so every share here is a webcam.
 
 const opened: BrowserContext[] = [];
 
 test.afterEach(async () => {
+  // Pages first, so each member leaves cleanly and their shares end before the next
+  // journey: a closed browser would leave them reconnecting, still sharing.
+  await Promise.all(opened.flatMap((context) => context.pages().map((page) => page.close())));
   await Promise.all(opened.splice(0).map((context) => context.close()));
 });
 
@@ -39,6 +42,9 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined, viewpo
     await page.goto(`/invite/${invite.code}`);
     await page.getByRole("button", { name: `Join as ${name}` }).click();
     await expect(page).toHaveURL(room);
+    // The room has arrived over its socket once the bar lists them; a share asked for
+    // before that is lost (see the ticket's comments).
+    await expect(page.getByRole("link", { name: `${name} · you` })).toBeVisible();
     if (share) await shareWebcam(page);
     return page;
   }
@@ -197,6 +203,8 @@ test("watched shares fill an even grid, one can be focused over a strip of the r
   browser,
   baseURL,
 }) => {
+  // Seven members join and share before anything is watched, which takes a while.
+  test.setTimeout(120_000);
   // A maximised browser on a 1080p monitor.
   const { owner, join } = await ownerInRoom(browser, baseURL, { width: 1920, height: 953 });
   const names = ["Vera", "Wil", "Xia", "Yan", "Zoe", "Lia", "Noa"];
