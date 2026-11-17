@@ -21,7 +21,9 @@ import {
   pressJoin,
   setUpOwner,
   shareWebcam,
+  startWatching,
   startWebcam,
+  watch,
 } from "./steps.ts";
 import { addressOf, openList, openRoom } from "./sockets.ts";
 
@@ -227,6 +229,50 @@ describe("removing a member from a room", () => {
       change: { type: "ended", share: { member: biaId, kind: "webcam" } },
     });
     expect(instance.media.connections().flat()).toEqual([]);
+  });
+
+  it("ends what they watch in that room, and the sharer hears they no longer watch", async () => {
+    const { instance, owner, biaId, second, ownerTab, inSecond } = await biaInTwoRooms();
+    await shareWebcam(ownerTab);
+    const ownersWebcam = { member: await idOf(owner, "Owner"), kind: "webcam" } as const;
+    expect(await inSecond.next()).toEqual({ type: "shares", change: { type: "started", share: ownersWebcam } });
+    await connectMedia(inSecond);
+    await watch(inSecond, ownersWebcam);
+    expect(await ownerTab.next()).toEqual({
+      type: "watching",
+      change: { type: "watchers", share: ownersWebcam, members: [biaId] },
+    });
+
+    await removeFromRoom(owner, biaId, second);
+
+    expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: biaId } });
+    expect(await ownerTab.next()).toEqual({ type: "people", change: { type: "removed", member: biaId } });
+    expect(await ownerTab.next()).toEqual({
+      type: "watching",
+      change: { type: "watchers", share: ownersWebcam, members: [] },
+    });
+    // The owner's share goes on; Bia's pull of it is gone.
+    expect(instance.media.connections()).toEqual([[{ name: expect.any(String), mid: "0" }], []]);
+  });
+
+  it("leaves no pull behind when the media server was answering their watch as it happened", async () => {
+    const { instance, owner, biaId, second, ownerTab, inSecond } = await biaInTwoRooms();
+    await shareWebcam(ownerTab);
+    const ownersWebcam = { member: await idOf(owner, "Owner"), kind: "webcam" } as const;
+    await inSecond.next(); // it went live
+    await connectMedia(inSecond);
+    const pull = instance.media.hold("pull", { done: true });
+    startWatching(inSecond, ownersWebcam);
+    await pull.reached;
+
+    await removeFromRoom(owner, biaId, second);
+    expect(instance.media.connections()[1], "the media server pulled it").toHaveLength(1);
+    pull.release();
+
+    await vi.waitFor(() => expect(instance.media.connections()[1]).toEqual([]));
+    expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: biaId } });
+    expect(await ownerTab.next()).toEqual({ type: "people", change: { type: "removed", member: biaId } });
+    await expect(ownerTab.next()).rejects.toThrow(/no message/);
   });
 
   it("changes storage before any connection is closed, so a request racing it is refused", async () => {

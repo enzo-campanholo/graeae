@@ -121,7 +121,7 @@
         title: `Remove ${name} from ${room}?`,
         lines: [
           asked.present.includes(what.address)
-            ? `${name} is in ${room} now. Their page there becomes "nothing here" within about 2 seconds.`
+            ? `${name} is in ${room} now. Their page there becomes “nothing here” within about 2 seconds.`
             : `${name} is not in ${room} now.`,
           keeps.length > 0
             ? `They keep ${andList(keeps)}.`
@@ -140,7 +140,7 @@
       title: `Remove ${name} from graeae?`,
       lines: [
         asked.present.length > 0
-          ? `${name} is present in ${andList(asked.present.map(roomName))}. Every page of theirs becomes "nothing here" within about 2 seconds.`
+          ? `${name} is present in ${andList(asked.present.map(roomName))}. Every page of theirs becomes “nothing here” within about 2 seconds.`
           : `${name} is not in any room now.`,
         asked.rooms.length > 0 ? `They lose ${andList(asked.rooms.map(roomName))} and keep no room.` : "They have no room to lose.",
         `${forgotten} Coming back takes a new invite.`,
@@ -280,7 +280,7 @@
                 <Avatar name={entry.name} size={28} away={entry.present.length === 0} ring="var(--stage)" />
                 <span class="grid min-w-0 gap-0.5">
                   <span class="truncate font-medium">
-                    {entry.name}{#if entry.owner}<span class="text-dim font-normal"> · owner</span>{/if}
+                    {entry.name}{#if entry.owner}<span class="text-dim ml-1 font-normal">· owner</span>{/if}
                   </span>
                   <span class="text-muted-foreground truncate text-xs">{roomsLine(entry)}</span>
                 </span>
@@ -354,7 +354,7 @@
                     <span class="truncate font-medium">{label}</span>
                     <span class="text-muted-foreground truncate text-xs">
                       {#if asking}
-                        This page becomes "nothing here".
+                        This page becomes “nothing here”.
                       {:else if device.current}
                         This device
                       {:else}
