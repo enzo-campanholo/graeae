@@ -7,7 +7,8 @@
   // tile or a control has the keyboard's focus. Any tile can go fullscreen, from its
   // button or a double-click on the picture. A share that goes out at two qualities has
   // the viewer's choice of quality among its controls, and its caption carries a small
-  // "720p" mark while it arrives at the lower quality.
+  // "720p" mark while it arrives at the lower quality. A share with screen audio leads its
+  // controls with what the viewer hears of it: mute, volume and "hear only this one".
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import LayoutGrid from "@lucide/svelte/icons/layout-grid";
   import LayoutPanelTop from "@lucide/svelte/icons/layout-panel-top";
@@ -18,11 +19,13 @@
   import type { QualityChoice as Quality } from "../../../../shared/socket/index.ts";
   import IconButton from "../IconButton.svelte";
   import QualityChoice from "./QualityChoice.svelte";
+  import ShareAudio from "./ShareAudio.svelte";
 
   let {
     name,
     kind,
     videoOnly = false,
+    audio = null,
     quality = null,
     lower = false,
     aspect = 16 / 9,
@@ -36,6 +39,15 @@
     kind: ShareKind;
     /** A screen share with no screen audio: its caption says "video only". */
     videoOnly?: boolean;
+    /** A share with screen audio: what this tab hears of it, and how to change that. Null for none. */
+    audio?: {
+      volume: number;
+      muted: boolean;
+      only: boolean | null;
+      onvolume: (volume: number) => void;
+      onmute: (muted: boolean) => void;
+      ononly: () => void;
+    } | null;
     /** A share at two qualities: the one this tab watches it at, and how to choose another. Null for one quality. */
     quality?: { value: Quality; onchoose: (quality: Quality) => void } | null;
     /** A share at two qualities that arrives at the lower one: its caption carries the "720p" mark. */
@@ -93,6 +105,9 @@
       ></button>
     {/if}
     <div class={["controls bg-raised/90 absolute flex gap-0.5 rounded-md p-0.5", place === "strip" ? "top-1 right-1" : "top-2 right-2"]}>
+      {#if audio}
+        <div class={{ "mr-1": place !== "strip" }}><ShareAudio {share} {...audio} compact={place === "strip"} /></div>
+      {/if}
       <!-- Too small to choose from in the strip: focus the share to choose. -->
       {#if quality && place !== "strip"}
         <div class="mr-1"><QualityChoice {share} value={quality.value} onchoose={quality.onchoose} /></div>
@@ -117,7 +132,7 @@
   </div>
   <figcaption class="flex h-5 min-w-0 items-baseline gap-1.5 px-0.5">
     <span class="text-soft truncate font-medium">{name}</span>
-    <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{/if}</span>
+    <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{:else if audio?.muted}<span aria-hidden="true">&nbsp;·</span> muted{/if}</span>
     {#if lower}
       <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-[4px] px-1 text-[11px] leading-4 font-medium tabular-nums"
         ><span class="sr-only">Received at&nbsp;</span>720p</span
@@ -138,6 +153,10 @@
   /* In the strip: a small, fixed height. */
   .tile.strip {
     width: calc(96px * var(--aspect));
+  }
+  /* Its controls fit themselves to the picture's width: a small picture has a shorter volume. */
+  .picture {
+    container-type: inline-size;
   }
   /* Fullscreen: the picture alone, filling the screen on the letterbox. */
   .picture:fullscreen {
