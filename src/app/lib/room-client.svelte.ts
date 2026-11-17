@@ -53,6 +53,11 @@ export class RoomClient {
   pictures = $state.raw<Picture[]>([]);
   /** Shares this tab has asked to watch, until the instance has answered. */
   asking = $state.raw<LiveShare[]>([]);
+  /**
+   * The member this tab follows: it watches everything they share, and a share they
+   * start later joins the stage by itself. Null when it follows nobody.
+   */
+  following = $state<string | null>(null);
 
   /** The signaling connection. */
   private readonly socket: Connection<ServerMessage>;
@@ -61,6 +66,8 @@ export class RoomClient {
   private connection: Promise<boolean> | null = null;
   /** Requests waiting for their answer in the media area, oldest first. */
   private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
+  /** Shares being asked for that the tab no longer wants: each is stopped once it is watched. */
+  private unwanted: LiveShare[] = [];
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();
 
@@ -132,10 +139,35 @@ export class RoomClient {
     return !!this.view?.watching.stage.some((watched) => sameShare(watched, share));
   }
 
-  /** Watches `share` if this tab does not, and stops watching it if it does: a click on its icon. */
+  /**
+   * Watches `share` if this tab does not, and stops watching it if it does: a click on
+   * its icon. The rest of the stage stays as it is, and the tab follows nobody.
+   */
   toggle(share: LiveShare) {
-    if (this.watches(share)) this.unwatch(share);
+    this.following = null;
+    if (this.wants(share)) this.drop(share);
     else void this.watch(share);
+  }
+
+  /**
+   * Follows `member`: the stage becomes everything they share, now and later. Following
+   * the member already watched alone changes nothing.
+   */
+  follow(member: string) {
+    this.following = member;
+    this.only((share) => share.member === member);
+  }
+
+  /**
+   * A one-off pick of what others share in the room: every webcam, everything, or
+   * nothing. The stage becomes exactly that, and the tab follows nobody.
+   */
+  pick(what: "webcams" | "everything" | "nothing") {
+    this.following = null;
+    const you = this.view?.people.you.id;
+    this.only(
+      (share) => what !== "nothing" && share.member !== you && (what === "everything" || share.kind === "webcam"),
+    );
   }
 
   /**
@@ -143,7 +175,8 @@ export class RoomClient {
    * pull and the media server's offer, the browser's answer. The share is on the stage
    * once the instance says `watched`. A refused watch leaves the stage as it was.
    */
-  async watch(share: LiveShare) {
+  private async watch(share: LiveShare) {
+    this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
     if (this.watches(share) || this.asking.some((asked) => sameShare(asked, share))) return;
     this.asking = [...this.asking, share];
     try {
@@ -164,13 +197,42 @@ export class RoomClient {
     } catch {
       // The connection was lost on the way: the stage comes back with the room's state.
     } finally {
+      // Let go of a share the tab stopped wanting on the way, now that its negotiation is done.
+      const unwanted = this.unwanted.some((candidate) => sameShare(candidate, share));
       this.asking = this.asking.filter((asked) => !sameShare(asked, share));
+      this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
+      if (unwanted) this.drop(share);
     }
   }
 
-  /** Stops watching `share` on this tab. It leaves the stage once the instance has closed its pull. */
+  /**
+   * Stops watching `share` on this tab, and follows nobody: "stop watching" on the share.
+   * It leaves the stage once the instance has closed its pull.
+   */
   unwatch(share: LiveShare) {
+    this.following = null;
+    this.drop(share);
+  }
+
+  /** Makes the stage the live shares `keep` chooses: watches those it lacks and stops the rest. */
+  private only(keep: (share: LiveShare) => boolean) {
+    for (const share of [...(this.view?.watching.stage ?? []), ...this.asking]) if (!keep(share)) this.drop(share);
+    for (const share of this.view?.shares.live ?? []) if (keep(share)) void this.watch(share);
+  }
+
+  /** Whether this tab watches `share` or is asking to, and still wants it. */
+  private wants(share: LiveShare): boolean {
+    const asked = this.asking.some((candidate) => sameShare(candidate, share));
+    return (this.watches(share) || asked) && !this.unwanted.some((candidate) => sameShare(candidate, share));
+  }
+
+  /**
+   * Stops watching `share`. One still being asked for is let go of once the instance
+   * says it is watched, since its pull is under way.
+   */
+  private drop(share: LiveShare) {
     if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
+    else if (this.wants(share)) this.unwanted = [...this.unwanted, share];
   }
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
@@ -188,6 +250,11 @@ export class RoomClient {
     this.view = applyMessage(this.view, message);
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
+    // A share the member followed starts: it joins the stage by itself.
+    if (message.type === "shares" && message.change.type === "started" && message.change.share.member === this.following)
+      void this.watch(message.change.share);
+    // The member followed has left the room: the tab follows nobody.
+    if (this.following && !this.view?.presence.present.includes(this.following)) this.following = null;
   }
 
   /** The instance closed this tab's pull of `share`: the tab lets go of its picture. */

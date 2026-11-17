@@ -150,11 +150,12 @@
           : (people?.here ?? []).map(({ id, name, reconnecting }) => ({
               id,
               name,
-              followed: false,
+              followed: client?.following === id,
               sharing: isLive(id, "screen") || isLive(id, "webcam"),
               reconnecting,
             }))}
         onexpand={() => fold(false)}
+        onfollow={(id) => client?.follow(id)}
       >
         {#snippet foot()}
           <ShareButtons compact {webcamLive} {webcamStarting} onwebcam={() => client?.shareWebcam()} />
@@ -178,8 +179,10 @@
               <PersonRow
                 name={person.name}
                 reconnecting={person.reconnecting}
+                followed={client?.following === person.id}
                 screen={rowShare(person.id, "screen")}
                 webcam={rowShare(person.id, "webcam")}
+                onfollow={() => client?.follow(person.id)}
                 ontoggle={(kind) => toggle(person.id, kind)}
               />
             {/each}
@@ -189,6 +192,11 @@
               screen={ownRowShare("screen")}
               webcam={ownRowShare("webcam")}
               ontoggle={(kind) => view && toggle(view.people.you.id, kind)}
+            />
+            <Shortcuts
+              onwebcams={() => client?.pick("webcams")}
+              oneverything={() => client?.pick("everything")}
+              onnothing={() => client?.pick("nothing")}
             />
           </section>
           {#if people.away.length}
@@ -261,7 +269,7 @@
       {/each}
       {#snippet empty()}
         <!-- Until the room is known, the stage says only that it is loading. -->
-        {#if room || view}<StageEmpty {live} />{:else}<Loading />{/if}
+        {#if room || view}<StageEmpty {live} oneverything={() => client?.pick("everything")} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>
