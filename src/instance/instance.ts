@@ -67,7 +67,14 @@ export class Instance extends DurableObject<Env> {
     // whoever a restart dropped is in their grace period.
     void ctx.blockConcurrencyWhile(async () => {
       applyMigrations(ctx.storage, Instance.migrations);
-      this.restored();
+      try {
+        this.restored();
+      } catch (error) {
+        // A failure here would leave the instance refusing every request. Better it
+        // starts: the tabs simply come back as new ones. (An instance started on an older
+        // schema than this code's, as the migration tests do, has no records to restore.)
+        console.error("The instance could not restore the tabs a restart dropped", error);
+      }
     });
   }
 

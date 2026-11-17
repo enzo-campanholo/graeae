@@ -321,16 +321,15 @@
           </li>
         {/each}
       </ul>
-      {#if unconfirmed.length > 0}
-        <div class="grid gap-1 pt-2" role="status">
-          {#each unconfirmed as cutOff (cutOff.member)}
-            <p class="text-warn flex items-center gap-2 text-xs">
-              <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />
-              <span>Couldn't confirm that {cutOff.name} was cut off. Still trying.</span>
-            </p>
-          {/each}
-        </div>
-      {/if}
+      <!-- Always there, so a screen reader hears a warning when it appears. -->
+      <div class={["grid gap-1", unconfirmed.length > 0 && "pt-2"]} role="status">
+        {#each unconfirmed as cutOff (cutOff.member)}
+          <p class="text-warn flex items-center gap-2 text-xs">
+            <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />
+            <span>Couldn't confirm that {cutOff.name} was cut off. Still trying.</span>
+          </p>
+        {/each}
+      </div>
       {#if note}
         <p class="text-muted-foreground py-2 text-xs" role="status">{note}</p>
       {:else if people.length === 1}

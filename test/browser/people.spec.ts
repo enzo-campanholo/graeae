@@ -108,7 +108,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   await final.getByRole("button", { name: "Remove" }).click();
   await expect(jo.getByRole("heading", { name: "Nothing here" })).toBeVisible({ timeout: CUT_OFF_MS });
   await expect(members.getByRole("button", { name: /^Jo\b/ })).toHaveCount(0);
-  await expect(members.getByRole("status")).toHaveText("Jo is removed from graeae, and their devices are forgotten.");
+  await expect(members.getByRole("status").filter({ hasText: "removed" })).toHaveText("Jo is removed from graeae, and their devices are forgotten.");
 
   // The browser is a stranger now, everywhere.
   await jo.goto("/you");
@@ -127,7 +127,8 @@ test("the owner is warned beneath the list when a cut-off could not be confirmed
   const ownerContext = await newBrowser(browser, baseURL);
   const admin = await ownerContext.newPage();
   await admin.goto(`/setup#${SETUP_SECRET}`);
-  await expect(admin.getByRole("heading", { name: "Rooms" })).toBeVisible();
+  // "Rooms" after the journey before; "First room" when this one runs alone.
+  await expect(admin.getByRole("heading", { name: /^(Rooms|First room)$/ })).toBeVisible();
   // The fake media server behind this app cannot be made to fail from here, so the
   // instance's own answer gains what it says when closes have failed for a minute.
   await admin.route("**/api/owner/people", async (route) => {
@@ -138,11 +139,12 @@ test("the owner is warned beneath the list when a cut-off could not be confirmed
 
   await admin.goto("/owner/people");
 
-  const warning = admin.getByRole("region", { name: "Members" }).getByRole("status");
+  const warning = admin.getByRole("region", { name: "Members" }).getByRole("status").filter({ hasText: "confirm" });
   await expect(warning).toHaveText("Couldn't confirm that Jo was cut off. Still trying.");
   if (process.env.GRAEAE_SCREENSHOTS) {
     for (const colorScheme of ["dark", "light"] as const) {
-      await admin.emulateMedia({ colorScheme });
+      // The app is dark unless "You" says otherwise, whatever the system prefers.
+      await admin.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
       await admin.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/unconfirmed-${colorScheme}.png` });
     }
   }
