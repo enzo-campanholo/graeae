@@ -1,5 +1,6 @@
-// Shares and the media connections they are sent over: the instance's records of what it
-// has asked of the media server, and the calls that keep the two in step (ADR 0003).
+// Shares, the watching of them, and the media connections both go over: the instance's
+// records of what it has asked of the media server, and the calls that keep the two in
+// step (ADR 0003).
 //
 // Every call follows one order. The record is written first, with every track name
 // picked here, then the media layer is called. A close is always a forced close, and a
@@ -7,11 +8,15 @@
 // the middle of one, leaves a record with nothing behind it, never a track with no record.
 //
 // The checks on who may ask (a remembered device, access, presence) are the instance's;
-// this module holds the records and the rules about shares themselves.
+// this module holds the records and the rules about shares and watching themselves.
+//
+// A share's end closes its own tracks first, then every pull of it, as the cut-off
+// does. A tab's leave ends its shares that way, then closes its own pulls.
 
 import type { IceServer } from "../shared/socket/media.ts";
 import type { LiveShare, ShareKind } from "../shared/socket/shares.ts";
-import type { MediaLayer, Track } from "./media/index.ts";
+import { sameShare } from "../shared/socket/watching.ts";
+import type { MediaLayer, Pulled, Track } from "./media/index.ts";
 import type { Tab } from "./signaling.ts";
 
 /** A relay credential lasts 12 hours. */
@@ -27,12 +32,54 @@ interface ShareRecord {
   video: Track;
 }
 
+/** A watch as the instance recorded it. */
+interface WatchRecord {
+  id: string;
+  /** The viewer's tab, whose media connection the share is pulled to. */
+  tab: string;
+  /** The viewer. */
+  member: string;
+  room: string;
+  /** The share's id, and the share as the room knows it. */
+  shareId: string;
+  share: LiveShare;
+  /** The pulled video track: the share's track name, on the mid the media server gave it. */
+  video: { name: string; mid: string | null };
+}
+
+/** What the instance hears of watching as it changes, to tell the tabs concerned. */
+export interface WatchingListener {
+  /** The tab `tab` no longer watches `share`: its pull is closed. */
+  unwatched(tab: string, share: LiveShare): void;
+  /** The members watching `share`, live in the room `room`, are now `members`. */
+  watchers(room: string, share: LiveShare, members: string[]): void;
+}
+
+/** What became of a request to watch a share. */
+export type Watched =
+  /** It is on the tab's stage: `offer` and `video` go to the viewer's tab. */
+  | { watching: true; offer: string; video: string }
+  /** It was refused, or the media server failed it. */
+  | { watching: false };
+
 /** What became of a request to start a share. */
 export type Started =
   /** It is live: `answer` goes to the sharer's tab. */
   | { live: true; share: LiveShare; answer: string }
   /** It was refused, or the media server failed it. */
   | { live: false };
+
+interface WatchRow extends Record<string, SqlStorageValue> {
+  id: string;
+  tab_id: string;
+  member_id: string;
+  room_address: string;
+  share_id: string;
+  sharer_id: string;
+  kind: string;
+  video_track: string;
+  video_mid: string | null;
+}
 
 interface ShareRow extends Record<string, SqlStorageValue> {
   id: string;
@@ -48,10 +95,13 @@ interface ShareRow extends Record<string, SqlStorageValue> {
 export class Shares {
   /** Shares whose forced close is under way, so a second stop does not close them again. */
   private readonly ending = new Set<string>();
+  /** Watches whose forced close is under way, likewise. */
+  private readonly closing = new Set<string>();
 
   constructor(
     private readonly sql: SqlStorage,
     private readonly media: MediaLayer,
+    private readonly listener: WatchingListener,
   ) {}
 
   /** The live shares in the room at `address`, oldest first. */
@@ -59,6 +109,20 @@ export class Shares {
     return this.records("WHERE room_address = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address).map(
       toLiveShare,
     );
+  }
+
+  /** The shares the tab `tab` watches, in the order it began watching them. */
+  stage(tab: string): LiveShare[] {
+    return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL ORDER BY watching_at, rowid", tab).map(
+      (watch) => watch.share,
+    );
+  }
+
+  /** Who watches each of `member`'s live shares in the room at `address`. A share nobody watches is left out. */
+  watchers(address: string, member: string): { share: LiveShare; members: string[] }[] {
+    return this.records("WHERE room_address = ? AND member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address, member)
+      .map((share) => ({ share: toLiveShare(share), members: this.watcherIds(share.id, share.member) }))
+      .filter((entry) => entry.members.length > 0);
   }
 
   /**
@@ -144,6 +208,102 @@ export class Shares {
   }
 
   /**
+   * Watches `share` from `tab`, pulling its tracks to the tab's media connection. Refused
+   * unless the tab's media connection is made, the share is live in the tab's room and not
+   * ending, and the tab is not the one sending it. Null when the tab already watches it,
+   * or is starting to. `stillOpen` says whether the tab is still there once the media
+   * server has answered.
+   */
+  async watch(tab: Tab, share: LiveShare, stillOpen: () => boolean): Promise<Watched | null> {
+    const viewerMediaId = this.connectionRow(tab.id)?.media_id;
+    if (typeof viewerMediaId !== "string") return { watching: false };
+    const watched = this.records(
+      "WHERE member_id = ? AND kind = ? AND room_address = ? AND live_at IS NOT NULL",
+      share.member,
+      share.kind,
+      tab.room,
+    )[0];
+    if (!watched || this.ending.has(watched.id) || watched.tab === tab.id) return { watching: false };
+    const sharerMediaId = this.connectionRow(watched.tab)?.media_id;
+    if (typeof sharerMediaId !== "string") return { watching: false };
+    if (this.watches("WHERE tab_id = ? AND share_id = ?", tab.id, watched.id).length > 0) return null;
+
+    const record: WatchRecord = {
+      id: crypto.randomUUID(),
+      tab: tab.id,
+      member: tab.member,
+      room: tab.room,
+      shareId: watched.id,
+      share: toLiveShare(watched),
+      video: { name: watched.video.name, mid: null },
+    };
+    this.sql.exec(
+      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      record.id,
+      tab.id,
+      tab.member,
+      tab.device,
+      tab.room,
+      watched.id,
+      watched.member,
+      watched.kind,
+      record.video.name,
+      Date.now(),
+    );
+
+    let pulled: Pulled;
+    try {
+      pulled = await this.media.pull(viewerMediaId, sharerMediaId, [record.video.name]);
+    } catch {
+      // The media server gave no mid to close by, so the record goes. A pulled track it
+      // made all the same is for the sweep (ticket 21), which closes what no record names.
+      this.sql.exec("DELETE FROM watch WHERE id = ?", record.id);
+      return { watching: false };
+    }
+    const mid = pulled.tracks.find((track) => track.name === record.video.name)?.mid ?? pulled.tracks[0]?.mid ?? "";
+    record.video.mid = mid;
+    this.sql.exec("UPDATE watch SET video_mid = ? WHERE id = ?", mid, record.id);
+
+    const shareGone = this.records("WHERE id = ?", watched.id).length === 0;
+    if (!stillOpen() || shareGone) {
+      // The tab left, or the share ended, while the media server was answering, and
+      // neither could close a pull that had no mid yet.
+      await this.closeWatch(record, { tell: false });
+      this.forgetConnectionIfEmpty(tab.id);
+      return { watching: false };
+    }
+    this.changeWatchers(record, () =>
+      this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
+    );
+    return { watching: true, offer: pulled.offer, video: mid };
+  }
+
+  /**
+   * Stops `tab` watching `share` by a forced close of its pull. The tab and the sharer
+   * hear of it through the listener once the close has returned. Nothing happens when the
+   * tab does not watch it, is still starting to, or is already stopping.
+   */
+  async unwatch(tab: Tab, share: LiveShare): Promise<void> {
+    const record = this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL", tab.id).find((watch) =>
+      sameShare(watch.share, share),
+    );
+    if (record) await this.closeWatch(record);
+  }
+
+  /** Hands the media server `tab`'s answer to the offer of its last pull. False if that failed. */
+  async renegotiate(tab: Tab, answer: string): Promise<boolean> {
+    const mediaId = this.connectionRow(tab.id)?.media_id;
+    if (typeof mediaId !== "string") return false;
+    try {
+      await this.media.renegotiate(mediaId, answer);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Ends `tab`'s live share of `kind` by a forced close. Returns the share once it has
    * ended, or null when the tab has no such share, it is already ending, or the close
    * failed, in which case its record stays.
@@ -155,8 +315,9 @@ export class Shares {
   }
 
   /**
-   * `tab` has left cleanly: ends each of its live shares by a forced close, then forgets
-   * its media connection once nothing is left on it. Returns the shares that ended.
+   * `tab` has left cleanly: ends each of its live shares by a forced close, then closes
+   * what it was watching, then forgets its media connection once nothing is left on it.
+   * Returns the shares that ended.
    */
   async left(tab: Tab): Promise<LiveShare[]> {
     const ended: LiveShare[] = [];
@@ -164,11 +325,18 @@ export class Shares {
       if (this.ending.has(share.id)) continue;
       if (await this.close(share)) ended.push(toLiveShare(share));
     }
+    for (const watch of this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL", tab.id)) {
+      await this.closeWatch(watch);
+    }
     this.forgetConnectionIfEmpty(tab.id);
     return ended;
   }
 
-  /** Force-closes a share's tracks and drops its record once the close returns. False if the close failed. */
+  /**
+   * Force-closes a share's tracks and drops its record once the close returns, then
+   * force-closes every pull of it. False if the share's own close failed, in which case
+   * it stays live and so does every watch of it.
+   */
   private async close(share: ShareRecord): Promise<boolean> {
     const mediaId = this.connectionRow(share.tab)?.media_id;
     this.ending.add(share.id);
@@ -181,12 +349,65 @@ export class Shares {
       this.ending.delete(share.id);
     }
     this.sql.exec("DELETE FROM share WHERE id = ?", share.id);
+    // A pull still waiting for the media server closes itself once it hears the share is gone.
+    for (const watch of this.watches("WHERE share_id = ? AND watching_at IS NOT NULL", share.id)) {
+      await this.closeWatch(watch);
+    }
     return true;
+  }
+
+  /**
+   * Force-closes a watch's pull and drops its record once the close returns. Unless told
+   * not to, tells the viewer's tab, and the sharer if who watches has changed. A failed
+   * close keeps the record, and the share stays on the viewer's stage; ticket 21 retries.
+   */
+  private async closeWatch(watch: WatchRecord, { tell = true } = {}) {
+    if (this.closing.has(watch.id)) return;
+    const mediaId = this.connectionRow(watch.tab)?.media_id;
+    this.closing.add(watch.id);
+    try {
+      const { mid } = watch.video;
+      if (typeof mediaId === "string" && mid !== null) await this.media.close(mediaId, [{ name: watch.video.name, mid }]);
+    } catch {
+      return;
+    } finally {
+      this.closing.delete(watch.id);
+    }
+    if (!tell) {
+      this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
+      return;
+    }
+    this.changeWatchers(watch, () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id));
+    this.listener.unwatched(watch.tab, watch.share);
+  }
+
+  /** Makes `change` to a watch of `watch`'s share, and tells the sharer if who watches it changed. */
+  private changeWatchers(watch: WatchRecord, change: () => void) {
+    const before = this.watcherIds(watch.shareId, watch.share.member);
+    change();
+    const after = this.watcherIds(watch.shareId, watch.share.member);
+    if (before.join() !== after.join()) this.listener.watchers(watch.room, watch.share, after);
+  }
+
+  /** The members watching the share `shareId`, each once, in the order they began. Never its sharer. */
+  private watcherIds(shareId: string, sharer: string): string[] {
+    return this.sql
+      .exec<{ member_id: string }>(
+        `SELECT member_id FROM watch WHERE share_id = ? AND watching_at IS NOT NULL AND member_id != ?
+         GROUP BY member_id ORDER BY MIN(watching_at), MIN(rowid)`,
+        shareId,
+        sharer,
+      )
+      .toArray()
+      .map((row) => row.member_id);
   }
 
   private forgetConnectionIfEmpty(tabId: string) {
     this.sql.exec(
-      "DELETE FROM media_connection WHERE tab_id = ? AND NOT EXISTS (SELECT 1 FROM share WHERE tab_id = ?)",
+      `DELETE FROM media_connection WHERE tab_id = ?
+       AND NOT EXISTS (SELECT 1 FROM share WHERE tab_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM watch WHERE tab_id = ?)`,
+      tabId,
       tabId,
       tabId,
     );
@@ -211,6 +432,24 @@ export class Shares {
         room: row.room_address,
         tab: row.tab_id,
         kind: row.kind as ShareKind,
+        video: { name: row.video_track, mid: row.video_mid },
+      }));
+  }
+
+  private watches(where: string, ...bindings: SqlStorageValue[]): WatchRecord[] {
+    return this.sql
+      .exec<WatchRow>(
+        `SELECT id, tab_id, member_id, room_address, share_id, sharer_id, kind, video_track, video_mid FROM watch ${where}`,
+        ...bindings,
+      )
+      .toArray()
+      .map((row) => ({
+        id: row.id,
+        tab: row.tab_id,
+        member: row.member_id,
+        room: row.room_address,
+        shareId: row.share_id,
+        share: { member: row.sharer_id, kind: row.kind as ShareKind },
         video: { name: row.video_track, mid: row.video_mid },
       }));
   }

@@ -48,7 +48,7 @@ test("a webcam share goes live in one click, shows on the other member's bar, an
   await expect(iara.getByText("No one watching")).toBeVisible();
   await expect(iara.getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(iarasWebcam).toBeVisible();
-  await expect(owner.getByText("Click a name to watch what they share.")).toBeVisible();
+  await expect(owner.getByText("You're not watching anything yet.")).toBeVisible();
 
   // Stop ends it for everyone.
   await iara.getByRole("button", { name: "Stop your webcam" }).click();

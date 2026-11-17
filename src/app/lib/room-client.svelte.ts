@@ -4,9 +4,10 @@
 // reconnects by itself (`connection.svelte.ts`), and a reconnect brings the whole room.
 //
 // It also carries the tab's media connection's side of the conversation: it asks the
-// instance for the connection the first time the tab shares, passes the media client's
-// offers to the instance and the instance's answers back, and keeps this tab's own
-// shares. The media client never talks to the instance itself.
+// instance for the connection the first time the tab shares or watches, passes offers
+// and answers between the media client and the instance, one negotiation at a time, and
+// keeps this tab's own shares and the pictures of what it watches. The media client
+// never talks to the instance itself.
 
 import {
   applyMessage,
@@ -18,9 +19,19 @@ import {
   type ServerMessage,
   type ShareKind,
 } from "../../shared/socket/index.ts";
+import { sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type Capture } from "./media/index.ts";
+
+/** What this tab receives of a share it watches. */
+export interface Picture {
+  share: LiveShare;
+  /** The transceiver it arrives on. */
+  video: string;
+  /** The share's picture; null when there is none to show (the fake media client). */
+  stream: MediaStream | null;
+}
 
 /** One of this tab's own shares, from the press of its button until it has ended. */
 export interface OwnShare {
@@ -38,6 +49,10 @@ export class RoomClient {
   mine = $state.raw<OwnShare[]>([]);
   /** The kind of share that last failed to start, until the next attempt. */
   failed = $state<ShareKind | null>(null);
+  /** The pictures of the shares this tab watches. Whether a share is on the stage is `view`'s to say. */
+  pictures = $state.raw<Picture[]>([]);
+  /** Shares this tab has asked to watch, until the instance has answered. */
+  asking = $state.raw<LiveShare[]>([]);
 
   /** The signaling connection. */
   private readonly socket: Connection<ServerMessage>;
@@ -46,6 +61,8 @@ export class RoomClient {
   private connection: Promise<boolean> | null = null;
   /** Requests waiting for their answer in the media area, oldest first. */
   private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
+  /** The negotiation under way on the media connection, which the next one waits for. */
+  private negotiating: Promise<unknown> = Promise.resolve();
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
@@ -78,12 +95,18 @@ export class RoomClient {
       capture = await this.media.captureWebcam();
       this.update("webcam", { capture });
       if (!(await this.connected())) throw new Error("no media connection");
-      const offer = await this.media.offer(capture);
-      const reply = this.answer((change) => (change.type === "published" || change.type === "refused") && change.kind === "webcam");
-      this.send({ type: "shares", request: { type: "start", kind: "webcam", offer: offer.sdp, video: offer.video } });
-      const answer = await reply;
-      if (answer.type !== "published") throw new Error("the share was refused");
-      await this.media.accept(answer.answer);
+      const live = await this.negotiate(async () => {
+        const offer = await this.media.offer(capture!);
+        const reply = this.answer(
+          (change) => (change.type === "published" || change.type === "refused") && change.kind === "webcam",
+        );
+        this.send({ type: "shares", request: { type: "start", kind: "webcam", offer: offer.sdp, video: offer.video } });
+        const answer = await reply;
+        if (answer.type !== "published") return false;
+        await this.media.accept(answer.answer);
+        return true;
+      });
+      if (!live) throw new Error("the share was refused");
       this.update("webcam", { state: "live" });
     } catch {
       if (capture) this.media.stop(capture);
@@ -104,6 +127,52 @@ export class RoomClient {
     this.send({ type: "shares", request: { type: "stop", kind } });
   }
 
+  /** Whether this tab watches `share`: it is on the tab's stage. */
+  watches(share: LiveShare): boolean {
+    return !!this.view?.watching.stage.some((watched) => sameShare(watched, share));
+  }
+
+  /** Watches `share` if this tab does not, and stops watching it if it does: a click on its icon. */
+  toggle(share: LiveShare) {
+    if (this.watches(share)) this.unwatch(share);
+    else void this.watch(share);
+  }
+
+  /**
+   * Watches `share` on this tab: the media connection the first time, the instance's
+   * pull and the media server's offer, the browser's answer. The share is on the stage
+   * once the instance says `watched`. A refused watch leaves the stage as it was.
+   */
+  async watch(share: LiveShare) {
+    if (this.watches(share) || this.asking.some((asked) => sameShare(asked, share))) return;
+    this.asking = [...this.asking, share];
+    try {
+      if (!(await this.connected())) return;
+      await this.negotiate(async () => {
+        const reply = this.answer(
+          (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
+        );
+        this.send({ type: "watching", request: { type: "watch", share } });
+        const pulled = await reply;
+        if (pulled.type !== "pulled") return;
+        const { answer, stream } = await this.media.pull(pulled.offer, pulled.video);
+        this.pictures = [...this.pictures.filter((picture) => !sameShare(picture.share, share)), { share, video: pulled.video, stream }];
+        const answered = this.answer((change) => change.type === "answered");
+        this.send({ type: "media", request: { type: "answer", answer } });
+        await answered;
+      });
+    } catch {
+      // The connection was lost on the way: the stage comes back with the room's state.
+    } finally {
+      this.asking = this.asking.filter((asked) => !sameShare(asked, share));
+    }
+  }
+
+  /** Stops watching `share` on this tab. It leaves the stage once the instance has closed its pull. */
+  unwatch(share: LiveShare) {
+    if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
+  }
+
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
     this.media.close();
@@ -118,6 +187,22 @@ export class RoomClient {
     }
     this.view = applyMessage(this.view, message);
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
+    if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
+  }
+
+  /** The instance closed this tab's pull of `share`: the tab lets go of its picture. */
+  private unwatched(share: LiveShare) {
+    const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
+    if (!picture) return;
+    this.media.drop(picture.video);
+    this.pictures = this.pictures.filter((candidate) => candidate !== picture);
+  }
+
+  /** Runs `negotiation` on the media connection once every earlier one is done. */
+  private negotiate<T>(negotiation: () => Promise<T>): Promise<T> {
+    const turn = this.negotiating.then(negotiation);
+    this.negotiating = turn.catch(() => undefined);
+    return turn;
   }
 
   /** A share ended. If it was this tab's own, the tab tidies its side. */

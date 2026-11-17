@@ -47,7 +47,12 @@ export class Instance extends DurableObject<Env> {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
     this.signaling = new Signaling(ctx, (address) => this.relist(address));
-    this.shares = new Shares(ctx.storage.sql, mediaLayer(env));
+    this.shares = new Shares(ctx.storage.sql, mediaLayer(env), {
+      unwatched: (tab, share) => this.signaling.toTab(tab, { type: "watching", change: { type: "unwatched", share } }),
+      // Only the sharer learns who is watching.
+      watchers: (address, share, members) =>
+        this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
+    });
     // Nothing reaches the instance until its storage is on this code's schema.
     void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
   }
@@ -116,7 +121,7 @@ export class Instance extends DurableObject<Env> {
     if (socket) {
       const room = this.people.room(member, socket[1]!);
       if (!room || !upgrade) return refuse();
-      return this.signaling.open(member.id, visitor.deviceId, room.address, () => this.roomView(member, room));
+      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => this.roomView(member, room, tab));
     }
     return refuse();
   }
@@ -196,6 +201,37 @@ export class Instance extends DurableObject<Env> {
     const member = this.people.deviceMember(tab.device);
     const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
 
+    if (message.type === "media" && type === "answer") {
+      const { answer } = request as { answer?: unknown };
+      if (!isSdp(answer)) return;
+      // An answer only completes the tab's own negotiation, so it needs no check. A failed
+      // one leaves the pull with no media flowing; the watch stays, as on any media trouble.
+      await this.shares.renegotiate(tab, answer);
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
+      return;
+    }
+    if (message.type === "watching") {
+      const share = asLiveShare((request as { share?: unknown }).share);
+      if (!share) return;
+      if (type === "watch") {
+        const watched = allowed
+          ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id))
+          : { watching: false as const };
+        if (watched === null) return;
+        if (!watched.watching) {
+          this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
+          return;
+        }
+        this.signaling.toTab(tab.id, {
+          type: "media",
+          change: { type: "pulled", share, offer: watched.offer, video: watched.video },
+        });
+        this.signaling.toTab(tab.id, { type: "watching", change: { type: "watched", share } });
+      }
+      // Stopping needs no check: it only ever takes something away.
+      if (type === "unwatch") await this.shares.unwatch(tab, share);
+      return;
+    }
     if (message.type === "media" && type === "connect") {
       if (!allowed) return;
       const iceServers = await this.shares.connect(tab);
@@ -248,7 +284,7 @@ export class Instance extends DurableObject<Env> {
   }
 
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
-  private roomView(member: Member, room: RoomSummary): RoomView {
+  private roomView(member: Member, room: RoomSummary, tab: string): RoomView {
     return {
       room,
       people: {
@@ -260,6 +296,8 @@ export class Instance extends DurableObject<Env> {
         reconnecting: this.signaling.reconnecting(room.address),
       },
       shares: { live: this.shares.live(room.address) },
+      // A new tab opens with nothing on its stage; one that reconnects in time finds its stage as it was.
+      watching: { stage: this.shares.stage(tab), watchers: this.shares.watchers(room.address, member.id) },
       usage: {},
     };
   }
@@ -503,4 +541,13 @@ function withCookie(response: Response, cookie: string): Response {
 
 function roomPath(address: string): string {
   return `/r/${address}`;
+}
+
+/** A share as a tab names it, by its sharer's member id and its kind. */
+function asLiveShare(value: unknown): LiveShare | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { member, kind } = value as { member?: unknown; kind?: unknown };
+  if (typeof member !== "string" || member.length === 0 || member.length > 64) return null;
+  if (kind !== "webcam" && kind !== "screen") return null;
+  return { member, kind };
 }
