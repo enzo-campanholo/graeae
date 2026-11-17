@@ -6,6 +6,13 @@
 // that only the sharer's tab needs (the media server's half of the negotiation, or a
 // refusal) comes in the media area; every tab on the room hears `started` and `ended`.
 //
+// One screen share and one webcam share per member across the whole instance. Starting a
+// kind that is already live from another tab or device is refused, unless the start asks
+// to hand over: the instance then registers the new share first, closes the old one, and
+// moves every viewer in the same room over to the new one (see the media area's `moved`
+// and `handed-over`). Within one room the share keeps its name, so the room hears only
+// `started` for the new one; a hand-over into another room ends the share in the first.
+//
 // A share whose sending tab has lost its signaling connection stays live through the
 // grace period, since its media may still flow. After about 10 seconds of silence from
 // that tab the room hears `reconnecting` for the share, and `reconnected` once the tab is
@@ -63,14 +70,26 @@ export type SharesRequest =
    * area: the tab connects first). `offer` is the browser's SDP offer, and `video` the
    * mid of the transceiver that sends the camera.
    */
-  | { type: "start"; kind: "webcam"; offer: string; video: string }
+  | { type: "start"; kind: "webcam"; offer: string; video: string; handOver?: true }
   /**
    * Start a screen share from this tab, likewise. `audio` is the mid of the transceiver
    * that sends its screen audio, left out when the browser's picker gave no sound: the
    * share is then video only. `browser` is the family of the browser sending it, whose
    * encoding plan says how many qualities it goes out at.
+   *
+   * Either kind may say `handOver`: when the member's share of that kind is already live
+   * from another tab or device, it is stopped there and this one replaces it. Without
+   * `handOver` such a start is refused. With it and nothing live, it is an ordinary start.
    */
-  | { type: "start"; kind: "screen"; offer: string; video: string; audio?: string; browser: BrowserFamily }
+  | {
+      type: "start";
+      kind: "screen";
+      offer: string;
+      video: string;
+      audio?: string;
+      browser: BrowserFamily;
+      handOver?: true;
+    }
   /** Stop this tab's share of `kind`. */
   | { type: "stop"; kind: ShareKind };
 

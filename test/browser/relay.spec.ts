@@ -37,7 +37,8 @@ async function routed(page: Page) {
   const sent: { type: string; request: { type: string; [key: string]: unknown } }[] = [];
   const route = {
     sent,
-    hand: (message: unknown) => void message,
+    /** Hands the page `message` as if the instance sent it. */
+    hand: ((message: unknown) => void message) as (message: unknown) => void,
     holding: null as string | null,
     release: () => {},
   };

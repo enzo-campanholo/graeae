@@ -1,8 +1,9 @@
 <script lang="ts">
   // The two ways to start sharing, side by side at the foot of the bar, or stacked as
   // icons in the rail. Share screen is the one filled button in the room. Each reads
-  // "Starting" once pressed, and is disabled while a share of its kind of yours is live
-  // from any tab or device: one of each per member.
+  // "Starting" once pressed, and is disabled while this tab sends a share of its kind.
+  // While yours is live from another tab or device it stays enabled: pressing it offers
+  // to hand that share over to this tab.
   import Monitor from "@lucide/svelte/icons/monitor";
   import Video from "@lucide/svelte/icons/video";
   import { Button } from "$lib/components/ui/button/index.js";
