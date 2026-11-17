@@ -8,7 +8,7 @@ Spec: [Shares](../spec.md#shares) ("If media falters while the signaling connect
 
 **Blocked by:** 22, 25
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] A media connection that reaches "failed" is restarted through the instance (`media.restart`), keeping every share and watch
 - [x] A restart that finds no path is tried again while the connection stays failed and the tab still holds it
