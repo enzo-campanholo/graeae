@@ -12,7 +12,7 @@ import type { IceServer } from "../../shared/socket/media.ts";
 import type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
 
 /** The calls a test can make fail or wait. */
-export type FakeOperation = "connect" | "publish" | "pull" | "renegotiate" | "close" | "relayCredential";
+export type FakeOperation = "connect" | "publish" | "pull" | "renegotiate" | "close" | "tracks" | "relayCredential";
 
 /** A relay credential the fake minted, with the life it was asked for. */
 export interface MintedCredential {
@@ -60,6 +60,8 @@ class FakeMediaServer implements MediaLayer {
   /** Every identifier the fake has handed the instance, which no browser may ever see. */
   readonly identifiers = new Set<string>();
   readonly faults = new Map<FakeOperation, Fault[]>();
+  /** How many times the instance has made each call. */
+  readonly calls = new Map<FakeOperation, number>();
 
   connect(): Promise<MediaConnectionId> {
     return this.call("connect", () => {
@@ -121,6 +123,10 @@ class FakeMediaServer implements MediaLayer {
     });
   }
 
+  tracks(connection: MediaConnectionId): Promise<Track[]> {
+    return this.call("tracks", () => [...this.connection(connection).values()].map((track) => ({ ...track })));
+  }
+
   relayCredential(ttlSeconds: number): Promise<IceServer[]> {
     return this.call("relayCredential", () => {
       const username = `fake-relay-${crypto.randomUUID()}`;
@@ -148,6 +154,7 @@ class FakeMediaServer implements MediaLayer {
     this.credentials.length = 0;
     this.identifiers.clear();
     this.faults.clear();
+    this.calls.clear();
   }
 
   private useMid(connection: MediaConnectionId, mid: string) {
@@ -163,6 +170,7 @@ class FakeMediaServer implements MediaLayer {
 
   /** Makes the call `operation`, which `work` does, with whatever fault a test queued for it. */
   private async call<T>(operation: FakeOperation, work: () => T): Promise<T> {
+    this.calls.set(operation, (this.calls.get(operation) ?? 0) + 1);
     const fault = this.faults.get(operation)?.shift();
     if (!fault) return work();
     const result = fault.done ? work() : undefined;
@@ -205,10 +213,19 @@ export const fakeMediaControl = {
   /** Every media connection id and track name the fake has handed out. */
   identifiers: (): readonly string[] => [...server.identifiers],
 
-  /** Makes the next call of `operation` fail. */
-  fail(operation: FakeOperation) {
-    server.queue(operation, { fail: true });
+  /**
+   * Makes the next call of `operation` fail. With `done`, the media server does the call
+   * all the same and only reports a failure, as when its answer is lost on the way.
+   */
+  fail(operation: FakeOperation, { done = false } = {}) {
+    server.queue(operation, { fail: true, done });
   },
+
+  /** How many calls of `operation` a test has queued a failure or a hold for, and are still to come. */
+  queued: (operation: FakeOperation): number => server.faults.get(operation)?.length ?? 0,
+
+  /** How many times the instance has called `operation` since the test began. */
+  calls: (operation: FakeOperation): number => server.calls.get(operation) ?? 0,
 
   /**
    * Holds the next call of `operation` until the test releases it, then lets it succeed

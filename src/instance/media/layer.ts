@@ -5,7 +5,7 @@
 // no record.
 //
 // This holds only the operations the instance uses so far. Ticket 17 adds changing a
-// viewer's quality, and ticket 21 listing the tracks a media connection really has. The
+// viewer's quality. The
 // Cloudflare implementation is in `cloudflare.ts`; the in-memory fake in `fake.ts`
 // stands in for it in tests.
 
@@ -58,6 +58,13 @@ export interface MediaLayer {
    * from the browser. Closing a track that is not there is no error.
    */
   close(connection: MediaConnectionId, tracks: readonly Track[]): Promise<void>;
+
+  /**
+   * The tracks the media connection `connection` really has open now, whatever the
+   * instance's records say: the sweep's question. A pulled track has the name of the
+   * track it was pulled from. A connection the media server no longer has holds none.
+   */
+  tracks(connection: MediaConnectionId): Promise<Track[]>;
 
   /** Mints a relay credential lasting `ttlSeconds`. The instance keeps no record of it. */
   relayCredential(ttlSeconds: number): Promise<IceServer[]>;

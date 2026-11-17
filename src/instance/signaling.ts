@@ -330,6 +330,11 @@ export class Signaling {
     return this.ctx.getWebSockets(tabTag(id)).some((socket) => tabOf(socket) !== null);
   }
 
+  /** Whether the tab `id` still keeps its member present: its socket is open, or it is lost and in its grace period. */
+  holds(id: string): boolean {
+    return this.isOpen(id) || this.lost().some((tab) => tab.id === id);
+  }
+
   /** Sends `message` to the one tab `id`, if it is still open. */
   toTab(id: string, message: ServerMessage) {
     for (const socket of this.ctx.getWebSockets(tabTag(id))) {
