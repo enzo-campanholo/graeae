@@ -63,10 +63,10 @@ function reports(page: Page): unknown[] {
   return sent;
 }
 
-/** The meter in the owner page's navigation, in GB, as it reads after a fresh load. */
+/** The meter at the foot of the owner page's navigation, in GB, as it reads after a fresh load. */
 async function meterReading(page: Page): Promise<number> {
   await page.reload();
-  const meter = page.getByRole("navigation", { name: "Owner page" }).getByRole("meter", { name: "Usage this month" });
+  const meter = page.getByRole("complementary").getByRole("meter", { name: "Usage this month" });
   await expect(meter).toBeVisible();
   return Number(await meter.getAttribute("aria-valuenow"));
 }
@@ -135,12 +135,14 @@ test("the owner's meter shows what members have watched, members see nothing of 
   await expect(admin.getByRole("heading", { name: "Usage", exact: true })).toBeVisible();
   const month = admin.getByRole("region", { name: "This month" });
   await expect(month.getByRole("meter", { name: "Usage this month" })).toBeVisible();
-  await expect(month.getByLabel("Used")).toHaveText(/^[\d,]+ GB$/);
+  await expect(month.getByLabel("Used")).toHaveText(/^[\d,.]+ GB$/);
   await expect(month.getByLabel("Usage budget")).toHaveText("1,000 GB");
-  await expect(month.getByLabel("Projected by the month's end")).toHaveText(/^[\d,]+ GB$/);
+  await expect(month.getByLabel("Projected by the month's end")).toHaveText(/^[\d,.]+ GB$/);
   if (process.env.GRAEAE_SCREENSHOTS) {
     for (const colorScheme of ["dark", "light"] as const) {
       await admin.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
+      // Past the colours' 150ms transitions.
+      await admin.waitForTimeout(400);
       await admin.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/usage-${colorScheme}.png` });
     }
     await admin.evaluate(`document.documentElement.classList.toggle("dark", true)`);

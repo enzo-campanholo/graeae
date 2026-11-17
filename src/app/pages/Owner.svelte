@@ -5,8 +5,8 @@
 
 <script lang="ts">
   // The owner page: four sections in a navigation on the left, with the usage meter
-  // always in view at its foot, and the chosen section in the inset panel. Each section
-  // is filled in by its own ticket.
+  // always in view at its foot, and the chosen section in the inset panel. The meter and
+  // the Usage section read the same figures, kept fresh while the page is in view.
   import Gauge from "@lucide/svelte/icons/gauge";
   import House from "@lucide/svelte/icons/house";
   import Link from "@lucide/svelte/icons/link";
@@ -18,11 +18,13 @@
   import UsageMeter from "$lib/components/UsageMeter.svelte";
   import Loading from "$lib/components/Loading.svelte";
   import { load, type Load } from "$lib/api.js";
+  import { OwnerUsage } from "$lib/owner-usage.svelte.js";
   import type { Me } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
   import Invites from "./owner/Invites.svelte";
   import People from "./owner/People.svelte";
   import OwnerRooms from "./owner/Rooms.svelte";
+  import Usage from "./owner/Usage.svelte";
 
   let { section }: { section: OwnerSection } = $props();
 
@@ -50,13 +52,19 @@
   };
 
   const current = $derived(sections[section]);
-  const usage = sample?.owner ?? null;
 
   // The instance refuses the owner page to anyone else, but a page reached inside the
   // app was never fetched, so it asks who this is before showing anything.
   let me = $state<Load<Me>>(sample ? { state: "loaded", data: { name: "", owner: true } } : { state: "loading" });
   if (!sample) load<Me>("/api/me", (value) => (me = value));
   const owner = $derived(me.state === "loaded" && me.data.owner);
+
+  // Asked for only once the instance has said this is the owner.
+  const usage = new OwnerUsage();
+  $effect(() => {
+    if (owner && !sample) return usage.watch();
+  });
+  const meter = $derived(sample?.owner ?? usage.figures);
 </script>
 
 <svelte:head>
@@ -93,8 +101,8 @@
         href="/owner/usage"
         class="hover:bg-raised mt-auto mb-1 rounded-md p-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {#if usage}
-          <UsageMeter used={usage.used} budget={usage.budget} />
+        {#if meter}
+          <UsageMeter used={meter.used} budget={meter.budget} />
         {:else}
           <div class="grid gap-2" aria-hidden="true">
             <span class="bg-raised h-2.5 w-24 rounded-sm"></span>
@@ -113,6 +121,7 @@
         {#if section === "people" && !sample}<People />{/if}
         {#if section === "invites" && !sample}<Invites />{/if}
         {#if section === "rooms" && !sample}<OwnerRooms />{/if}
+        {#if section === "usage" && !sample}<Usage {usage} />{/if}
       </div>
     </main>
   </div>

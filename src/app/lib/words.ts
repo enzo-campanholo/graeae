@@ -27,9 +27,13 @@ export function watchersLine(names: readonly string[]): Part[] {
   return parts;
 }
 
-/** A whole number of gigabytes, as the owner's meter shows them: "1,000 GB". */
+/**
+ * Gigabytes as the owner's meter shows them: whole from 10 up ("1,000 GB"), to a tenth
+ * below, so the first evenings of a month do not read "0 GB" ("0.4 GB").
+ */
 export function gigabytes(value: number): string {
-  return `${Math.round(value).toLocaleString("en")} GB`;
+  const digits = value < 10 ? 1 : 0;
+  return `${value.toLocaleString("en", { maximumFractionDigits: digits })} GB`;
 }
 
 /** A list of names as a sentence: "First room", "First room and Late shift", "A, B and C". */

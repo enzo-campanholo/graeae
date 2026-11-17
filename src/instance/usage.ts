@@ -22,16 +22,13 @@
 // Each charge goes to the UTC day it is made on. The month runs from the owner's reset
 // day, at midnight UTC, to the same day of the next month, and sums the days between.
 
-import type { UsageAnswer } from "../shared/api.ts";
+import { GIGABYTE, type UsageAnswer } from "../shared/api.ts";
 
 /** The share of every reported byte added on top, in percent. A constant, not a setting. */
 export const SAFETY_MARGIN_PERCENT = 5;
 
 /** Whether relayed watching is counted twice. The one place to switch the doubling off. */
 export const RELAYED_COUNTS_TWICE = true;
-
-/** A gigabyte, as the usage budget is set and Cloudflare bills: 10⁹ bytes. */
-export const GIGABYTE = 1_000_000_000;
 
 /** The usage budget: 1,000 GB, Cloudflare's monthly allowance. Ticket 24 makes it the owner's to set. */
 export const USAGE_BUDGET_BYTES = 1_000 * GIGABYTE;

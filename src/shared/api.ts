@@ -163,6 +163,9 @@ export interface GrantAnswer {
   person: MemberEntry;
 }
 
+/** A gigabyte, as usage is counted and Cloudflare bills: 10⁹ bytes. */
+export const GIGABYTE = 1_000_000_000;
+
 /**
  * `GET /api/owner/usage`, and `PUT /api/owner/usage/reset-day` with `{ day }`: the
  * month's usage as the owner page shows it. Bytes are counted by the instance's own
