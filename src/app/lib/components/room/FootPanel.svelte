@@ -67,7 +67,7 @@
   }
   /* A floating panel is lifted off the stage with the tooltip's soft drop, the system's one shadow. */
   .floating {
-    box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4);
+    box-shadow: var(--lift);
   }
   @keyframes arrive {
     from {

@@ -70,7 +70,8 @@
       </div>
     {:else}
       <div class="area h-full" style:--cols={columns} style:--rows={rows}>
-        <div class="grid h-full place-content-center gap-3" style:grid-template-columns="repeat({columns}, auto)">
+        <!-- Rows of `columns` tiles, the last one centred under the others when it is short. -->
+        <div class="tiles mx-auto flex h-full flex-wrap content-center items-start justify-center gap-3">
           {@render children?.()}
         </div>
       </div>
@@ -82,9 +83,23 @@
   .area {
     container-type: size;
   }
+  /* As wide as `--cols` tiles and their gaps, so each row holds the table's number of
+     tiles even when they are limited by height and more would fit. A tile's width is
+     worked out in StageTile.svelte the same way, at the 16:9 every tile has today; 1px
+     spares the rounding. */
+  .tiles {
+    max-width: calc(
+      var(--cols) *
+        min(
+          (100cqw - (var(--cols) - 1) * 12px) / var(--cols),
+          ((100cqh - (var(--rows) - 1) * 12px) / var(--rows) - 26px) * 16 / 9
+        ) +
+        (var(--cols) - 1) * 12px + 1px
+    );
+  }
   /* Arrives as the screen notice does: 180ms, rising 4px. */
   .note {
-    box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4);
+    box-shadow: var(--lift);
     animation: arrive 180ms var(--ease-out);
   }
   @keyframes arrive {

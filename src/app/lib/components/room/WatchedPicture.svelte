@@ -98,7 +98,7 @@
 <style>
   /* Arrives as the screen notice does: 180ms, rising 4px. */
   .sound {
-    box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4);
+    box-shadow: var(--lift);
     animation: arrive 180ms var(--ease-out);
   }
   @keyframes arrive {
