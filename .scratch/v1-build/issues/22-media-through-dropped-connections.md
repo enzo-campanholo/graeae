@@ -65,3 +65,9 @@ UI: build with the impeccable skill, following `DESIGN.md`.
   - `pnpm test` (Seam 1, 427 tests; Seam 2, 36 journeys), `pnpm typecheck` and `pnpm lint` pass.
 
 **Still to do:** deploy this to `graeae-test` and run the two lost-socket checks again: the viewer should keep its picture through the reconnect, and the sharer should keep the share. Then decide on the ICE restart above. The two test members "bot" and "bot viewer" can be removed afterwards.
+
+**Deployed and checked again** on 2026-11-17: `28bf8da` on `graeae-test` (version `31fc5581`). Both lost-socket checks now pass.
+- A viewer cut from signaling for 15 s comes back as the same tab (`connected: true`) on the same media connection, at 20 fps throughout.
+- A sharer cut from signaling for 15 s comes back as the same tab. The "reconnecting" marks clear, and the webcam keeps going on its one connection, still live past the old socket's grace period.
+
+Drops of 17 to 30 seconds of media go to ticket 31.
