@@ -6,5 +6,7 @@ import { defineConfig } from "vitest/config";
 // Worker answers with the app's page.
 export default defineConfig({
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })],
-  test: { include: ["test/**/*.test.ts"] },
+  // Two at a time, to leave the machine room for other work. Seam 2 (test/browser) runs
+  // under Playwright instead.
+  test: { include: ["test/**/*.test.ts"], maxWorkers: 2 },
 });

@@ -2,10 +2,11 @@
 // served as they are, and everything else goes to the instance, which decides what
 // each visitor may see.
 
-export { Instance } from "../instance/instance.ts";
+import { INSTANCE_NAME } from "../instance/instance.ts";
 
-/** The instance's one Durable Object. Every request reaches the same one. */
-export const INSTANCE_NAME = "instance";
+// Only handlers and Durable Object classes may be exported from here; workerd refuses
+// to start a Worker that exports anything else.
+export { Instance } from "../instance/instance.ts";
 
 // Where the build puts the front end's scripts and styles. They reveal nothing.
 const BUILT_FILES = "/assets/";

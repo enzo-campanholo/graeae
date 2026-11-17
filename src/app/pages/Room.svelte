@@ -14,10 +14,35 @@
   import StageEmpty from "$lib/components/room/StageEmpty.svelte";
   import StageTile from "$lib/components/room/StageTile.svelte";
   import Loading from "$lib/components/Loading.svelte";
+  import { load, type Load } from "$lib/api.js";
   import { isShortcut } from "$lib/keys.js";
   import { readStored, writeStored } from "$lib/stored.js";
+  import type { RoomAnswer } from "../../shared/api.ts";
+  import type { Params } from "../router/router.svelte.ts";
+  import NothingHere from "./NothingHere.svelte";
+
+  let { params }: { params: Params } = $props();
 
   const room = sample?.room ?? null;
+
+  // The room as the instance knows it. Who is here and what is live arrive with presence.
+  let known = $state<Load<RoomAnswer>>({ state: "loading" });
+
+  $effect(() => {
+    if (sample) return;
+    const path = `/api/rooms/${encodeURIComponent(params.room ?? "")}`;
+    let current = true;
+    known = { state: "loading" };
+    load<RoomAnswer>(path, (value) => {
+      if (current) known = value;
+    });
+    return () => {
+      current = false;
+    };
+  });
+
+  const answer = $derived(known.state === "loaded" ? known.data : null);
+  const name = $derived(room?.name ?? answer?.room.name ?? null);
 
   // Whether the bar is folded into the rail is kept on this device.
   const FOLDED_KEY = "graeae:rail";
@@ -42,76 +67,90 @@
 </script>
 
 <svelte:head>
-  <title>{room ? `${room.name} · graeae` : "graeae"}</title>
+  {#if known.state !== "refused"}<title>{name ? `${name} · graeae` : "graeae"}</title>{/if}
 </svelte:head>
 
 <svelte:window {onkeydown} />
 
-<div class="flex h-dvh py-2 pr-2">
-  {#if folded}
-    <Rail
-      people={(room?.people ?? []).map((person) => ({
-        id: person.id,
-        name: person.name,
-        followed: person.followed,
-        sharing: !!(person.screen || person.webcam),
-      }))}
-      onexpand={() => fold(false)}
-    >
-      {#snippet foot()}
-        <ShareButtons compact {webcamLive} />
-      {/snippet}
-    </Rail>
-  {:else}
-    <Bar>
-      {#snippet header()}
-        <BarHeader name={room?.name ?? null} home={room?.home} gear={room?.gear} oncollapse={() => fold(true)} />
-      {/snippet}
+{#if known.state === "refused"}
+  <NothingHere />
+{:else}
+  <div class="flex h-dvh py-2 pr-2">
+    {#if folded}
+      <Rail
+        people={(room?.people ?? []).map((person) => ({
+          id: person.id,
+          name: person.name,
+          followed: person.followed,
+          sharing: !!(person.screen || person.webcam),
+        }))}
+        onexpand={() => fold(false)}
+      >
+        {#snippet foot()}
+          <ShareButtons compact {webcamLive} />
+        {/snippet}
+      </Rail>
+    {:else}
+      <Bar>
+        {#snippet header()}
+          <BarHeader
+            {name}
+            home={room?.home}
+            gear={room?.gear ?? answer?.me.owner}
+            oncollapse={() => fold(true)}
+          />
+        {/snippet}
 
-      {#if room}
-        <section aria-label="Here">
-          <PeopleHeading label="Here" count={room.people.length + 1} />
-          {#each room.people as person (person.id)}
-            <PersonRow
-              name={person.name}
-              followed={person.followed}
-              screen={person.screen}
-              webcam={person.webcam}
-            />
-          {/each}
-          <PersonRow name={room.me} you />
-          <Shortcuts />
-        </section>
-        {#if room.away.length}
-          <section class="mt-4" aria-label="Not here">
-            <PeopleHeading label="Not here" count={room.away.length} />
-            {#each room.away as name (name)}
-              <PersonRow {name} away />
-            {/each}
+        {#if answer}
+          <section aria-label="Here">
+            <PeopleHeading label="Here" count={1} />
+            <PersonRow name={answer.me.name} you />
           </section>
+        {:else if room}
+          <section aria-label="Here">
+            <PeopleHeading label="Here" count={room.people.length + 1} />
+            {#each room.people as person (person.id)}
+              <PersonRow
+                name={person.name}
+                followed={person.followed}
+                screen={person.screen}
+                webcam={person.webcam}
+              />
+            {/each}
+            <PersonRow name={room.me} you />
+            <Shortcuts />
+          </section>
+          {#if room.away.length}
+            <section class="mt-4" aria-label="Not here">
+              <PeopleHeading label="Not here" count={room.away.length} />
+              {#each room.away as name (name)}
+                <PersonRow {name} away />
+              {/each}
+            </section>
+          {/if}
         {/if}
-      {/if}
 
-      {#snippet foot()}
-        {#each room?.mine ?? [] as share (share.kind)}
-          <OwnShare kind={share.kind} watchers={share.watchers}>
-            <SampleScene scene={share.scene} />
-          </OwnShare>
-        {/each}
-        <ShareButtons {webcamLive} />
+        {#snippet foot()}
+          {#each room?.mine ?? [] as share (share.kind)}
+            <OwnShare kind={share.kind} watchers={share.watchers}>
+              <SampleScene scene={share.scene} />
+            </OwnShare>
+          {/each}
+          <ShareButtons {webcamLive} />
+        {/snippet}
+      </Bar>
+    {/if}
+
+    <Stage count={room?.stage.length ?? 0}>
+      {#each room?.stage ?? [] as share (share.id)}
+        <StageTile name={share.name} kind={share.kind}>
+          <SampleScene scene={share.scene} />
+        </StageTile>
+      {/each}
+      {#snippet empty()}
+        <!-- Until the room is known, the stage says only that it is loading. -->
+        {#if room || answer}<StageEmpty {live} />{:else}<Loading />{/if}
       {/snippet}
-    </Bar>
-  {/if}
-
-  <Stage count={room?.stage.length ?? 0}>
-    {#each room?.stage ?? [] as share (share.id)}
-      <StageTile name={share.name} kind={share.kind}>
-        <SampleScene scene={share.scene} />
-      </StageTile>
-    {/each}
-    {#snippet empty()}
-      <!-- Until the room is known, the stage says only that it is loading. -->
-      {#if room}<StageEmpty {live} />{:else}<Loading />{/if}
-    {/snippet}
-  </Stage>
-</div>
+    </Stage>
+  </div>
+{/if}

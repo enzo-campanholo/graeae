@@ -10,3 +10,7 @@ dist/
 .env
 .env.*
 .impeccable/mocks/
+
+# Seam 2 output.
+test-results/
+playwright-report/

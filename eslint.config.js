@@ -17,7 +17,7 @@ export default ts.config(
     languageOptions: { parserOptions: { parser: ts.parser, extraFileExtensions: [".svelte"] } },
   },
   {
-    files: ["*.{js,ts}", "scripts/**/*.mjs"],
+    files: ["*.{js,ts}", "scripts/**/*.mjs", "test/browser/**/*.ts"],
     languageOptions: { globals: globals.node },
   },
 );
