@@ -24,7 +24,18 @@ export default defineConfig({
     launchOptions: { executablePath: process.env.GRAEAE_CHROMIUM || undefined },
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  // Journeys share one instance. A journey that gives the owner a second room changes
+  // where the root address and setup take the owner, so those run last, in their own
+  // project, once every other journey has run.
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" }, testIgnore: "rooms.spec.ts" },
+    {
+      name: "several rooms",
+      use: { browserName: "chromium" },
+      testMatch: "rooms.spec.ts",
+      dependencies: ["chromium"],
+    },
+  ],
   // The built app, as `pnpm test` leaves it, on an instance that starts empty each run.
   webServer: {
     command: `pnpm exec vite preview --port ${process.env.GRAEAE_SEAM_2_PORT} --strictPort`,

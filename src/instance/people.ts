@@ -308,6 +308,23 @@ export class People {
     return roomName === null ? null : this.createRoom(roomName);
   }
 
+  /**
+   * Renames the room at `address`, whose address stays as it is. Null, and nothing
+   * changed, when there is no such room or `name` is not a room name.
+   */
+  renameRoom(address: string, name: unknown): Room | null {
+    const roomName = toDisplayName(name);
+    if (roomName === null) return null;
+    const renamed = this.sql
+      .exec<{ address: string; name: string }>(
+        "UPDATE room SET name = ? WHERE address = ? RETURNING address, name",
+        roomName,
+        address,
+      )
+      .toArray()[0];
+    return renamed ? { address: renamed.address, name: renamed.name } : null;
+  }
+
   /** Every room of the instance, oldest first. */
   allRooms(): Room[] {
     return this.sql

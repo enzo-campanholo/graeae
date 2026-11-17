@@ -72,3 +72,12 @@ export async function createRoom(owner: TestBrowser, name: string): Promise<stri
   expect(response.status).toBe(200);
   return (await response.json<CreateRoomAnswer>()).room.address;
 }
+
+/** What the owner page's Rooms section sends to rename the room at `address`. */
+export function renameRoom(owner: TestBrowser, address: string, name: unknown) {
+  return owner.fetch(`/api/owner/rooms/${address}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}

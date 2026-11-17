@@ -8,12 +8,15 @@ import type {
   JoinAnswer,
   Me,
   MeAnswer,
+  OwnerRoomsAnswer,
+  RenameRoomAnswer,
   RoomAnswer,
   RoomsAnswer,
   RoomSummary,
   SetupAnswer,
 } from "../shared/api.ts";
 import type { RoomView } from "../shared/socket/index.ts";
+import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
@@ -37,7 +40,7 @@ export class Instance extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
-    this.signaling = new Signaling(ctx);
+    this.signaling = new Signaling(ctx, (address) => this.relist(address));
     // Nothing reaches the instance until its storage is on this code's schema.
     void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
   }
@@ -75,7 +78,7 @@ export class Instance extends DurableObject<Env> {
     if (!visitor) return refuse();
     const { member } = visitor;
     if (pathname === "/owner" || pathname.startsWith("/owner/") || pathname.startsWith("/api/owner/")) {
-      return member.owner ? this.ownerAnswer(request, pathname) : refuse();
+      return member.owner ? this.ownerAnswer(request, pathname, member) : refuse();
     }
     if (pathname === "/api/me" || pathname.startsWith("/api/me/")) return this.youAnswer(request, pathname, visitor);
     if (method !== "GET") return refuse();
@@ -98,10 +101,13 @@ export class Instance extends DurableObject<Env> {
       const room = this.people.room(member, roomData[1]!);
       return room ? json({ room, me } satisfies RoomAnswer) : refuse();
     }
+    const upgrade = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
+    if (pathname === LIST_SOCKET_PATH) {
+      return upgrade ? this.signaling.openList(member.id, visitor.deviceId, this.list(member)) : refuse();
+    }
     const socket = /^\/api\/socket\/([^/]+)$/.exec(pathname);
     if (socket) {
       const room = this.people.room(member, socket[1]!);
-      const upgrade = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
       if (!room || !upgrade) return refuse();
       return this.signaling.open(member.id, visitor.deviceId, room.address, () => this.roomView(member, room));
     }
@@ -130,6 +136,8 @@ export class Instance extends DurableObject<Env> {
           type: "people",
           change: { type: "renamed", member: renamed.id, name: renamed.name },
         });
+        // The lists of rooms name the members present, so a line changes only where they are.
+        if (this.signaling.present(room.address).has(renamed.id)) this.relist(room.address);
       }
       return json({ name: renamed.name, owner: renamed.owner } satisfies Me);
     }
@@ -164,7 +172,7 @@ export class Instance extends DurableObject<Env> {
     return {
       room,
       people: {
-        you: { id: member.id, owner: member.owner },
+        you: { id: member.id, owner: member.owner, rooms: this.people.rooms(member).length },
         members: this.people.membersOf(room.address).map(({ id, name }) => ({ id, name })),
       },
       presence: { present: [...this.signaling.present(room.address)] },
@@ -173,8 +181,36 @@ export class Instance extends DurableObject<Env> {
     };
   }
 
+  /** The whole list of rooms as `member` sees it: what the list gets on connecting. */
+  private list(member: Member): ListState {
+    return { you: { owner: member.owner }, rooms: this.people.rooms(member).map((room) => this.listed(room)) };
+  }
+
+  /** A room's line in the list of rooms. It reads the same to every member with access. */
+  private listed(room: RoomSummary): ListedRoom {
+    const present = this.signaling.present(room.address);
+    const names = this.people
+      .membersOf(room.address)
+      .filter((person) => present.has(person.id))
+      .map((person) => person.name)
+      .toSorted((a, b) => a.localeCompare(b));
+    return { ...room, present: names };
+  }
+
+  /**
+   * Tells the lists of rooms of every member with access to the room at `address` how
+   * its line reads now. Called whenever the line changes: a rename, presence, a new room,
+   * or a present member's new display name.
+   */
+  private relist(address: string) {
+    const room = this.people.allRooms().find((candidate) => candidate.address === address);
+    if (!room) return;
+    const members = new Set(this.people.membersOf(address).map((person) => person.id));
+    this.signaling.toLists(members, { type: "rooms", change: { type: "listed", room: this.listed(room) } });
+  }
+
   /** The owner page and the owner's actions. Only the owner's devices get this far. */
-  private async ownerAnswer(request: Request, pathname: string): Promise<Response> {
+  private async ownerAnswer(request: Request, pathname: string, owner: Member): Promise<Response> {
     const { method } = request;
     const refuse = () => nothingHere(this.env.ASSETS, request);
 
@@ -197,10 +233,28 @@ export class Instance extends DurableObject<Env> {
       }
       return refuse();
     }
-    if (pathname === "/api/owner/rooms" && method === "POST") {
+    if (pathname === "/api/owner/rooms") {
+      if (method === "GET") return json({ rooms: this.people.allRooms() } satisfies OwnerRoomsAnswer);
+      if (method !== "POST") return refuse();
       const body = await request.json<{ name?: unknown }>().catch(() => null);
       const room = body && this.people.newRoom(body.name);
-      return room ? json({ room } satisfies CreateRoomAnswer) : refuse();
+      if (!room) return refuse();
+      // The owner has every room by rule, so only the owner gained access.
+      this.signaling.toMember(owner.id, {
+        type: "people",
+        change: { type: "access", rooms: this.people.rooms(owner).length },
+      });
+      this.relist(room.address);
+      return json({ room } satisfies CreateRoomAnswer);
+    }
+    const ownerRoom = /^\/api\/owner\/rooms\/([^/]+)$/.exec(pathname);
+    if (ownerRoom && method === "PATCH") {
+      const body = await request.json<{ name?: unknown }>().catch(() => null);
+      const room = body && this.people.renameRoom(ownerRoom[1]!, body.name);
+      if (!room) return refuse();
+      this.signaling.toRoom(room.address, { type: "room", change: { type: "renamed", name: room.name } });
+      this.relist(room.address);
+      return json({ room } satisfies RenameRoomAnswer);
     }
     const invite = /^\/api\/owner\/invites\/([^/]+)$/.exec(pathname);
     if (invite && method === "DELETE") {

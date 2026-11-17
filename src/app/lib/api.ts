@@ -30,3 +30,13 @@ export function load<T>(path: string, set: (value: Load<T>) => void) {
     .then((data) => set(data === null ? { state: "refused" } : { state: "loaded", data }))
     .catch(() => set({ state: "refused" }));
 }
+
+/** Sends `body` as JSON to change something. What the instance answers, or null when it refused. */
+export async function patchJson<T>(path: string, body: unknown): Promise<T | null> {
+  const response = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  return answer<T>(response);
+}

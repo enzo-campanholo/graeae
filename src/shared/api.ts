@@ -94,3 +94,13 @@ export interface DeviceInvite {
 export interface DeviceInviteAnswer {
   invite: DeviceInvite;
 }
+
+/** `PATCH /api/owner/rooms/<address>` with `{ name }`: the room as renamed. Its address never changes. */
+export interface RenameRoomAnswer {
+  room: RoomSummary;
+}
+
+/** `GET /api/owner/rooms`: every room of the instance, oldest first, for the owner page's Rooms section. */
+export interface OwnerRoomsAnswer {
+  rooms: RoomSummary[];
+}

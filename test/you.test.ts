@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { DeviceInviteAnswer, InvitesAnswer, JoinAnswer, MeAnswer } from "../src/shared/api.ts";
 import { startInstance, type TestBrowser, type TestInstance } from "./harness.ts";
 import { addMember, answer, createInvite, createRoom, pressJoin, setUpOwner } from "./steps.ts";
-import { addressOf, openRoom } from "./sockets.ts";
+import { addressOf, openList, openRoom } from "./sockets.ts";
 
 function rename(browser: TestBrowser, name: unknown) {
   return browser.fetch("/api/me/name", {
@@ -330,5 +330,42 @@ describe("the \"You\" page", () => {
     expect((await owner.fetch("/you")).status).toBe(200);
     expect((await bia.fetch("/you")).status).toBe(200);
     expect(await answer(await instance.browser().fetch("/you"))).toEqual(refused);
+  });
+});
+
+describe("the display name in the list of rooms", () => {
+  it("changes live in the line of each room where the member is present", async () => {
+    const instance = await startInstance();
+    const owner = instance.browser();
+    const first = addressOf(await setUpOwner(owner));
+    const second = await createRoom(owner, "Late shift");
+    const { browser: bia } = await addMember(instance, owner, "Bia", [first, second]);
+    await openRoom(bia, first);
+    const { tab: list } = await openList(owner);
+
+    await rename(bia, "Bia S.");
+
+    expect(await list.next()).toEqual({
+      type: "rooms",
+      change: { type: "listed", room: { address: first, name: "First room", present: ["Bia S."] } },
+    });
+    await expect(list.next()).rejects.toThrow(/no message/);
+  });
+});
+
+describe("forgetting a device with the list of rooms open", () => {
+  it("closes the list's connection too", async () => {
+    const instance = await startInstance();
+    const owner = instance.browser();
+    await setUpOwner(owner);
+    await createRoom(owner, "Late shift");
+    const { other: laptop } = await addSecondBrowser(instance, owner);
+    const laptopId = (await me(laptop)).devices.find((device) => device.current)!.id;
+    const { tab: list } = await openList(laptop);
+
+    await forget(owner, laptopId);
+
+    expect(await list.next()).toEqual({ type: "gone" });
+    await list.closed();
   });
 });

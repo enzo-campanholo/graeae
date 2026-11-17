@@ -1,16 +1,17 @@
-// A tab's signaling connection, as the tests drive it: open a room's socket, read what
-// the instance sends, close it the way a closing tab does.
+// A tab's signaling connection, as the tests drive it: open a room's socket or the list
+// of rooms' socket, read what the instance sends, close it the way a closing tab does.
 
 import { expect, onTestFinished } from "vitest";
+import { LIST_SOCKET_PATH, type ListMessage, type ListState } from "../src/shared/socket/list.ts";
 import { roomSocketPath, type RoomView, type ServerMessage } from "../src/shared/socket/index.ts";
 import type { Client } from "./harness.ts";
 
 /** How long a test waits for a message before it fails. */
 const WAIT_MS = 2000;
 
-export interface Tab {
+export interface Tab<Message = ServerMessage> {
   /** The next message the instance sent this tab, in order. */
-  next(): Promise<ServerMessage>;
+  next(): Promise<Message>;
   /** Closes the socket cleanly, as a tab that is closed, reloaded or navigated away does. */
   close(): Promise<void>;
   /** Resolves once the socket has closed, whoever closed it; fails if it stays open. */
@@ -24,21 +25,33 @@ export function addressOf(room: string): string {
 
 /** Opens a tab on `room` and reads the full state it gets first. */
 export async function openRoom(browser: Client, room: string): Promise<{ tab: Tab; state: RoomView }> {
-  const { response, socket } = await browser.openSocket(roomSocketPath(addressOf(room)));
-  expect(response.status, "the socket was refused").toBe(101);
-  const tab = listen(socket!);
-  const first = await tab.next();
-  if (first.type !== "state") throw new Error(`expected the full state first, got ${JSON.stringify(first)}`);
-  return { tab, state: first.state };
+  return open<ServerMessage, RoomView>(browser, roomSocketPath(addressOf(room)));
 }
 
-function listen(socket: WebSocket): Tab {
-  const arrived: ServerMessage[] = [];
-  const waiting: ((message: ServerMessage) => void)[] = [];
+/** Opens a tab on the list of rooms and reads the full list it gets first. */
+export async function openList(browser: Client): Promise<{ tab: Tab<ListMessage>; state: ListState }> {
+  return open<ListMessage, ListState>(browser, LIST_SOCKET_PATH);
+}
+
+async function open<Message extends { type: string }, State>(
+  browser: Client,
+  path: string,
+): Promise<{ tab: Tab<Message>; state: State }> {
+  const { response, socket } = await browser.openSocket(path);
+  expect(response.status, "the socket was refused").toBe(101);
+  const tab = listen<Message>(socket!);
+  const first = (await tab.next()) as Message & { state?: State };
+  if (first.type !== "state") throw new Error(`expected the full state first, got ${JSON.stringify(first)}`);
+  return { tab, state: first.state! };
+}
+
+function listen<Message>(socket: WebSocket): Tab<Message> {
+  const arrived: Message[] = [];
+  const waiting: ((message: Message) => void)[] = [];
   const closed = new Promise<void>((resolve) => socket.addEventListener("close", () => resolve()));
 
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data as string) as ServerMessage;
+    const message = JSON.parse(event.data as string) as Message;
     const waiter = waiting.shift();
     if (waiter) waiter(message);
     else arrived.push(message);
