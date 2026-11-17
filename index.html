@@ -1,10 +1,23 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" type="image/svg+xml" href="/src/app/favicon.svg" />
     <title>graeae</title>
+    <script>
+      // Dark first. The "You" page offers light, or following the system; the choice
+      // is kept on this device and set before the page draws, so it never flashes.
+      try {
+        const theme = localStorage.getItem("graeae:theme");
+        const light =
+          theme === "light" ||
+          (theme === "system" && matchMedia("(prefers-color-scheme: light)").matches);
+        if (light) document.documentElement.classList.remove("dark");
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

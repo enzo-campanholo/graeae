@@ -1,0 +1,18 @@
+<script lang="ts">
+  // The room's bar: header, the list of people, and the foot with your own shares and
+  // the share buttons. 288px holds the two share buttons side by side and still leaves
+  // a single 16:9 share on a maximised 1080p window limited by height.
+  import type { Snippet } from "svelte";
+
+  let { header, children, foot }: { header: Snippet; children?: Snippet; foot?: Snippet } = $props();
+</script>
+
+<aside class="flex w-[288px] shrink-0 flex-col px-2" aria-label="People">
+  {@render header()}
+  <div class="min-h-0 flex-1 overflow-y-auto pt-3">
+    {@render children?.()}
+  </div>
+  {#if foot}
+    <div class="grid gap-0 pt-2 pb-1">{@render foot()}</div>
+  {/if}
+</aside>

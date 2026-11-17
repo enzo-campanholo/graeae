@@ -2,10 +2,10 @@ import type { Component } from "svelte";
 
 export type Params = Record<string, string>;
 
-/** A page and the address it answers, e.g. `/r/:room`. */
+/** A page and the address it answers, e.g. `/r/:room`. A page that needs no part of its address takes no props. */
 export interface Route {
   path: string;
-  component: Component<{ params: Params }>;
+  component: Component<{ params: Params }> | Component<Record<string, never>>;
 }
 
 export interface Match {
@@ -23,7 +23,10 @@ export function match(routes: readonly Route[], pathname: string): Match | null 
     const matched = pattern.every((expected, i) => {
       const part = parts[i] as string;
       if (expected.startsWith(":")) {
-        params[expected.slice(1)] = decodeURIComponent(part);
+        // A malformed escape such as `%E0` matches nothing, so it shows "nothing here".
+        const value = decode(part);
+        if (value === null) return false;
+        params[expected.slice(1)] = value;
         return true;
       }
       return expected === part;
@@ -31,6 +34,14 @@ export function match(routes: readonly Route[], pathname: string): Match | null 
     if (matched) return { route, params };
   }
   return null;
+}
+
+function decode(part: string): string | null {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return null;
+  }
 }
 
 function segments(path: string): string[] {
@@ -43,9 +54,10 @@ class Location {
 
 export const location = new Location();
 
-/** Moves to another page of the app without reloading it. */
-export function navigate(to: string) {
-  history.pushState(null, "", to);
+/** Moves to another page of the app without reloading it. `replace` leaves no history entry. */
+export function navigate(to: string, { replace = false }: { replace?: boolean } = {}) {
+  if (replace) history.replaceState(null, "", to);
+  else history.pushState(null, "", to);
   location.pathname = window.location.pathname;
 }
 

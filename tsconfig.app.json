@@ -3,7 +3,14 @@
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["svelte", "vite/client"],
-    "paths": { "$lib": ["./src/app/lib"], "$lib/*": ["./src/app/lib/*"] }
+    "paths": {
+      "$lib": ["./src/app/lib"],
+      "$lib/*": ["./src/app/lib/*"],
+      "$sample": ["./src/app/sample/index.ts"]
+    }
   },
-  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/shared/**/*.ts"]
+  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/shared/**/*.ts"],
+  // shadcn-svelte's index files re-export names from .svelte files, which only svelte-check
+  // can read; tsc would reject them.
+  "exclude": ["src/app/lib/components/ui/**/index.ts"]
 }

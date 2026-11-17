@@ -1,0 +1,23 @@
+<script lang="ts">
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLAttributes } from "svelte/elements";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: WithElementRef<HTMLAttributes<HTMLElement>> = $props();
+</script>
+
+<kbd
+	bind:this={ref}
+	data-slot="kbd"
+	class={cn(
+		"text-muted-foreground in-data-[slot=button]:text-current in-data-[slot=button]:opacity-55 h-4 w-fit min-w-4 gap-1 rounded-sm px-0.5 font-mono text-[10px] leading-none font-medium [&_svg:not([class*='size-'])]:size-3 pointer-events-none inline-flex items-center justify-center select-none",
+		className
+	)}
+	{...restProps}
+>
+	{@render children?.()}
+</kbd>

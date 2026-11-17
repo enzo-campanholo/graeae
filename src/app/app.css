@@ -1,1 +1,168 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* The shadcn-svelte components switch on `.dark`, which the page sets before it draws. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The grey ones. A theme is one block of these tokens: greys for every surface and
+ * every word, and three colours that each mean one thing. `--eye` is "watching" and
+ * nothing else; `--stop` is ending or removing; `--warn` is a warning. A later theme
+ * redefines this block under its own selector and leaves the components alone.
+ */
+:root {
+  --ground: #f4f4f5; /* the page */
+  --stage: #ffffff; /* the inset panel: the stage, the owner page's content */
+  --raised: #e9e9eb; /* a hovered or chosen row, a secondary button, an input */
+  --raised-2: #dcdcdf; /* an avatar, a tooltip, a pressed control */
+  --fg: #0b0b0c; /* names, headings, values */
+  --soft: #3a3a3f; /* secondary text */
+  --muted-text: #55555c; /* labels, captions */
+  --dim: #6b6b72; /* members not here, counts */
+  --faint: #8a8a91; /* icons of shares nobody here is watching */
+  --primary-fill: #0b0b0c; /* the one filled button */
+  --primary-text: #f4f4f5;
+  --eye: #0a7f8b;
+  --stop: #c9302c;
+  --warn: #a15c00;
+  --letterbox: #0b0b0c; /* behind a share's picture, in either mode */
+  --mark-dot: #d4d4d8; /* the mark's two unlit sisters */
+  --selection: color-mix(in srgb, var(--fg) 14%, transparent);
+  color-scheme: light;
+}
+
+.dark {
+  --ground: #0b0b0c;
+  --stage: #111113;
+  --raised: #18181b;
+  --raised-2: #232326;
+  --fg: #ececee;
+  --soft: #b9b9bf;
+  --muted-text: #8e8e95;
+  --dim: #7c7c83;
+  --faint: #6b6b72;
+  --primary-fill: #ececee;
+  --primary-text: #0b0b0c;
+  --eye: #62d2de;
+  --stop: #f26d6d;
+  --warn: #f0b45a;
+  --letterbox: #050506;
+  --mark-dot: #2e2e33;
+  --selection: color-mix(in srgb, var(--fg) 22%, transparent);
+  color-scheme: dark;
+}
+
+/* The names shadcn-svelte's components read, mapped onto the theme. */
+:root,
+.dark {
+  --background: var(--ground);
+  --foreground: var(--fg);
+  --card: var(--stage);
+  --card-foreground: var(--fg);
+  --popover: var(--raised-2);
+  --popover-foreground: var(--fg);
+  --primary: var(--primary-fill);
+  --primary-foreground: var(--primary-text);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--soft);
+  --muted: var(--raised);
+  --muted-foreground: var(--muted-text);
+  --accent: var(--raised);
+  --accent-foreground: var(--fg);
+  --destructive: var(--stop);
+  --border: var(--raised-2);
+  --input: var(--raised);
+  --ring: var(--dim);
+  --radius: 6px;
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 19px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px; /* controls */
+  --radius-lg: 8px; /* shares */
+  --radius-xl: 12px; /* the stage */
+
+  --color-ground: var(--ground);
+  --color-stage: var(--stage);
+  --color-raised: var(--raised);
+  --color-raised-2: var(--raised-2);
+  --color-fg: var(--fg);
+  --color-soft: var(--soft);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-eye: var(--eye);
+  --color-stop: var(--stop);
+  --color-warn: var(--warn);
+  --color-letterbox: var(--letterbox);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html {
+    background: var(--ground);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    scrollbar-color: var(--raised-2) transparent;
+    scrollbar-width: thin;
+  }
+  body {
+    font-size: 13px; /* the app's body size; spacing stays on the 16px rem */
+    line-height: 19px;
+    min-height: 100dvh;
+    background: var(--ground);
+  }
+  ::selection {
+    background: var(--selection);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  input,
+  textarea {
+    caret-color: var(--fg);
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}

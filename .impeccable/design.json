@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T02:59:56Z",
+  "title": "Design System: graeae",
+  "extensions": {
+    "colorMeta": {
+      "ground": { "role": "neutral", "displayName": "Ground", "canonical": "#0b0b0c", "tonalRamp": ["#050506", "#0b0b0c", "#111113", "#18181b", "#232326", "#2e2e33", "#3a3a3f", "#55555c"] },
+      "stage": { "role": "neutral", "displayName": "Stage", "canonical": "#111113", "tonalRamp": ["#050506", "#0b0b0c", "#111113", "#18181b", "#232326", "#2e2e33", "#3a3a3f", "#55555c"] },
+      "raised": { "role": "neutral", "displayName": "Raised", "canonical": "#18181b", "tonalRamp": ["#0b0b0c", "#111113", "#18181b", "#232326", "#2e2e33", "#3a3a3f", "#55555c", "#6b6b72"] },
+      "raised-2": { "role": "neutral", "displayName": "Raised Two", "canonical": "#232326", "tonalRamp": ["#0b0b0c", "#111113", "#18181b", "#232326", "#2e2e33", "#3a3a3f", "#55555c", "#6b6b72"] },
+      "fg": { "role": "neutral", "displayName": "Foreground", "canonical": "#ececee", "tonalRamp": ["#55555c", "#6b6b72", "#7c7c83", "#8e8e95", "#b9b9bf", "#d4d4d8", "#ececee", "#f4f4f5"] },
+      "soft": { "role": "neutral", "displayName": "Soft", "canonical": "#b9b9bf", "tonalRamp": ["#55555c", "#6b6b72", "#7c7c83", "#8e8e95", "#b9b9bf", "#d4d4d8", "#ececee", "#f4f4f5"] },
+      "muted-text": { "role": "neutral", "displayName": "Muted Text", "canonical": "#8e8e95", "tonalRamp": ["#3a3a3f", "#55555c", "#6b6b72", "#7c7c83", "#8e8e95", "#b9b9bf", "#d4d4d8", "#ececee"] },
+      "dim": { "role": "neutral", "displayName": "Dim", "canonical": "#7c7c83", "tonalRamp": ["#3a3a3f", "#55555c", "#6b6b72", "#7c7c83", "#8e8e95", "#b9b9bf", "#d4d4d8", "#ececee"] },
+      "faint": { "role": "neutral", "displayName": "Faint", "canonical": "#6b6b72", "tonalRamp": ["#2e2e33", "#3a3a3f", "#55555c", "#6b6b72", "#7c7c83", "#8e8e95", "#b9b9bf", "#d4d4d8"] },
+      "primary-fill": { "role": "neutral", "displayName": "Primary Fill", "canonical": "#ececee" },
+      "primary-text": { "role": "neutral", "displayName": "Primary Text", "canonical": "#0b0b0c" },
+      "eye": { "role": "primary", "displayName": "The Eye", "canonical": "#62d2de", "tonalRamp": ["#06343a", "#0a5560", "#0a7f8b", "#1fa3b1", "#3ebfcc", "#62d2de", "#9ae3ea", "#d3f4f7"] },
+      "stop": { "role": "secondary", "displayName": "Stop Red", "canonical": "#f26d6d", "tonalRamp": ["#3d1110", "#6b1d1b", "#9e2623", "#c9302c", "#e04b47", "#f26d6d", "#f7a3a3", "#fcd9d9"] },
+      "warn": { "role": "secondary", "displayName": "Warning Amber", "canonical": "#f0b45a", "tonalRamp": ["#3a2200", "#5e3800", "#a15c00", "#c47a12", "#de9a35", "#f0b45a", "#f6cf93", "#fbe8cb"] },
+      "letterbox": { "role": "neutral", "displayName": "Letterbox", "canonical": "#050506" },
+      "mark-dot": { "role": "neutral", "displayName": "Mark Dot", "canonical": "#2e2e33" },
+      "ground-light": { "role": "neutral", "displayName": "Ground (light)", "canonical": "#f4f4f5" },
+      "stage-light": { "role": "neutral", "displayName": "Stage (light)", "canonical": "#ffffff" },
+      "raised-light": { "role": "neutral", "displayName": "Raised (light)", "canonical": "#e9e9eb" },
+      "raised-2-light": { "role": "neutral", "displayName": "Raised Two (light)", "canonical": "#dcdcdf" },
+      "fg-light": { "role": "neutral", "displayName": "Foreground (light)", "canonical": "#0b0b0c" },
+      "soft-light": { "role": "neutral", "displayName": "Soft (light)", "canonical": "#3a3a3f" },
+      "muted-text-light": { "role": "neutral", "displayName": "Muted Text (light)", "canonical": "#55555c" },
+      "dim-light": { "role": "neutral", "displayName": "Dim (light)", "canonical": "#6b6b72" },
+      "faint-light": { "role": "neutral", "displayName": "Faint (light)", "canonical": "#8a8a91" },
+      "primary-fill-light": { "role": "neutral", "displayName": "Primary Fill (light)", "canonical": "#0b0b0c" },
+      "primary-text-light": { "role": "neutral", "displayName": "Primary Text (light)", "canonical": "#f4f4f5" },
+      "eye-light": { "role": "primary", "displayName": "The Eye (light)", "canonical": "#0a7f8b" },
+      "stop-light": { "role": "secondary", "displayName": "Stop Red (light)", "canonical": "#c9302c" },
+      "warn-light": { "role": "secondary", "displayName": "Warning Amber (light)", "canonical": "#a15c00" },
+      "letterbox-light": { "role": "neutral", "displayName": "Letterbox (light)", "canonical": "#0b0b0c" },
+      "mark-dot-light": { "role": "neutral", "displayName": "Mark Dot (light)", "canonical": "#d4d4d8" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Page heading of a plain page and the owner page." },
+      "title": { "displayName": "Title", "purpose": "The \"Nothing here\" heading." },
+      "body": { "displayName": "Body", "purpose": "The app's body size: descriptions, empty-stage lines." },
+      "body-strong": { "displayName": "Body Strong", "purpose": "Member and room names, section titles, button labels." },
+      "label": { "displayName": "Label", "purpose": "People headings, counts, captions, share kinds, small buttons, tooltips." },
+      "key-hint": { "displayName": "Key Hint", "purpose": "Keyboard hints only, in buttons and tooltips." }
+    },
+    "shadows": [
+      { "name": "tooltip", "value": "0 4px 16px -4px rgb(0 0 0 / 0.4)", "purpose": "The only shadow: lifts a tooltip off whatever it covers." },
+      { "name": "eye-cutout", "value": "0 0 0 2px var(--ring)", "purpose": "Cuts the avatar's eye dot out of the colour behind it." },
+      { "name": "away-outline", "value": "inset 0 0 0 1px var(--raised-2)", "purpose": "The empty circle of an absent member's avatar." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The one easing: the eye lighting, tiles arriving, the mark passing its dot." },
+      { "name": "colour-change", "value": "150ms", "purpose": "Hover and state colour transitions on rows, buttons and inputs." },
+      { "name": "eye-light", "value": "220ms scale from 0", "purpose": "The eye dot lighting on a followed member's avatar." },
+      { "name": "tile-arrive", "value": "240ms fade from 0 and scale from 0.985", "purpose": "A share arriving on the stage." },
+      { "name": "mark-pass", "value": "1.2s loop, each dot lit for a third", "purpose": "The mark as the small loader, in the loading slot." },
+      { "name": "tooltip-delay", "value": "400ms", "purpose": "Delay before a tooltip opens." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled button on a surface: Share screen in the room, Join on the invite page.",
+      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"/><line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"/><line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"/></svg>Share screen<kbd class=\"ds-kbd\">S</kbd></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--primary-fill, #ececee); color: var(--primary-text, #0b0b0c); font: 500 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms; } .ds-btn-primary svg { width: 15px; height: 15px; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary-fill, #ececee) 88%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground, #0b0b0c), 0 0 0 4px var(--dim, #7c7c83); } .ds-kbd { font: 500 10px/1 'Geist Mono Variable', ui-monospace, monospace; opacity: 0.55; padding: 0 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other button: Share webcam, Save, Add a device, Watch everything.",
+      "html": "<button class=\"ds-btn-secondary\">Add a device</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--raised, #18181b); color: var(--soft, #b9b9bf); font: 500 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-btn-secondary:hover { background: var(--raised-2, #232326); color: var(--fg, #ececee); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground, #0b0b0c), 0 0 0 4px var(--dim, #7c7c83); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Plain text buttons: the Webcams / Everything / Nothing shortcuts.",
+      "html": "<button class=\"ds-btn-ghost\">Everything</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-text, #8e8e95); font: 500 12px/16px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-btn-ghost:hover { background: var(--raised, #18181b); color: var(--fg, #ececee); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dim, #7c7c83); }"
+    },
+    {
+      "name": "Stop Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A destructive action rests grey and turns stop-red only on hover: Stop, Forget.",
+      "html": "<button class=\"ds-btn-stop\">Stop</button>",
+      "css": ".ds-btn-stop { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--raised, #18181b); color: var(--soft, #b9b9bf); font: 500 12px/16px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-btn-stop:hover { background: color-mix(in srgb, var(--stop, #f26d6d) 14%, transparent); color: var(--stop, #f26d6d); } .ds-btn-stop:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dim, #7c7c83); }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A text field: raised fill, no stroke; the fill steps up on focus.",
+      "html": "<input class=\"ds-input\" value=\"Marta\" aria-label=\"Display name\" />",
+      "css": ".ds-input { height: 32px; width: 288px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--raised, #18181b); color: var(--fg, #ececee); font: 400 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; outline: none; transition: background-color 150ms; } .ds-input::placeholder { color: var(--dim, #7c7c83); } .ds-input:hover, .ds-input:focus-visible { background: var(--raised-2, #232326); } .ds-input:focus-visible { box-shadow: 0 0 0 2px var(--dim, #7c7c83); }"
+    },
+    {
+      "name": "Person Row",
+      "kind": "nav",
+      "refersTo": "person-row",
+      "description": "A member in the bar; following lights the eye on the avatar, a watched share icon lights in the eye.",
+      "html": "<div class=\"ds-row ds-row-followed\"><span class=\"ds-avatar\">B<i class=\"ds-eye\"></i></span><span class=\"ds-name\">Bia</span><button class=\"ds-share ds-share-watched\" aria-label=\"Stop watching Bia's screen\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"/><line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"/><line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"/></svg></button></div><div class=\"ds-row\"><span class=\"ds-avatar\">D</span><span class=\"ds-name\">Duda</span><button class=\"ds-share\" aria-label=\"Watch Duda's webcam\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5\"/><rect x=\"2\" y=\"6\" width=\"14\" height=\"12\" rx=\"2\"/></svg></button></div><div class=\"ds-row ds-row-away\"><span class=\"ds-avatar ds-avatar-away\">E</span><span>Edu</span></div>",
+      "css": ".ds-row { display: flex; align-items: center; gap: 10px; width: 272px; height: 32px; padding: 0 2px 0 8px; border-radius: 6px; color: var(--soft, #b9b9bf); font: 500 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; transition: background-color 150ms, color 150ms; } .ds-row:hover, .ds-row-followed { background: var(--raised, #18181b); color: var(--fg, #ececee); } .ds-row-away { color: var(--dim, #7c7c83); font-weight: 400; } .ds-row-away:hover { background: transparent; color: var(--dim, #7c7c83); } .ds-name { flex: 1; } .ds-avatar { position: relative; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--raised-2, #232326); color: var(--soft, #b9b9bf); font: 600 10px/1 'Geist Variable', ui-sans-serif, sans-serif; } .ds-avatar-away { background: transparent; box-shadow: inset 0 0 0 1px var(--raised-2, #232326); color: var(--dim, #7c7c83); } .ds-eye { position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--eye, #62d2de); box-shadow: 0 0 0 2px var(--raised, #18181b); } .ds-share { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--faint, #6b6b72); cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-share svg { width: 14px; height: 14px; } .ds-share:hover { background: var(--raised-2, #232326); color: var(--fg, #ececee); } .ds-share-watched, .ds-share-watched:hover { color: var(--eye, #62d2de); } .ds-share:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dim, #7c7c83); }"
+    },
+    {
+      "name": "Stage with Tile",
+      "kind": "card",
+      "refersTo": "stage",
+      "description": "The inset stage panel holding a watched share at its own aspect, captioned with name and kind.",
+      "html": "<div class=\"ds-stage\"><figure class=\"ds-tile\"><div class=\"ds-picture\"></div><figcaption><span class=\"ds-tile-name\">Caio</span><span class=\"ds-tile-kind\">screen</span></figcaption></figure></div>",
+      "css": ".ds-stage { display: grid; place-items: center; padding: 12px; border-radius: 12px; background: var(--stage, #111113); } .ds-tile { display: grid; gap: 6px; width: 320px; margin: 0; animation: ds-arrive 240ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-picture { aspect-ratio: 16 / 9; border-radius: 8px; background: var(--letterbox, #050506); } .ds-tile figcaption { display: flex; align-items: baseline; gap: 6px; height: 20px; padding: 0 2px; } .ds-tile-name { color: var(--soft, #b9b9bf); font: 500 13px/19px 'Geist Variable', ui-sans-serif, sans-serif; } .ds-tile-kind { color: var(--dim, #7c7c83); font: 400 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; } @keyframes ds-arrive { from { opacity: 0; transform: scale(0.985); } } @media (prefers-reduced-motion: reduce) { .ds-tile { animation: none; } }"
+    },
+    {
+      "name": "Tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Names every icon-only button, with its key when it has one.",
+      "html": "<span class=\"ds-tooltip\">Hide the bar<kbd class=\"ds-tooltip-kbd\">[</kbd></span>",
+      "css": ".ds-tooltip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--raised-2, #232326); color: var(--fg, #ececee); font: 500 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4); } .ds-tooltip-kbd { color: var(--muted-text, #8e8e95); font: 500 10px/1 'Geist Mono Variable', ui-monospace, monospace; }"
+    },
+    {
+      "name": "Usage Meter",
+      "kind": "custom",
+      "refersTo": "usage-meter",
+      "description": "Usage against the budget: a soft fill, amber from 80%, red from 95%.",
+      "html": "<div class=\"ds-meter\"><div class=\"ds-meter-head\"><span>Usage</span><span class=\"ds-meter-val\">41 GB <span>of 50 GB</span></span></div><div class=\"ds-meter-track\"><div class=\"ds-meter-fill ds-meter-warn\" style=\"width:82%\"></div></div></div>",
+      "css": ".ds-meter { display: grid; gap: 6px; width: 192px; font: 400 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; } .ds-meter-head { display: flex; justify-content: space-between; color: var(--muted-text, #8e8e95); } .ds-meter-val { color: var(--soft, #b9b9bf); font-variant-numeric: tabular-nums; } .ds-meter-val span { color: var(--dim, #7c7c83); } .ds-meter-track { height: 4px; overflow: hidden; border-radius: 9999px; background: var(--raised-2, #232326); } .ds-meter-fill { height: 100%; border-radius: 9999px; background: var(--soft, #b9b9bf); transition: width 300ms; } .ds-meter-warn { background: var(--warn, #f0b45a); }"
+    },
+    {
+      "name": "The Mark",
+      "kind": "custom",
+      "refersTo": "mark",
+      "description": "Three grey sisters, the middle lit with the eye; as the loader it passes the lit dot along.",
+      "html": "<span class=\"ds-mark ds-mark-loading\"><i></i><i></i><i></i></span>",
+      "css": ".ds-mark { display: inline-flex; align-items: center; gap: 10px; } .ds-mark i { width: 12px; height: 12px; border-radius: 50%; background: var(--mark-dot, #2e2e33); } .ds-mark i:nth-child(2) { background: var(--eye, #62d2de); } .ds-mark-loading i { animation: ds-pass 1.2s cubic-bezier(0.16, 1, 0.3, 1) infinite; } .ds-mark-loading i:nth-child(1) { animation-delay: -0.8s; } .ds-mark-loading i:nth-child(2) { animation-delay: -0.4s; } @keyframes ds-pass { 0%, 100% { background: var(--mark-dot, #2e2e33); } 8%, 30% { background: var(--eye, #62d2de); } 42% { background: var(--mark-dot, #2e2e33); } } @media (prefers-reduced-motion: reduce) { .ds-mark-loading i { animation: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Grey Ones",
+    "overview": "graeae is named for the three sisters who share one eye, and the interface is built the same way: everything is grey, and the single colour in it is the eye, which means \"watching\" and nothing else. It is Linear/Vercel minimalism taken all the way. Nothing is decorated; the order, spacing and cohesion of plain elements carry the identity, and the shares (the pictures people are showing each other) supply every other colour on the screen.\n\nThe density is that of a desktop tool left open for hours beside a game or as a watch party: a 13px body, 32px rows, a 288px bar of people and an inset stage that takes everything else. Surfaces separate by tone, never by lines. Motion is short and quiet (150ms colour changes, a 220ms eye that lights, a 240ms tile arrival) and every animation stops under reduced motion.\n\nDark is first and the default; a light mode is offered on the \"You\" page (Dark / Light / Match system), stored per device and applied before first paint. A theme is one block of the semantic tokens under its own selector; components never name a colour directly. A second theme (\"Midnight Broadcast\", `.impeccable/reference/later-theme-midnight-broadcast.html`) is planned for later and is not built; it must arrive as another token block, not as component changes.\n\nRejected by the owner: squarish shapes, decorative drawings that do no job, cursive or \"fake creativity\" type, and a brand accent sprayed over every control.",
+    "keyCharacteristics": [
+      "Greys for every surface and every word; three colours, each with exactly one meaning.",
+      "Tone, not borders: ground, inset stage, raised rows and controls.",
+      "Geist for everything; Geist Mono only for keyboard hints.",
+      "Rounded everywhere: 6px controls, 8px shares, 12px stage, circles for avatars and the mark.",
+      "One filled button per surface.",
+      "The mark: three grey dots, the middle one lit with the eye."
+    ],
+    "rules": [
+      { "name": "The One Eye Rule", "body": "The eye colour means \"you are watching this\" and appears nowhere else. If an element is not something being watched or the member being followed, it is grey.", "section": "colors" },
+      { "name": "The One Meaning Rule", "body": "Red is only ending or removing; amber is only a warning. A colour never decorates.", "section": "colors" },
+      { "name": "The One Block Rule", "body": "A theme is one block of the semantic tokens under its own selector. Components read tokens (`--ground`, `--raised`, `--eye`...), never hex values, so a new theme changes no component.", "section": "colors" },
+      { "name": "The Mono Is For Keys Rule", "body": "Geist Mono appears only on keyboard hints. Numbers use Geist with tabular figures.", "section": "typography" },
+      { "name": "The Plain Words Rule", "body": "No day of the week anywhere; only glossary terms (instance, owner, member, device, invite, room, access, present, share, live, watch, stage, usage, usage budget); no exclamation marks. Never user, account, stream, channel or session.", "section": "typography" },
+      { "name": "The Tone Not Lines Rule", "body": "Surfaces separate by tone, never by borders. The two 1px inset rings in the build sit on controls, not surfaces: the outline of an absent member's avatar (absence drawn as an empty circle) and the eye dot's 2px cut-out ring in the colour behind it.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** keep every surface and every word grey; let the shares carry the colour.",
+      "**Do** use the eye only for what is being watched and the member being followed.",
+      "**Do** separate surfaces by tone: ground, inset stage (12px radius), raised rows and controls.",
+      "**Do** keep one filled button per surface.",
+      "**Do** read colours from the semantic tokens so a new theme is one block under its own selector.",
+      "**Do** name every icon-only button with a tooltip, including its key when it has one.",
+      "**Do** stop every animation under reduced motion.",
+      "**Do** use glossary terms only, plain labels (\"Forget\", \"Let back in\", \"Nothing here\"), and no exclamation marks."
+    ],
+    "donts": [
+      "**Don't** use the eye colour for buttons, links, focus, selection or decoration.",
+      "**Don't** use red for anything but ending or removing, or amber for anything but a warning.",
+      "**Don't** draw borders between surfaces.",
+      "**Don't** use square corners or squarish shapes.",
+      "**Don't** add decorative drawings that do no job.",
+      "**Don't** use cursive or novelty type, or any face besides Geist and Geist Mono.",
+      "**Don't** show a day of the week anywhere.",
+      "**Don't** draw a loading animation of your own; use `Loading.svelte`."
+    ]
+  }
+}
