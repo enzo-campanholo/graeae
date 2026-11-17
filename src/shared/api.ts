@@ -104,3 +104,45 @@ export interface RenameRoomAnswer {
 export interface OwnerRoomsAnswer {
   rooms: RoomSummary[];
 }
+
+/** A remembered device of a member, as the owner sees it on the People section. */
+export interface MemberDevice {
+  id: string;
+  browser: string;
+  os: string;
+  /** When the device last visited, in milliseconds since the epoch. */
+  lastUsed: number;
+  /** Whether it is the owner's device asking. */
+  current: boolean;
+}
+
+/** One member on the owner page's People section. */
+export interface MemberEntry {
+  id: string;
+  name: string;
+  owner: boolean;
+  /** The addresses of the rooms they have access to, oldest room first. The owner has every room. */
+  rooms: string[];
+  /** The addresses of the rooms they are present in now. */
+  present: string[];
+  /** Their remembered devices, most recently used first. */
+  devices: MemberDevice[];
+  /** Their latest visit from any device, in milliseconds since the epoch; null with no device left. */
+  lastVisit: number | null;
+  /** The pending "Let back in" invite for them, if there is one. */
+  letBackIn: PendingInvite | null;
+}
+
+/** `GET /api/owner/people`: every room, oldest first, and every member, oldest first (the owner first). */
+export interface PeopleAnswer {
+  rooms: RoomSummary[];
+  people: MemberEntry[];
+}
+
+/**
+ * `PUT /api/owner/people/<id>/rooms/<address>`, the tick that grants access, and
+ * `DELETE` on the same address, the confirmed untick: the member as they are now.
+ */
+export interface GrantAnswer {
+  person: MemberEntry;
+}

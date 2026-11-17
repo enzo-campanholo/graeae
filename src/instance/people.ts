@@ -204,20 +204,45 @@ export class People {
     return invite;
   }
 
-  /** The owner's pending invites, newest first. Expired invites are forgotten here. */
+  /**
+   * The owner's pending invites, newest first, "Let back in" among them. Expired invites
+   * are forgotten here.
+   */
   pendingInvites(): PendingInvite[] {
     this.forgetExpiredInvites();
-    return this.sql
-      .exec<{ code: string; display_name: string; expires_at: number }>(
-        "SELECT code, display_name, expires_at FROM invite WHERE kind = 'owner' ORDER BY created_at DESC, rowid DESC",
-      )
-      .toArray()
-      .map((row) => ({
-        code: row.code,
-        name: row.display_name,
-        rooms: this.inviteRooms(row.code),
-        expiresAt: row.expires_at,
-      }));
+    return this.ownerInvites("WHERE invite.kind = 'owner'");
+  }
+
+  /**
+   * Makes a "Let back in" invite for `member`, who lost their devices: whichever browser
+   * presses it becomes their one device, and every other device of theirs is forgotten.
+   * It lasts as long as any owner's invite, and replaces an earlier one still pending.
+   * Null for the owner, whose way back in is the setup secret.
+   */
+  createLetBackIn(member: Member): PendingInvite | null {
+    if (member.owner) return null;
+    const earlier = this.letBackIn(member);
+    if (earlier) this.deleteInvite(earlier.code);
+    const now = Date.now();
+    const code = newInviteCode();
+    this.sql.exec(
+      `INSERT INTO invite (code, display_name, created_at, expires_at, member_id, kind)
+       VALUES (?, ?, ?, ?, ?, 'owner')`,
+      code,
+      member.name,
+      now,
+      now + OWNER_INVITE_LIFE_MS,
+      member.id,
+    );
+    return this.letBackIn(member);
+  }
+
+  /** The pending "Let back in" invite for `member`, or null. */
+  letBackIn(member: Member): PendingInvite | null {
+    return (
+      this.ownerInvites("WHERE invite.kind = 'owner' AND invite.member_id = ? AND invite.expires_at > ?", member.id, Date.now())[0] ??
+      null
+    );
   }
 
   /**
@@ -231,7 +256,7 @@ export class People {
 
   /** Cancels one of the owner's pending invites. False when there is no such invite with this code. */
   cancelInvite(code: string): boolean {
-    if (this.inviteRow(code)?.member !== null) return false;
+    if (this.inviteRow(code)?.kind !== "owner") return false;
     this.deleteInvite(code);
     return true;
   }
@@ -239,22 +264,32 @@ export class People {
   /**
    * Uses up a pending invite. For an owner's invite, the browser behind `request` becomes
    * the device of a new member with the invite's display name and access to its rooms;
-   * for "Add a device", another device of the member who made it. Null, and nothing
-   * changed, when the invite is not pending. Returns the member and the cookie that
-   * remembers the new device.
+   * for "Let back in", the one device of the member it is for, whose other devices are
+   * forgotten; for "Add a device", another device of the member who made it. Null, and
+   * nothing changed, when the invite is not pending. Returns the member, the cookie that
+   * remembers the new device, and the ids of the devices it forgot.
    */
   async join(
     request: Request,
     current: Visitor | null,
     code: string,
-  ): Promise<{ member: Member; cookie: string } | null> {
+  ): Promise<{ member: Member; cookie: string; forgotten: string[] } | null> {
     const remember = await this.newDevice(request, current);
     // Nothing below waits, so two presses of one invite cannot both use it.
     const invite = this.inviteRow(code);
     if (!invite) return null;
     const rooms = this.inviteRooms(code);
     this.deleteInvite(code);
-    if (invite.member) return { member: invite.member, cookie: remember(invite.member) };
+    if (invite.member) {
+      const forgotten =
+        invite.kind === "owner"
+          ? this.sql
+              .exec<{ id: string }>("DELETE FROM device WHERE member_id = ? RETURNING id", invite.member.id)
+              .toArray()
+              .map((row) => row.id)
+          : [];
+      return { member: invite.member, cookie: remember(invite.member), forgotten };
+    }
     const member: Member = { id: crypto.randomUUID(), name: invite.name, owner: false };
     this.sql.exec(
       "INSERT INTO member (id, display_name, is_owner, created_at) VALUES (?, ?, 0, ?)",
@@ -265,7 +300,7 @@ export class People {
     for (const room of rooms) {
       this.sql.exec("INSERT INTO access (member_id, room_address) VALUES (?, ?)", member.id, room.address);
     }
-    return { member, cookie: remember(member) };
+    return { member, cookie: remember(member), forgotten: [] };
   }
 
   /**
@@ -364,6 +399,73 @@ export class People {
       .map((row) => ({ id: row.id, name: row.display_name, owner: row.is_owner === 1 }));
   }
 
+  /**
+   * Grants `member` access to the room at `address`. True when that is new, false when
+   * they had it already. Null, and nothing changed, for the owner, who has every room by
+   * rule, or a room that does not exist.
+   */
+  grant(member: Member, address: string): boolean | null {
+    if (member.owner || !this.allRooms().some((room) => room.address === address)) return null;
+    const { rowsWritten } = this.sql.exec(
+      "INSERT INTO access (member_id, room_address) VALUES (?, ?) ON CONFLICT DO NOTHING",
+      member.id,
+      address,
+    );
+    return rowsWritten > 0;
+  }
+
+  /**
+   * Takes away `member`'s access to the room at `address`. True when they had it, false
+   * when they did not. Null, and nothing changed, for the owner, who keeps every room,
+   * or a room that does not exist.
+   */
+  revoke(member: Member, address: string): boolean | null {
+    if (member.owner || !this.allRooms().some((room) => room.address === address)) return null;
+    const { rowsWritten } = this.sql.exec(
+      "DELETE FROM access WHERE member_id = ? AND room_address = ?",
+      member.id,
+      address,
+    );
+    return rowsWritten > 0;
+  }
+
+  /**
+   * Removes `member` from the instance: forgets every device of theirs, their access and
+   * any invite for them, then the member. Returns the addresses of the rooms they had.
+   * Null, and nothing changed, for the owner, who cannot be removed.
+   */
+  remove(member: Member): string[] | null {
+    if (member.owner) return null;
+    const rooms = this.rooms(member).map((room) => room.address);
+    for (const { code } of this.sql
+      .exec<{ code: string }>("SELECT code FROM invite WHERE member_id = ?", member.id)
+      .toArray()) {
+      this.deleteInvite(code);
+    }
+    this.sql.exec("DELETE FROM device WHERE member_id = ?", member.id);
+    this.sql.exec("DELETE FROM access WHERE member_id = ?", member.id);
+    this.sql.exec("DELETE FROM member WHERE id = ?", member.id);
+    return rooms;
+  }
+
+  /** Every member of the instance, oldest first, so the owner comes first. */
+  everyone(): Member[] {
+    return this.sql
+      .exec<{ id: string; display_name: string; is_owner: number }>(
+        "SELECT id, display_name, is_owner FROM member ORDER BY created_at, rowid",
+      )
+      .toArray()
+      .map((row) => ({ id: row.id, name: row.display_name, owner: row.is_owner === 1 }));
+  }
+
+  /** The member `id`, or null when there is none. */
+  member(id: string): Member | null {
+    const row = this.sql
+      .exec<{ display_name: string; is_owner: number }>("SELECT display_name, is_owner FROM member WHERE id = ?", id)
+      .toArray()[0];
+    return row ? { id, name: row.display_name, owner: row.is_owner === 1 } : null;
+  }
+
   devices(member: Member): Device[] {
     return this.sql
       .exec<{ id: string; browser: string; os: string; last_used_at: number }>(
@@ -416,10 +518,16 @@ export class People {
    * already exists; null when it was never made, or is used, cancelled or expired.
    * `member` is null for an invite that makes a new member.
    */
-  private inviteRow(code: string): { name: string; member: Member | null } | null {
+  private inviteRow(code: string): { name: string; kind: string; member: Member | null } | null {
     const row = this.sql
-      .exec<{ display_name: string; member_id: string | null; member_name: string | null; is_owner: number | null }>(
-        `SELECT invite.display_name, invite.member_id, member.display_name AS member_name, member.is_owner
+      .exec<{
+        display_name: string;
+        kind: string;
+        member_id: string | null;
+        member_name: string | null;
+        is_owner: number | null;
+      }>(
+        `SELECT invite.display_name, invite.kind, invite.member_id, member.display_name AS member_name, member.is_owner
          FROM invite LEFT JOIN member ON member.id = invite.member_id
          WHERE invite.code = ? AND invite.expires_at > ?`,
         code,
@@ -427,10 +535,36 @@ export class People {
       )
       .toArray()[0];
     if (!row) return null;
-    if (row.member_id === null) return { name: row.display_name, member: null };
+    if (row.member_id === null) return { name: row.display_name, kind: row.kind, member: null };
     // An invite for a member who no longer exists is no invite at all.
     if (row.member_name === null) return null;
-    return { name: row.member_name, member: { id: row.member_id, name: row.member_name, owner: row.is_owner === 1 } };
+    return {
+      name: row.member_name,
+      kind: row.kind,
+      member: { id: row.member_id, name: row.member_name, owner: row.is_owner === 1 },
+    };
+  }
+
+  /**
+   * The owner's invites that `where` picks, newest first. An invite for a member who
+   * already exists ("Let back in") shows them as they are now: their display name and
+   * the rooms they have.
+   */
+  private ownerInvites(where: string, ...bindings: SqlStorageValue[]): PendingInvite[] {
+    return this.sql
+      .exec<{ code: string; display_name: string; expires_at: number; member_id: string | null }>(
+        `SELECT invite.code, invite.display_name, invite.expires_at, invite.member_id FROM invite
+         ${where} ORDER BY invite.created_at DESC, invite.rowid DESC`,
+        ...bindings,
+      )
+      .toArray()
+      .flatMap((row) => {
+        if (row.member_id === null) {
+          return [{ code: row.code, name: row.display_name, rooms: this.inviteRooms(row.code), expiresAt: row.expires_at }];
+        }
+        const member = this.member(row.member_id);
+        return member ? [{ code: row.code, name: member.name, rooms: this.rooms(member), expiresAt: row.expires_at }] : [];
+      });
   }
 
   private forgetExpiredInvites() {

@@ -7,8 +7,8 @@
 //
 // The conversation. Every message is one JSON text frame. The instance sends
 // `{ type: "state" }` first, holding the whole list, then a `rooms` change each time a
-// room's line in the list changes: a room renamed, someone arriving or leaving, or a
-// room the member newly has access to, a share starting or ending. A list that connects
+// room's line in the list changes: a room renamed, someone arriving or leaving, a share
+// starting or ending, or the member gaining or losing access to a room. A list that connects
 // again gets the whole list again. The list sends only the heartbeat, which the instance
 // answers, as on a room's socket (`heartbeat.ts`); a list's lost connection has no
 // presence to keep.
@@ -38,7 +38,9 @@ export interface ListState {
 
 export type ListChange =
   /** A room's line as it is now: one already listed is replaced, a new one is added at the end. */
-  { type: "listed"; room: ListedRoom };
+  | { type: "listed"; room: ListedRoom }
+  /** The member no longer has access to the room at `address`: its line goes. */
+  | { type: "unlisted"; address: string };
 
 /**
  * A message from the instance to the list. `gone` means this tab's device is forgotten:
@@ -65,9 +67,10 @@ export function applyList(state: ListState, change: ListChange): ListState {
           : [...state.rooms, room],
       };
     }
+    case "unlisted":
+      return { ...state, rooms: state.rooms.filter((listed) => listed.address !== change.address) };
     default:
-      // A union of one kind does not narrow to `never`, but its `type` does.
-      return unknownChange(state, change.type);
+      return unknownChange(state, change);
   }
 }
 

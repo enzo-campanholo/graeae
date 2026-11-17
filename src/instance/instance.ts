@@ -3,12 +3,15 @@ import type {
   CreateInviteAnswer,
   CreateRoomAnswer,
   DeviceInviteAnswer,
+  GrantAnswer,
   InviteAnswer,
   InvitesAnswer,
   JoinAnswer,
   Me,
+  MemberEntry,
   MeAnswer,
   OwnerRoomsAnswer,
+  PeopleAnswer,
   RenameRoomAnswer,
   RoomAnswer,
   RoomsAnswer,
@@ -82,7 +85,7 @@ export class Instance extends DurableObject<Env> {
     if (!visitor) return refuse();
     const { member } = visitor;
     if (pathname === "/owner" || pathname.startsWith("/owner/") || pathname.startsWith("/api/owner/")) {
-      return member.owner ? this.ownerAnswer(request, pathname, member) : refuse();
+      return member.owner ? this.ownerAnswer(request, pathname, visitor) : refuse();
     }
     if (pathname === "/api/me" || pathname.startsWith("/api/me/")) return this.youAnswer(request, pathname, visitor);
     if (method !== "GET") return refuse();
@@ -149,15 +152,20 @@ export class Instance extends DurableObject<Env> {
       return json({ invite: this.people.createDeviceInvite(member) } satisfies DeviceInviteAnswer);
     }
     const device = /^\/api\/me\/devices\/([^/]+)$/.exec(pathname);
-    if (device && method === "DELETE") {
-      const id = device[1]!;
-      // Storage first, so the forgotten browser is refused from this instant, then its tabs.
-      if (!this.people.forgetDevice(member, id)) return refuse();
-      // Its tabs are gone, so whatever they were sending ends as on a clean leave.
-      for (const tab of this.signaling.closeDevice(id)) await this.left(tab);
-      return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
-    }
+    if (device && method === "DELETE") return (await this.forget(member, device[1]!, visitor)) ?? refuse();
     return refuse();
+  }
+
+  /**
+   * Forgets `member`'s device `id`, asked by `visitor`: the member themselves or the
+   * owner. Null, and nothing changed, when the member has no such device.
+   */
+  private async forget(member: Member, id: string, visitor: Visitor): Promise<Response | null> {
+    // Storage first, so the forgotten browser is refused from this instant, then its tabs.
+    if (!this.people.forgetDevice(member, id)) return null;
+    // Its tabs are gone, so whatever they were sending ends as on a clean leave.
+    for (const tab of this.signaling.closeDevice(id)) await this.left(tab);
+    return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
   }
 
   override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
@@ -285,7 +293,8 @@ export class Instance extends DurableObject<Env> {
   }
 
   /** The owner page and the owner's actions. Only the owner's devices get this far. */
-  private async ownerAnswer(request: Request, pathname: string, owner: Member): Promise<Response> {
+  private async ownerAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
+    const owner = visitor.member;
     const { method } = request;
     const refuse = () => nothingHere(this.env.ASSETS, request);
 
@@ -335,7 +344,110 @@ export class Instance extends DurableObject<Env> {
     if (invite && method === "DELETE") {
       return this.people.cancelInvite(invite[1]!) ? done() : refuse();
     }
+    if (pathname === "/api/owner/people" || pathname.startsWith("/api/owner/people/")) {
+      return this.peopleAnswer(request, pathname, visitor);
+    }
     return refuse();
+  }
+
+  /** The owner page's People section: every member, and what the owner can do to each. */
+  private async peopleAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
+    const { method } = request;
+    const refuse = () => nothingHere(this.env.ASSETS, request);
+
+    if (pathname === "/api/owner/people") {
+      if (method !== "GET") return refuse();
+      const entries = this.people.everyone().map((member) => this.memberEntry(member, visitor.deviceId));
+      return json({ rooms: this.people.allRooms(), people: entries } satisfies PeopleAnswer);
+    }
+    const access = /^\/api\/owner\/people\/([^/]+)\/rooms\/([^/]+)$/.exec(pathname);
+    if (access) {
+      const member = this.people.member(access[1]!);
+      const address = access[2]!;
+      if (!member) return refuse();
+      if (method === "PUT") {
+        const granted = this.people.grant(member, address);
+        if (granted === null) return refuse();
+        if (granted) this.accessGranted(member, address);
+        return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
+      }
+      if (method === "DELETE") {
+        // Storage first: from this instant every request of theirs for the room is refused.
+        const revoked = this.people.revoke(member, address);
+        if (revoked === null) return refuse();
+        if (revoked) await this.accessRemoved(member, address);
+        return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
+      }
+      return refuse();
+    }
+    const device = /^\/api\/owner\/people\/([^/]+)\/devices\/([^/]+)$/.exec(pathname);
+    if (device && method === "DELETE") {
+      const member = this.people.member(device[1]!);
+      return (member && (await this.forget(member, device[2]!, visitor))) ?? refuse();
+    }
+    const letBackIn = /^\/api\/owner\/people\/([^/]+)\/invite$/.exec(pathname);
+    if (letBackIn && method === "POST") {
+      const member = this.people.member(letBackIn[1]!);
+      const invite = member && this.people.createLetBackIn(member);
+      return invite ? json({ invite } satisfies CreateInviteAnswer) : refuse();
+    }
+    const person = /^\/api\/owner\/people\/([^/]+)$/.exec(pathname);
+    if (person && method === "DELETE") {
+      const member = this.people.member(person[1]!);
+      // Storage first: from this instant every device of theirs is a stranger.
+      const rooms = member && this.people.remove(member);
+      if (!member || !rooms) return refuse();
+      const tabs = this.signaling.closeMember(member.id);
+      for (const address of rooms) {
+        this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
+      }
+      for (const tab of tabs) await this.left(tab);
+      return done();
+    }
+    return refuse();
+  }
+
+  /**
+   * `member` has just lost access to the room at `address`, in storage. Their tabs there
+   * are told they are gone and closed, on every device, and the room hears they left and
+   * no longer belong to it. Then what those tabs were sending ends.
+   */
+  private async accessRemoved(member: Member, address: string) {
+    const tabs = this.signaling.closeMember(member.id, address);
+    this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
+    this.signaling.toMember(member.id, {
+      type: "people",
+      change: { type: "access", rooms: this.people.rooms(member).length },
+    });
+    this.signaling.toLists(new Set([member.id]), { type: "rooms", change: { type: "unlisted", address } });
+    for (const tab of tabs) await this.left(tab);
+  }
+
+  /** `member` has just been given access to the room at `address`: every tab that shows it hears so. */
+  private accessGranted(member: Member, address: string) {
+    this.signaling.toRoom(address, { type: "people", change: { type: "added", person: { id: member.id, name: member.name } } });
+    this.signaling.toMember(member.id, {
+      type: "people",
+      change: { type: "access", rooms: this.people.rooms(member).length },
+    });
+    // Their own lists of rooms gain the line, as the others' change nothing.
+    this.relist(address);
+  }
+
+  /** One member as the People section shows them to the owner on the device `asking`. */
+  private memberEntry(member: Member, asking: string): MemberEntry {
+    const rooms = this.people.rooms(member).map((room) => room.address);
+    const devices = this.people.devices(member).map((device) => ({ ...device, current: device.id === asking }));
+    return {
+      id: member.id,
+      name: member.name,
+      owner: member.owner,
+      rooms,
+      present: rooms.filter((address) => this.signaling.present(address).has(member.id)),
+      devices,
+      lastVisit: devices.length > 0 ? Math.max(...devices.map((device) => device.lastUsed)) : null,
+      letBackIn: this.people.letBackIn(member),
+    };
   }
 
   /** `POST /api/setup` with `{ secret }`: the setup page sends the secret here itself. */
@@ -354,6 +466,10 @@ export class Instance extends DurableObject<Env> {
   private async join(request: Request, visitor: Visitor | null, code: string): Promise<Response> {
     const joined = await this.people.join(request, visitor, code);
     if (!joined) return nothingHere(this.env.ASSETS, request);
+    // "Let back in" forgot the member's other devices: their tabs close as on forgetting one.
+    for (const device of joined.forgotten) {
+      for (const tab of this.signaling.closeDevice(device)) await this.left(tab);
+    }
     const { id, name } = joined.member;
     for (const room of this.people.rooms(joined.member)) {
       this.signaling.toRoom(room.address, { type: "people", change: { type: "added", person: { id, name } } });
