@@ -8,6 +8,7 @@
     size = 20,
     followed = false,
     away = false,
+    reconnecting = false,
     sharing = false,
     ring = "var(--ground)",
     class: className,
@@ -16,6 +17,8 @@
     size?: 20 | 28;
     followed?: boolean;
     away?: boolean;
+    /** Present, but not heard for about 10 seconds: the avatar fades in and out while they reconnect. */
+    reconnecting?: boolean;
     /** Brighter while the member has a live share, for the rail. */
     sharing?: boolean;
     /** The colour behind the avatar, which the eye dot is cut out of. */
@@ -29,7 +32,7 @@
 </script>
 
 <span
-  class={cn("avatar", size === 28 && "large", away && "away", sharing && "sharing", className)}
+  class={cn("avatar", size === 28 && "large", away && "away", reconnecting && "reconnecting", sharing && "sharing", className)}
   style:--ring={ring}
   aria-hidden="true"
 >
@@ -65,6 +68,15 @@
     box-shadow: inset 0 0 0 1px var(--raised-2);
     color: var(--dim);
   }
+  /* Present but not heard: still a filled circle, breathing slowly instead of gone. */
+  .reconnecting {
+    animation: reconnecting 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes reconnecting {
+    to {
+      opacity: 0.4;
+    }
+  }
   .eye {
     position: absolute;
     right: -2px;
@@ -88,6 +100,10 @@
   @media (prefers-reduced-motion: reduce) {
     .eye {
       animation: none;
+    }
+    .reconnecting {
+      animation: none;
+      opacity: 0.55;
     }
   }
 </style>

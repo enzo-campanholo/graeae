@@ -48,10 +48,14 @@
   const people = $derived.by(() => {
     if (!view) return null;
     const present = new Set(view.presence.present);
+    const reconnecting = new Set(view.presence.reconnecting);
     const others = view.people.members.filter((person) => person.id !== view.people.you.id);
     return {
       you: view.people.members.find((person) => person.id === view.people.you.id)?.name ?? "",
-      here: others.filter((person) => present.has(person.id)).toSorted(byName),
+      here: others
+        .filter((person) => present.has(person.id))
+        .map((person) => ({ ...person, reconnecting: reconnecting.has(person.id) }))
+        .toSorted(byName),
       away: others.filter((person) => !present.has(person.id)).toSorted(byName),
     };
   });
@@ -114,12 +118,14 @@
               name: person.name,
               followed: person.followed,
               sharing: !!(person.screen || person.webcam),
+              reconnecting: !!person.reconnecting,
             }))
-          : (people?.here ?? []).map(({ id, name }) => ({
+          : (people?.here ?? []).map(({ id, name, reconnecting }) => ({
               id,
               name,
               followed: false,
               sharing: isLive(id, "screen") || isLive(id, "webcam"),
+              reconnecting,
             }))}
         onexpand={() => fold(false)}
       >
@@ -144,6 +150,7 @@
             {#each people.here as person (person.id)}
               <PersonRow
                 name={person.name}
+                reconnecting={person.reconnecting}
                 screen={rowShare(person.id, "screen")}
                 webcam={rowShare(person.id, "webcam")}
               />
@@ -164,6 +171,7 @@
             {#each room.people as person (person.id)}
               <PersonRow
                 name={person.name}
+                reconnecting={person.reconnecting}
                 followed={person.followed}
                 screen={person.screen}
                 webcam={person.webcam}

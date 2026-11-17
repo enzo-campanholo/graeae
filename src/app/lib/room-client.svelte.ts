@@ -1,6 +1,7 @@
 // The room client: the browser's side of the signaling connection. One per tab showing a
 // room. It holds the whole room as the instance last sent it and applies each change as
-// it arrives; the protocol is in `src/shared/socket/`.
+// it arrives; the protocol is in `src/shared/socket/`. Its connection beats and
+// reconnects by itself (`connection.svelte.ts`), and a reconnect brings the whole room.
 //
 // It also carries the tab's media connection's side of the conversation: it asks the
 // instance for the connection the first time the tab shares, passes the media client's
@@ -18,6 +19,7 @@ import {
   type ShareKind,
 } from "../../shared/socket/index.ts";
 import { getJson } from "./api.ts";
+import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type Capture } from "./media/index.ts";
 
 /** One of this tab's own shares, from the press of its button until it has ended. */
@@ -32,34 +34,35 @@ export interface OwnShare {
 export class RoomClient {
   /** The room as the instance last described it, or null until the first full state. */
   view = $state<RoomView | null>(null);
-  /** Whether the instance refused this tab the room, so the page shows "nothing here". */
-  refused = $state(false);
   /** This tab's own shares. Another tab's or device's shares of yours are only in `view`. */
   mine = $state.raw<OwnShare[]>([]);
   /** The kind of share that last failed to start, until the next attempt. */
   failed = $state<ShareKind | null>(null);
 
-  private readonly socket: WebSocket;
+  /** The signaling connection. */
+  private readonly socket: Connection<ServerMessage>;
   private readonly media = createMediaClient();
   /** The tab's media connection, once asked for: whether it was made. */
   private connection: Promise<boolean> | null = null;
   /** Requests waiting for their answer in the media area, oldest first. */
-  private readonly waiting: ((change: MediaChange) => boolean)[] = [];
-  /** Set when this tab leaves the room itself, so its own close is no refusal. */
-  private leaving = false;
+  private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
 
-  constructor(private readonly address: string) {
-    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-    this.socket = new WebSocket(`${scheme}//${window.location.host}${roomSocketPath(address)}`);
-    this.socket.addEventListener("message", (event) => {
-      if (typeof event.data !== "string") return;
-      this.receive(JSON.parse(event.data) as ServerMessage);
+  constructor(address: string) {
+    this.socket = new Connection<ServerMessage>({
+      path: roomSocketPath(address),
+      receive: (message) => this.receive(message),
+      // A refusal is the "nothing here" answer; a failed request is no answer.
+      refused: async () => (await getJson(`/api/rooms/${encodeURIComponent(address)}`)) === null,
+      // An answer the lost socket never got will not come on the next one.
+      lost: () => {
+        for (const request of this.waiting.splice(0)) request.lost();
+      },
     });
-    // A socket refused at the start, or closed by the instance later (this device was
-    // forgotten), shows "nothing here" once the instance confirms the refusal.
-    this.socket.addEventListener("close", () => {
-      if (!this.leaving) void this.checkRefused();
-    });
+  }
+
+  /** Whether the instance refused this tab the room, so the page shows "nothing here". */
+  get refused(): boolean {
+    return this.socket.refused;
   }
 
   /**
@@ -103,20 +106,13 @@ export class RoomClient {
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
-    this.leaving = true;
     this.media.close();
-    this.socket.close(1000, "left");
+    this.socket.close();
   }
 
   private receive(message: ServerMessage) {
-    if (message.type === "gone") {
-      // This device is no longer remembered: the page becomes "nothing here".
-      this.refused = true;
-      this.close();
-      return;
-    }
     if (message.type === "media") {
-      const index = this.waiting.findIndex((accepts) => accepts(message.change));
+      const index = this.waiting.findIndex((request) => request.accepts(message.change));
       if (index >= 0) this.waiting.splice(index, 1);
       return;
     }
@@ -151,27 +147,24 @@ export class RoomClient {
 
   /** The next change in the media area that `matches`, which answers a request just sent. */
   private answer(matches: (change: MediaChange) => boolean): Promise<MediaChange> {
-    return new Promise((resolve) => {
-      this.waiting.push((change) => {
-        if (!matches(change)) return false;
-        resolve(change);
-        return true;
+    return new Promise((resolve, reject) => {
+      this.waiting.push({
+        accepts: (change) => {
+          if (!matches(change)) return false;
+          resolve(change);
+          return true;
+        },
+        lost: () => reject(new Error("the connection was lost")),
       });
     });
   }
 
   private send(message: ClientMessage) {
-    if (this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
+    this.socket.send(message);
   }
 
   private update(kind: ShareKind, patch: Partial<OwnShare>) {
     this.mine = this.mine.map((share) => (share.kind === kind ? { ...share, ...patch } : share));
   }
 
-  // A refused or closed socket tells the browser nothing about why, so ask the instance
-  // over HTTP, where a refusal is the "nothing here" answer.
-  private async checkRefused() {
-    const room = await getJson(`/api/rooms/${encodeURIComponent(this.address)}`).catch(() => undefined);
-    if (room === null) this.refused = true;
-  }
 }

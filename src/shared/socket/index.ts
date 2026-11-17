@@ -16,12 +16,18 @@
 //   A new kind of change goes in its area's union; this file changes only for a new area.
 // - The tab sends requests the same way, by area. A request the instance does not
 //   understand is ignored.
+// - The tab sends `{ type: "heartbeat" }` every 5 seconds and the instance answers each
+//   with `{ type: "heard" }` (`heartbeat.ts`).
 // - The media area is the exception: it is this tab's own conversation about its media
 //   connection. It holds no part of the room and changes nothing in `RoomView`.
 // - A clean close by the tab (closed, reloaded, navigated away) ends its presence at once.
+//   A lost connection (a failed socket, a close with `LOST_CLOSE_CODE`, or silence) keeps
+//   it present through the grace period while the tab reconnects; a tab whose grace
+//   period ran out on a socket still open has that socket closed with `SILENT_CLOSE_CODE`.
 // - A tab whose device is no longer remembered gets `{ type: "gone" }`, and then the
 //   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
+import type { Heard, Heartbeat } from "./heartbeat.ts";
 import type { MediaChange, MediaRequest } from "./media.ts";
 import { applyPeople, type PeopleChange, type PeopleState } from "./people.ts";
 import { applyPresence, type PresenceChange, type PresenceRequest, type PresenceState } from "./presence.ts";
@@ -55,6 +61,7 @@ export type ServerMessage =
   | { type: "state"; state: RoomView }
   /** This tab's device is forgotten: the socket closes next and the page is "nothing here". */
   | { type: "gone" }
+  | Heard
   | { type: "room"; change: RoomChange }
   | { type: "people"; change: PeopleChange }
   | { type: "presence"; change: PresenceChange }
@@ -64,6 +71,7 @@ export type ServerMessage =
 
 /** A message from a tab to the instance. */
 export type ClientMessage =
+  | Heartbeat
   | { type: "presence"; request: PresenceRequest }
   | { type: "shares"; request: SharesRequest }
   | { type: "usage"; request: UsageRequest }

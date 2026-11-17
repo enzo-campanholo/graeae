@@ -1,8 +1,12 @@
 // A tab's signaling connection, as the tests drive it: open a room's socket or the list
-// of rooms' socket, read what the instance sends, send requests, close it the way a
-// closing tab does.
+// of rooms' socket, read what the instance sends, send requests and heartbeats, and close
+// it the way a closing tab does or lose it the way a dropped connection does.
+//
+// A test tab sends no heartbeat by itself: it falls silent unless the test has it beat,
+// since the test's clock moves only when the test moves it.
 
 import { expect, onTestFinished } from "vitest";
+import { HEARTBEAT, LOST_CLOSE_CODE } from "../src/shared/socket/heartbeat.ts";
 import { LIST_SOCKET_PATH, type ListMessage, type ListState } from "../src/shared/socket/list.ts";
 import {
   roomSocketPath,
@@ -16,14 +20,26 @@ import type { Client } from "./harness.ts";
 const WAIT_MS = 2000;
 
 export interface Tab<Message = ServerMessage> {
-  /** The next message the instance sent this tab, in order. */
+  /** The next message the instance sent this tab, in order. Answers to heartbeats are not among them. */
   next(): Promise<Message>;
+  /**
+   * Sends a heartbeat and waits for the instance's answer. Whatever the instance sent this
+   * tab before answering has arrived by then, so `queued()` shows all of it.
+   */
+  heartbeat(): Promise<void>;
+  /** The messages that have arrived and not been read yet, left unread. */
+  queued(): Message[];
   /** Every message the instance has sent this tab so far, read or not, the full state first. */
   received(): readonly Message[];
   /** Sends a request, as the page does. */
   send(message: ClientMessage): void;
   /** Closes the socket cleanly, as a tab that is closed, reloaded or navigated away does. */
   close(): Promise<void>;
+  /**
+   * Loses the connection, as a browser does when it gives up on a connection that went
+   * dead and opens another. The instance hears the socket close, but not a leave.
+   */
+  drop(): Promise<void>;
   /** Resolves once the socket has closed, whoever closed it; fails if it stays open. */
   closed(): Promise<void>;
 }
@@ -59,10 +75,15 @@ function listen<Message>(socket: WebSocket): Tab<Message> {
   const all: Message[] = [];
   const arrived: Message[] = [];
   const waiting: ((message: Message) => void)[] = [];
+  const answers: (() => void)[] = [];
   const closed = new Promise<void>((resolve) => socket.addEventListener("close", () => resolve()));
 
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data as string) as Message;
+    const message = JSON.parse(event.data as string) as Message & { type?: string };
+    if (message.type === HEARTBEAT.answer.type) {
+      answers.shift()?.();
+      return;
+    }
     all.push(message);
     const waiter = waiting.shift();
     if (waiter) waiter(message);
@@ -91,12 +112,29 @@ function listen<Message>(socket: WebSocket): Tab<Message> {
         });
       });
     },
+    heartbeat() {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`no answer to a heartbeat within ${WAIT_MS}ms`)), WAIT_MS);
+        answers.push(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+        socket.send(JSON.stringify(HEARTBEAT.beat));
+      });
+    },
+    queued() {
+      return [...arrived];
+    },
     received: () => [...all],
     send(message) {
       socket.send(JSON.stringify(message));
     },
     async close() {
       socket.close(1000, "left");
+      await closed;
+    },
+    async drop() {
+      socket.close(LOST_CLOSE_CODE, "lost");
       await closed;
     },
     closed() {

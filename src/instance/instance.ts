@@ -223,7 +223,7 @@ export class Instance extends DurableObject<Env> {
     }
   }
 
-  /** A tab left cleanly: whatever it was sending ends with it. */
+  /** A tab left cleanly, or its grace period ran out: whatever it was sending ends with it. */
   private async left(tab: Tab) {
     for (const share of await this.shares.left(tab)) this.shareChanged(tab.room, { type: "ended", share });
   }
@@ -234,6 +234,11 @@ export class Instance extends DurableObject<Env> {
     this.relist(address);
   }
 
+  /** The grace periods' moments are the only thing the alarm wakes the instance for yet. */
+  override async alarm() {
+    for (const tab of this.signaling.alarm()) await this.left(tab);
+  }
+
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
   private roomView(member: Member, room: RoomSummary): RoomView {
     return {
@@ -242,7 +247,10 @@ export class Instance extends DurableObject<Env> {
         you: { id: member.id, owner: member.owner, rooms: this.people.rooms(member).length },
         members: this.people.membersOf(room.address).map(({ id, name }) => ({ id, name })),
       },
-      presence: { present: [...this.signaling.present(room.address)] },
+      presence: {
+        present: [...this.signaling.present(room.address)],
+        reconnecting: this.signaling.reconnecting(room.address),
+      },
       shares: { live: this.shares.live(room.address) },
       usage: {},
     };

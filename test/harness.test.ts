@@ -1,5 +1,5 @@
-// The harness's own clock, checked before any instance behaviour leans on it. Nothing in
-// the instance sets an alarm yet, so these tests give it a stand-in alarm handler.
+// The harness's own clock, checked before any instance behaviour leans on it. These
+// tests give the instance a stand-in alarm handler in place of its own.
 
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
@@ -48,13 +48,14 @@ describe("the test clock", () => {
 /** Gives the instance an alarm handler for this test, recording the time each run sees. */
 function standInAlarm(body: (storage: DurableObjectStorage, runs: number) => Promise<void>) {
   const ranAt: number[] = [];
-  const prototype = Instance.prototype as Instance & { alarm?: () => Promise<void> };
+  const prototype = Instance.prototype as Instance & { alarm: () => void | Promise<void> };
+  const shipped = prototype.alarm;
   prototype.alarm = async function (this: Instance) {
     ranAt.push(Date.now());
     await body(this.ctx.storage, ranAt.length);
   };
   onTestFinished(() => {
-    delete prototype.alarm;
+    prototype.alarm = shipped;
   });
   return ranAt;
 }
