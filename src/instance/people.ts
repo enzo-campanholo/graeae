@@ -259,12 +259,35 @@ export class People {
     return this.rooms(member).find((room) => room.address === address) ?? null;
   }
 
+  /**
+   * Makes a new room called `name`, which the owner has access to by rule. Null when
+   * `name` is not a room name: like a display name, 1 to 40 characters once trimmed.
+   */
+  newRoom(name: unknown): Room | null {
+    const roomName = toDisplayName(name);
+    return roomName === null ? null : this.createRoom(roomName);
+  }
+
   /** Every room of the instance, oldest first. */
   allRooms(): Room[] {
     return this.sql
       .exec<{ address: string; name: string }>("SELECT address, name FROM room ORDER BY created_at, rowid")
       .toArray()
       .map(({ address, name }) => ({ address, name }));
+  }
+
+  /** Every member with access to the room at `address`, the owner among them, oldest first. */
+  membersOf(address: string): Member[] {
+    return this.sql
+      .exec<{ id: string; display_name: string; is_owner: number }>(
+        `SELECT id, display_name, is_owner FROM member
+         WHERE is_owner = 1
+            OR EXISTS (SELECT 1 FROM access WHERE access.member_id = member.id AND access.room_address = ?)
+         ORDER BY created_at, rowid`,
+        address,
+      )
+      .toArray()
+      .map((row) => ({ id: row.id, name: row.display_name, owner: row.is_owner === 1 }));
   }
 
   devices(member: Member): Device[] {

@@ -76,3 +76,8 @@ export interface InviteAnswer {
 export interface JoinAnswer {
   to: string;
 }
+
+/** `POST /api/owner/rooms` with `{ name }`: the room just made. */
+export interface CreateRoomAnswer {
+  room: RoomSummary;
+}
