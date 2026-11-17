@@ -25,6 +25,8 @@ export interface ConnectionOptions<Message> {
   receive: (message: Message) => void;
   /** Asks the instance over HTTP whether this page is refused now. False when the answer cannot be had. */
   refused: () => Promise<boolean>;
+  /** Hears each loss of the socket, before the next one is tried. */
+  lost?: () => void;
 }
 
 export class Connection<Message extends { type: string }> {
@@ -44,6 +46,14 @@ export class Connection<Message extends { type: string }> {
     this.connect();
     this.stopTicking = every(TICK_MS, () => this.tick());
     window.addEventListener("online", this.retryNow);
+  }
+
+  /**
+   * Sends `message` if the socket is open. A message sent while the connection is lost is
+   * dropped, not kept for the next socket: nothing is replayed either way.
+   */
+  send(message: unknown) {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
   }
 
   /** Leaves: a clean close, which ends the tab's presence at once. */
@@ -100,7 +110,12 @@ export class Connection<Message extends { type: string }> {
   private async lost() {
     this.socket = null;
     if (this.ended) return;
-    const refused = await this.options.refused().catch(() => false);
+    this.options.lost?.();
+    // An answer that does not come is no answer, so a hung request cannot stop the retries.
+    const refused = await Promise.race([
+      this.options.refused().catch(() => false),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ANSWER_WITHIN_MS)),
+    ]);
     // Back online meanwhile, and already connecting again.
     if (this.ended || this.socket) return;
     if (refused) {

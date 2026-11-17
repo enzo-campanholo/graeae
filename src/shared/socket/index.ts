@@ -18,6 +18,8 @@
 //   understand is ignored.
 // - The tab sends `{ type: "heartbeat" }` every 5 seconds and the instance answers each
 //   with `{ type: "heard" }` (`heartbeat.ts`).
+// - The media area is the exception: it is this tab's own conversation about its media
+//   connection. It holds no part of the room and changes nothing in `RoomView`.
 // - A clean close by the tab (closed, reloaded, navigated away) ends its presence at once.
 //   A lost connection (a failed socket, a close with `LOST_CLOSE_CODE`, or silence) keeps
 //   it present through the grace period while the tab reconnects; a tab whose grace
@@ -26,12 +28,14 @@
 //   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
 import type { Heard, Heartbeat } from "./heartbeat.ts";
+import type { MediaChange, MediaRequest } from "./media.ts";
 import { applyPeople, type PeopleChange, type PeopleState } from "./people.ts";
 import { applyPresence, type PresenceChange, type PresenceRequest, type PresenceState } from "./presence.ts";
 import { applyRoom, type RoomChange, type RoomState } from "./room.ts";
 import { applyShares, type SharesChange, type SharesRequest, type SharesState } from "./shares.ts";
 import { applyUsage, type UsageChange, type UsageRequest, type UsageState } from "./usage.ts";
 
+export type * from "./media.ts";
 export type * from "./people.ts";
 export type * from "./presence.ts";
 export type * from "./room.ts";
@@ -62,14 +66,16 @@ export type ServerMessage =
   | { type: "people"; change: PeopleChange }
   | { type: "presence"; change: PresenceChange }
   | { type: "shares"; change: SharesChange }
-  | { type: "usage"; change: UsageChange };
+  | { type: "usage"; change: UsageChange }
+  | { type: "media"; change: MediaChange };
 
 /** A message from a tab to the instance. */
 export type ClientMessage =
   | Heartbeat
   | { type: "presence"; request: PresenceRequest }
   | { type: "shares"; request: SharesRequest }
-  | { type: "usage"; request: UsageRequest };
+  | { type: "usage"; request: UsageRequest }
+  | { type: "media"; request: MediaRequest };
 
 /** The room after `message`. A full state replaces whatever the tab held. */
 export function applyMessage(view: RoomView | null, message: ServerMessage): RoomView | null {
@@ -86,6 +92,9 @@ export function applyMessage(view: RoomView | null, message: ServerMessage): Roo
       return { ...view, shares: applyShares(view.shares, message.change) };
     case "usage":
       return { ...view, usage: applyUsage(view.usage, message.change) };
+    case "media":
+      // About this tab's own media connection, not the room: the room client hands it on.
+      return view;
     default:
       return view;
   }

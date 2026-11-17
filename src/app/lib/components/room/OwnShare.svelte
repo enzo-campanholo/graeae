@@ -9,11 +9,14 @@
   let {
     kind,
     watchers,
+    stopping = false,
     onstop,
     children,
   }: {
     kind: ShareKind;
     watchers: readonly string[];
+    /** Stop was pressed and the share is ending. */
+    stopping?: boolean;
     onstop?: () => void;
     /** The preview itself: the local video. */
     children?: Snippet;
@@ -30,7 +33,7 @@
     <span class="truncate" title={line.map((part) => part.text).join("")}>
       {#each line as part, i (i)}{#if part.name}<span class="text-soft font-medium">{part.text}</span>{:else}{part.text}{/if}{/each}
     </span>
-    <Button variant="destructive" size="xs" class="bg-raised px-2" aria-label="Stop your {kind}" onclick={onstop}>
+    <Button variant="destructive" size="xs" class="bg-raised px-2" aria-label="Stop your {kind}" disabled={stopping} onclick={onstop}>
       Stop
     </Button>
   </figcaption>

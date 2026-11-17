@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
 import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
-import { addMember, invite, pressJoin, setUpOwner } from "./steps.ts";
+import { addMember, invite, pressJoin, setUpOwner, shareWebcam } from "./steps.ts";
+import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
 // schema change. The second needs the first's table, and neither can run twice.
@@ -104,5 +105,30 @@ describe("the invites-for-a-member migration", () => {
     const laptop = instance.browser();
     expect(await (await pressJoin(laptop, code)).json()).toEqual({ to: room });
     expect(await (await laptop.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+  });
+});
+
+describe("the media-connections-and-shares migration", () => {
+  const added = migrations.find((migration) => migration.name === "media-connections-and-shares")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance that already has members and rooms, who can then share a webcam there", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    const { tab: ownerTab, state } = await openRoom(owner, room);
+    expect(state.people.members.map((person) => person.name).toSorted()).toEqual(["Bia", "Owner"]);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    expect(await ownerTab.next()).toEqual({
+      type: "shares",
+      change: { type: "started", share: { member: biaState.people.you.id, kind: "webcam" } },
+    });
   });
 });

@@ -1,6 +1,6 @@
 // A tab's signaling connection, as the tests drive it: open a room's socket or the list
-// of rooms' socket, read what the instance sends, send heartbeats, and close it the way a
-// closing tab does or lose it the way a dropped connection does.
+// of rooms' socket, read what the instance sends, send requests and heartbeats, and close
+// it the way a closing tab does or lose it the way a dropped connection does.
 //
 // A test tab sends no heartbeat by itself: it falls silent unless the test has it beat,
 // since the test's clock moves only when the test moves it.
@@ -8,7 +8,12 @@
 import { expect, onTestFinished } from "vitest";
 import { HEARTBEAT, LOST_CLOSE_CODE } from "../src/shared/socket/heartbeat.ts";
 import { LIST_SOCKET_PATH, type ListMessage, type ListState } from "../src/shared/socket/list.ts";
-import { roomSocketPath, type RoomView, type ServerMessage } from "../src/shared/socket/index.ts";
+import {
+  roomSocketPath,
+  type ClientMessage,
+  type RoomView,
+  type ServerMessage,
+} from "../src/shared/socket/index.ts";
 import type { Client } from "./harness.ts";
 
 /** How long a test waits for a message before it fails. */
@@ -24,6 +29,10 @@ export interface Tab<Message = ServerMessage> {
   heartbeat(): Promise<void>;
   /** The messages that have arrived and not been read yet, left unread. */
   queued(): Message[];
+  /** Every message the instance has sent this tab so far, read or not, the full state first. */
+  received(): readonly Message[];
+  /** Sends a request, as the page does. */
+  send(message: ClientMessage): void;
   /** Closes the socket cleanly, as a tab that is closed, reloaded or navigated away does. */
   close(): Promise<void>;
   /**
@@ -63,6 +72,7 @@ async function open<Message extends { type: string }, State>(
 }
 
 function listen<Message>(socket: WebSocket): Tab<Message> {
+  const all: Message[] = [];
   const arrived: Message[] = [];
   const waiting: ((message: Message) => void)[] = [];
   const answers: (() => void)[] = [];
@@ -74,13 +84,19 @@ function listen<Message>(socket: WebSocket): Tab<Message> {
       answers.shift()?.();
       return;
     }
+    all.push(message);
     const waiter = waiting.shift();
     if (waiter) waiter(message);
     else arrived.push(message);
   });
-  // Every tab leaves before the next test resets the instance under it.
+  // Every tab leaves before the next test resets the instance under it. A restart of
+  // the instance has already cut its socket, which can then no longer be touched.
   onTestFinished(async () => {
-    if (socket.readyState === WebSocket.OPEN) socket.close(1000, "left");
+    try {
+      if (socket.readyState === WebSocket.OPEN) socket.close(1000, "left");
+    } catch {
+      return;
+    }
     await closed;
   });
 
@@ -108,6 +124,10 @@ function listen<Message>(socket: WebSocket): Tab<Message> {
     },
     queued() {
       return [...arrived];
+    },
+    received: () => [...all],
+    send(message) {
+      socket.send(JSON.stringify(message));
     },
     async close() {
       socket.close(1000, "left");

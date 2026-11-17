@@ -37,8 +37,8 @@ describe("the list of rooms", () => {
     expect(state).toEqual({
       you: { owner: false },
       rooms: [
-        { address: first, name: "First room", present: [] },
-        { address: second, name: "Late shift", present: ["Bia", "Owner"] },
+        { address: first, name: "First room", present: [], live: 0 },
+        { address: second, name: "Late shift", present: ["Bia", "Owner"], live: 0 },
       ],
     });
     expect((await openList(owner)).state.you).toEqual({ owner: true });
@@ -74,17 +74,17 @@ describe("the list of rooms", () => {
     const { tab: ownerTab } = await openRoom(owner, `/r/${second}`);
     expect(await list.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: second, name: "Late shift", present: ["Owner"] } },
+      change: { type: "listed", room: { address: second, name: "Late shift", present: ["Owner"], live: 0 } },
     });
     await openRoom(bia, `/r/${first}`);
     expect(await list.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: first, name: "First room", present: ["Bia"] } },
+      change: { type: "listed", room: { address: first, name: "First room", present: ["Bia"], live: 0 } },
     });
     await ownerTab.close();
     expect(await list.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: second, name: "Late shift", present: [] } },
+      change: { type: "listed", room: { address: second, name: "Late shift", present: [], live: 0 } },
     });
   });
 
@@ -96,7 +96,7 @@ describe("the list of rooms", () => {
 
     expect(await list.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: second, name: "Nights", present: [] } },
+      change: { type: "listed", room: { address: second, name: "Nights", present: [], live: 0 } },
     });
   });
 
@@ -110,12 +110,12 @@ describe("the list of rooms", () => {
 
     expect(await ownerList.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: third, name: "Weekends", present: [] } },
+      change: { type: "listed", room: { address: third, name: "Weekends", present: [], live: 0 } },
     });
     // Bia hears the rename next, and never heard of Weekends.
     expect(await biaList.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: first, name: "Evenings", present: [] } },
+      change: { type: "listed", room: { address: first, name: "Evenings", present: [], live: 0 } },
     });
   });
 

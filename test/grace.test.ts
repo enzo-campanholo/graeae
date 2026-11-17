@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { MeAnswer } from "../src/shared/api.ts";
 import { startInstance, type TestInstance } from "./harness.ts";
-import { addMember, addSecondBrowser, createRoom, renameRoom, setUpOwner } from "./steps.ts";
+import { addMember, addSecondBrowser, createRoom, renameRoom, setUpOwner, shareWebcam, stopWebcam } from "./steps.ts";
 import { addressOf, openList, openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -264,5 +264,49 @@ describe("two rooms", () => {
 
     expect(ownerFirst.queued()).toEqual([reconnecting(caioId), left(caioId)]);
     expect(ownerSecond.queued()).toEqual([]);
+  });
+});
+
+describe("a sharer's lost connection", () => {
+  it("tears nothing down during the grace period, and ends the share by a forced close when it runs out", async () => {
+    const { instance, biaId, ownerTab, biaTab } = await ownerAndBia();
+    await shareWebcam(biaTab);
+    const started = { type: "shares", change: { type: "started", share: { member: biaId, kind: "webcam" } } };
+    expect(await ownerTab.next()).toEqual(started);
+    const tracks = instance.media.connections();
+
+    await biaTab.drop();
+    await pass(instance, 30 * SECOND - 1, [ownerTab]);
+    expect(ownerTab.queued()).toEqual([reconnecting(biaId)]);
+    await ownerTab.next();
+    expect(instance.media.connections()).toEqual(tracks);
+
+    await instance.clock.advance(1);
+    await ownerTab.heartbeat();
+    expect(ownerTab.queued()).toEqual([
+      left(biaId),
+      { type: "shares", change: { type: "ended", share: { member: biaId, kind: "webcam" } } },
+    ]);
+    expect(instance.media.connections()).toEqual([[]]);
+  });
+
+  it("keeps the same share when the browser reconnects in time, which the new socket can stop", async () => {
+    const { instance, room, bia, biaId, ownerTab, biaTab } = await ownerAndBia();
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // the share started
+    await biaTab.drop();
+    await pass(instance, 5 * SECOND, [ownerTab]);
+
+    const { tab: again, state } = await openRoom(bia, room);
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
+    await pass(instance, 60 * SECOND, [ownerTab, again]);
+    expect(ownerTab.queued()).toEqual([]);
+
+    stopWebcam(again);
+    expect(await ownerTab.next()).toEqual({
+      type: "shares",
+      change: { type: "ended", share: { member: biaId, kind: "webcam" } },
+    });
+    expect(instance.media.connections()).toEqual([[]]);
   });
 });

@@ -15,13 +15,15 @@ import type {
   RoomSummary,
   SetupAnswer,
 } from "../shared/api.ts";
-import type { RoomView } from "../shared/socket/index.ts";
+import type { ClientMessage, LiveShare, RoomView } from "../shared/socket/index.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
+import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
-import { Signaling } from "./signaling.ts";
+import { Shares } from "./shares.ts";
+import { Signaling, type Tab } from "./signaling.ts";
 
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
 export const INSTANCE_NAME = "instance";
@@ -36,11 +38,13 @@ export class Instance extends DurableObject<Env> {
 
   private readonly people: People;
   private readonly signaling: Signaling;
+  private readonly shares: Shares;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
     this.signaling = new Signaling(ctx, (address) => this.relist(address));
+    this.shares = new Shares(ctx.storage.sql, mediaLayer(env));
     // Nothing reaches the instance until its storage is on this code's schema.
     void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
   }
@@ -149,27 +153,90 @@ export class Instance extends DurableObject<Env> {
       const id = device[1]!;
       // Storage first, so the forgotten browser is refused from this instant, then its tabs.
       if (!this.people.forgetDevice(member, id)) return refuse();
-      this.signaling.closeDevice(id);
+      // Its tabs are gone, so whatever they were sending ends as on a clean leave.
+      for (const tab of this.signaling.closeDevice(id)) await this.left(tab);
       return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
     }
     return refuse();
   }
 
-  override webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
-    this.signaling.received(socket, data);
+  override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
+    const received = this.signaling.received(socket, data);
+    if (received) await this.request(received.tab, received.message);
   }
 
-  override webSocketClose(socket: WebSocket, code: number, reason: string) {
-    this.signaling.closed(socket, code, reason);
+  override async webSocketClose(socket: WebSocket, code: number, reason: string) {
+    const tab = this.signaling.closed(socket, code, reason);
+    if (tab) await this.left(tab);
   }
 
-  override webSocketError(socket: WebSocket) {
-    this.signaling.closed(socket);
+  override async webSocketError(socket: WebSocket) {
+    const tab = this.signaling.closed(socket);
+    if (tab) await this.left(tab);
+  }
+
+  /**
+   * A request from a tab showing a room. The tab is present there, since its socket is
+   * open on the room; its device and its access are checked again here, as they may
+   * have gone since the socket opened. A request the instance does not understand, or
+   * from a tab that fails a check, gets the refusal its area has, or nothing.
+   */
+  private async request(tab: Tab, message: ClientMessage) {
+    const request: unknown = (message as { request?: unknown }).request;
+    if (typeof request !== "object" || request === null) return;
+    const { type } = request as { type?: unknown };
+    const member = this.people.deviceMember(tab.device);
+    const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
+
+    if (message.type === "media" && type === "connect") {
+      if (!allowed) return;
+      const iceServers = await this.shares.connect(tab);
+      if (iceServers === "already") return;
+      this.signaling.toTab(
+        tab.id,
+        iceServers ? { type: "media", change: { type: "connected", iceServers } } : { type: "media", change: { type: "unavailable" } },
+      );
+      return;
+    }
+    if (message.type !== "shares") return;
+    if (type === "start") {
+      const { kind, offer, video } = request as { kind?: unknown; offer?: unknown; video?: unknown };
+      if (kind !== "webcam") return;
+      const started =
+        allowed && isSdp(offer) && isMid(video)
+          ? await this.shares.startWebcam(tab, tab.member, offer, video, () => this.signaling.isOpen(tab.id))
+          : { live: false as const };
+      if (!started.live) {
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });
+        return;
+      }
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
+      this.shareChanged(tab.room, { type: "started", share: started.share });
+      return;
+    }
+    if (type === "stop") {
+      const { kind } = request as { kind?: unknown };
+      if (kind !== "webcam" && kind !== "screen") return;
+      // Stopping needs no check: it only ever takes something away.
+      const ended = await this.shares.stop(tab, kind);
+      if (ended) this.shareChanged(tab.room, { type: "ended", share: ended });
+    }
+  }
+
+  /** A tab left cleanly, or its grace period ran out: whatever it was sending ends with it. */
+  private async left(tab: Tab) {
+    for (const share of await this.shares.left(tab)) this.shareChanged(tab.room, { type: "ended", share });
+  }
+
+  /** Tells the room and the lists of rooms that a share started or ended. */
+  private shareChanged(address: string, change: { type: "started" | "ended"; share: LiveShare }) {
+    this.signaling.toRoom(address, { type: "shares", change });
+    this.relist(address);
   }
 
   /** The grace periods' moments are the only thing the alarm wakes the instance for yet. */
-  override alarm() {
-    this.signaling.alarm();
+  override async alarm() {
+    for (const tab of this.signaling.alarm()) await this.left(tab);
   }
 
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
@@ -184,7 +251,7 @@ export class Instance extends DurableObject<Env> {
         present: [...this.signaling.present(room.address)],
         reconnecting: this.signaling.reconnecting(room.address),
       },
-      shares: {},
+      shares: { live: this.shares.live(room.address) },
       usage: {},
     };
   }
@@ -202,7 +269,7 @@ export class Instance extends DurableObject<Env> {
       .filter((person) => present.has(person.id))
       .map((person) => person.name)
       .toSorted((a, b) => a.localeCompare(b));
-    return { ...room, present: names };
+    return { ...room, present: names, live: this.shares.live(room.address).length };
   }
 
   /**
@@ -299,6 +366,18 @@ export class Instance extends DurableObject<Env> {
     const rooms = this.people.rooms(member);
     return rooms.length === 1 ? roomPath(rooms[0]!.address) : "/";
   }
+}
+
+/** The longest SDP offer the instance passes on. A real one is a few kilobytes. */
+const SDP_MAX = 64 * 1024;
+
+function isSdp(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= SDP_MAX;
+}
+
+/** A transceiver's mid: a short token the browser picks. */
+function isMid(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_.-]{1,32}$/.test(value);
 }
 
 function withCookie(response: Response, cookie: string): Response {

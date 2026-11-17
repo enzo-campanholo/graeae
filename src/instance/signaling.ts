@@ -64,6 +64,7 @@ interface ListTab {
 const roomTag = (address: string) => `room:${address}`;
 const memberTag = (id: string) => `member:${id}`;
 const deviceTag = (id: string) => `device:${id}`;
+const tabTag = (id: string) => `tab:${id}`;
 const LIST_TAG = "list";
 
 // Storage keys. Lost tabs are rare and short-lived, so each change rewrites the whole list.
@@ -97,7 +98,7 @@ export class Signaling {
 
     const { 0: browserEnd, 1: ours } = new WebSocketPair();
     const tab: Tab = { id: resumed?.id ?? crypto.randomUUID(), member, device, room: address, heardAt: Date.now() };
-    this.ctx.acceptWebSocket(ours, [roomTag(address), memberTag(member), deviceTag(device)]);
+    this.ctx.acceptWebSocket(ours, [roomTag(address), memberTag(member), deviceTag(device), tabTag(tab.id)]);
     ours.serializeAttachment(tab);
     this.mark(address, tab.id);
     send(ours, { type: "state", state: view() });
@@ -124,8 +125,10 @@ export class Signaling {
    * A tab's socket has closed (with the browser's close `code`) or failed (no code). A
    * clean close ends its presence now, and the room hears that its member left if this
    * was their last tab there. A lost connection keeps the tab for its grace period.
+   * Returns the tab when it was showing a room and has left, so the instance can end
+   * what it sent; null for a lost one, whose time comes with the alarm.
    */
-  closed(socket: WebSocket, code?: number, reason?: string) {
+  closed(socket: WebSocket, code?: number, reason?: string): Tab | null {
     // Finish the closing handshake the browser started.
     try {
       // Codes such as 1005 and 1006 describe a close and may not be sent; answer those with 1000.
@@ -135,21 +138,23 @@ export class Signaling {
       // Already closed.
     }
     const tab = attachment(socket);
-    if (!tab || !isRoomTab(tab) || tab.cutOff) return;
+    if (!tab || !isRoomTab(tab) || tab.cutOff) return null;
     if (code === undefined || code === 1006 || code === LOST_CLOSE_CODE) {
       this.saveLost([...this.lost(), tab]);
       this.schedule();
-    } else {
-      this.left(tab);
+      return null;
     }
+    this.left(tab);
+    return tab;
   }
 
   /**
    * Closes every tab of the device `id`, rooms and lists alike, which has just been
    * forgotten, and ends any of its lost tabs' grace periods. Each room hears that the
-   * member left where that was their last tab there.
+   * member left where that was their last tab there. Returns the room tabs it ended, so
+   * the instance can end what they were sending.
    */
-  closeDevice(id: string) {
+  closeDevice(id: string): Tab[] {
     const lost = this.lost();
     const ended = lost.filter((tab) => tab.device === id);
     if (ended.length > 0) this.saveLost(lost.filter((tab) => tab.device !== id));
@@ -166,25 +171,33 @@ export class Signaling {
       } catch {
         // Already closed.
       }
-      if (isRoomTab(tab)) this.left(tab);
+      if (isRoomTab(tab)) {
+        this.left(tab);
+        ended.push(tab);
+      }
     }
+    return ended;
   }
 
   /**
-   * A message from a tab, read as a `ClientMessage`; null when it is not one, or when
-   * the instance has already dealt with it, as it does with a heartbeat. No area asks
-   * anything else of the instance yet, and it ignores any message it does not understand.
+   * A message from a tab. A heartbeat, from a room or a list, is answered here and gives
+   * null. Anything else from a tab showing a room comes back with that tab; it is only
+   * shaped like a `ClientMessage`, and whoever acts on it checks what it holds. Null too
+   * when it is not JSON or comes from a list of rooms.
    */
-  received(socket: WebSocket, data: string | ArrayBuffer): ClientMessage | null {
+  received(socket: WebSocket, data: string | ArrayBuffer): { tab: Tab; message: ClientMessage } | null {
     const tab = tabOf(socket);
     if (!tab || typeof data !== "string") return null;
-    let message: ClientMessage;
+    let message: unknown;
     try {
-      message = JSON.parse(data) as ClientMessage;
+      message = JSON.parse(data);
     } catch {
       return null;
     }
-    if (message?.type !== HEARTBEAT.beat.type) return message;
+    if (typeof message !== "object" || message === null) return null;
+    if ((message as { type?: unknown }).type !== HEARTBEAT.beat.type) {
+      return isRoomTab(tab) ? { tab, message: message as ClientMessage } : null;
+    }
 
     socket.serializeAttachment({ ...tab, heardAt: Date.now() });
     send(socket, HEARTBEAT.answer);
@@ -196,9 +209,10 @@ export class Signaling {
   /**
    * The instance's alarm: ends the presence of every tab whose grace period has run out,
    * closing its socket if it is still open, and marks the members who have fallen silent.
-   * Then sets the alarm for the next such moment.
+   * Then sets the alarm for the next such moment. Returns the room tabs whose time ran
+   * out, so the instance can end what they were sending.
    */
-  alarm() {
+  alarm(): Tab[] {
     const now = Date.now();
     const expired = (tab: Tab | ListTab) => tab.heardAt + GRACE_MS <= now;
 
@@ -207,6 +221,7 @@ export class Signaling {
     if (ended.length > 0) this.saveLost(lost.filter((tab) => !expired(tab)));
     for (const tab of ended) this.left(tab);
 
+    const silent: Tab[] = [];
     for (const socket of this.ctx.getWebSockets()) {
       const tab = tabOf(socket);
       if (!tab || !expired(tab)) continue;
@@ -216,12 +231,28 @@ export class Signaling {
       } catch {
         // Already closed.
       }
-      if (isRoomTab(tab)) this.left(tab);
+      if (isRoomTab(tab)) {
+        this.left(tab);
+        silent.push(tab);
+      }
     }
 
     const rooms = new Set([...this.roomTabs().map((tab) => tab.room), ...Object.keys(this.marks())]);
     for (const address of rooms) this.mark(address);
     this.schedule();
+    return [...ended, ...silent];
+  }
+
+  /** Whether the tab `id` still has its socket open. A tab in its grace period does not. */
+  isOpen(id: string): boolean {
+    return this.ctx.getWebSockets(tabTag(id)).some((socket) => tabOf(socket) !== null);
+  }
+
+  /** Sends `message` to the one tab `id`, if it is still open. */
+  toTab(id: string, message: ServerMessage) {
+    for (const socket of this.ctx.getWebSockets(tabTag(id))) {
+      if (tabOf(socket)) send(socket, message);
+    }
   }
 
   /** The ids of the members present in the room at `address`, each once. */
