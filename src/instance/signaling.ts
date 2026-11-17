@@ -43,8 +43,9 @@ export interface Tab {
 }
 
 /**
- * The close code of a socket whose device the instance no longer remembers. The page
- * learns nothing more from it than from any refusal: it becomes "nothing here".
+ * The close code of a socket whose device the instance no longer remembers, or whose
+ * member no longer has access to its room. The page learns nothing more from it than
+ * from any refusal: it becomes "nothing here".
  */
 export const GONE_CLOSE_CODE = 4404;
 
@@ -59,8 +60,8 @@ interface ListTab {
 }
 
 // Tags let the instance find sockets without waking every one of them. A device's tag
-// finds the tabs to close when it is forgotten; a member's is there for removal (ticket
-// 09). Both are on list sockets too.
+// finds the tabs to close when it is forgotten; a member's, the tabs to close when they
+// are removed from a room or the instance. Both are on list sockets too.
 const roomTag = (address: string) => `room:${address}`;
 const memberTag = (id: string) => `member:${id}`;
 const deviceTag = (id: string) => `device:${id}`;
@@ -155,14 +156,34 @@ export class Signaling {
    * the instance can end what they were sending.
    */
   closeDevice(id: string): Tab[] {
+    return this.cutOff(deviceTag(id), () => true);
+  }
+
+  /**
+   * Closes the tabs of `member` showing the room at `address`, who has just lost access to
+   * it, and ends any of their lost tabs' grace periods there. Without `address`, closes
+   * every tab of theirs, rooms and lists alike: they have been removed from the instance.
+   * Returns the room tabs it ended, as `closeDevice` does.
+   */
+  closeMember(member: string, address?: string): Tab[] {
+    return this.cutOff(memberTag(member), (tab) => address === undefined || (isRoomTab(tab) && tab.room === address));
+  }
+
+  /**
+   * Cuts off every tab whose socket carries `tag` and which `covers` takes in, and every
+   * lost tab with the same tag that it takes in. Each open one is told it is gone, then
+   * closed. Each room hears that the member left where that was their last tab there.
+   */
+  private cutOff(tag: string, covers: (tab: Tab | ListTab) => boolean): Tab[] {
+    const tagged = (tab: Tab) => [roomTag(tab.room), memberTag(tab.member), deviceTag(tab.device)].includes(tag);
     const lost = this.lost();
-    const ended = lost.filter((tab) => tab.device === id);
-    if (ended.length > 0) this.saveLost(lost.filter((tab) => tab.device !== id));
+    const ended = lost.filter((tab) => tagged(tab) && covers(tab));
+    if (ended.length > 0) this.saveLost(lost.filter((tab) => !ended.includes(tab)));
     for (const tab of ended) this.left(tab);
 
-    for (const socket of this.ctx.getWebSockets(deviceTag(id))) {
+    for (const socket of this.ctx.getWebSockets(tag)) {
       const tab = tabOf(socket);
-      if (!tab) continue;
+      if (!tab || !covers(tab)) continue;
       socket.serializeAttachment({ ...tab, cutOff: true });
       // Said as well as done: a close frame can be lost on the way, a message is not.
       send(socket, { type: "gone" });

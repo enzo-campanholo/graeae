@@ -28,12 +28,19 @@ export default defineConfig({
   // where the root address and setup take the owner, so those run last, in their own
   // project, once every other journey has run.
   projects: [
-    { name: "chromium", use: { browserName: "chromium" }, testIgnore: "rooms.spec.ts" },
+    { name: "chromium", use: { browserName: "chromium" }, testIgnore: ["rooms.spec.ts", "people.spec.ts"] },
     {
       name: "several rooms",
       use: { browserName: "chromium" },
       testMatch: "rooms.spec.ts",
       dependencies: ["chromium"],
+    },
+    // The People journey uses the second room the one before makes.
+    {
+      name: "people",
+      use: { browserName: "chromium" },
+      testMatch: "people.spec.ts",
+      dependencies: ["several rooms"],
     },
   ],
   // The built app, as `pnpm test` leaves it, on an instance that starts empty each run.

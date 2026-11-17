@@ -21,9 +21,11 @@ export interface PeopleState {
 }
 
 export type PeopleChange =
-  /** A member gained access to the room, for instance by pressing an invite to it. */
+  /** A member gained access to the room: they pressed an invite to it, or the owner ticked it. */
   | { type: "added"; person: Person }
-  /** A member changed their display name. Ticket 07 sends it. */
+  /** A member lost access to the room: the owner removed them from it or from the instance. */
+  | { type: "removed"; member: string }
+  /** A member changed their display name. */
   | { type: "renamed"; member: string; name: string }
   /** The tab's own member now has access to this many rooms. Sent to that member's tabs alone. */
   | { type: "access"; rooms: number };
@@ -35,6 +37,8 @@ export function applyPeople(state: PeopleState, change: PeopleChange): PeopleSta
         ...state,
         members: [...state.members.filter((person) => person.id !== change.person.id), change.person],
       };
+    case "removed":
+      return { ...state, members: state.members.filter((person) => person.id !== change.member) };
     case "renamed":
       return {
         ...state,
