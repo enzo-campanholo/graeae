@@ -75,13 +75,13 @@ async function readings(page: Page, count: number, entries: StatsEntry[], from: 
   );
 }
 
-/** The two qualities of a Chromium screen share, the 1080p one `f` limited by the upload or not, and `h` running. */
+/** The two qualities of a Chromium screen share: 1080p (`f`) running or stopped, each limited by the upload or not. */
 function sent({ fps = 60, limited = false, software = false, f = true } = {}): StatsEntry[] {
-  const encoder = { powerEfficientEncoder: !software };
+  const each = { powerEfficientEncoder: !software, qualityLimitationReason: limited ? "bandwidth" : "none" };
   return [
     { type: "media-source", kind: "video", framesPerSecond: fps },
-    { type: "outbound-rtp", kind: "video", rid: "f", active: f, qualityLimitationReason: limited ? "bandwidth" : "none", ...encoder },
-    { type: "outbound-rtp", kind: "video", rid: "h", active: true, qualityLimitationReason: "none", ...encoder },
+    { type: "outbound-rtp", kind: "video", rid: "f", active: f, ...each },
+    { type: "outbound-rtp", kind: "video", rid: "h", active: true, ...each },
   ];
 }
 
