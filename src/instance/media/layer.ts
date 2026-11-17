@@ -5,8 +5,9 @@
 // no record.
 //
 // This holds only the operations the instance uses so far. Ticket 17 adds changing a
-// viewer's quality, and ticket 21 listing the tracks a media connection really has. Ticket 12 adds the Cloudflare
-// implementation; the in-memory fake in `fake.ts` stands in for it in tests.
+// viewer's quality, and ticket 21 listing the tracks a media connection really has. The
+// Cloudflare implementation is in `cloudflare.ts`; the in-memory fake in `fake.ts`
+// stands in for it in tests.
 
 import type { IceServer } from "../../shared/socket/media.ts";
 

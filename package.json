@@ -7,14 +7,15 @@
   "packageManager": "pnpm@12.9.0",
   "scripts": {
     "dev": "vite dev",
+    "dev:fake-media": "vite dev --mode fake-media",
     "build": "vite build",
     "preview": "vite build && vite preview",
     "deploy": "node scripts/deploy.mjs",
     "typecheck": "wrangler types --check && tsc -b && svelte-check --tsconfig ./tsconfig.app.json --fail-on-warnings",
     "types:generate": "wrangler types",
     "lint": "eslint .",
-    "test": "vite build && vitest run && playwright test",
-    "test:browser": "vite build && playwright test"
+    "test": "vite build --mode fake-media && vitest run && playwright test",
+    "test:browser": "vite build --mode fake-media && playwright test"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",

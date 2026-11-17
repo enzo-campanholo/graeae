@@ -182,7 +182,8 @@ class FakeMediaServer implements MediaLayer {
   }
 }
 
-const server = new FakeMediaServer();
+// Pure, so a build that never selects the fake leaves this module out entirely.
+const server = /* @__PURE__ */ new FakeMediaServer();
 
 /** The fake as the instance sees it: the media layer and nothing more. */
 export const fakeMediaServer: MediaLayer = server;

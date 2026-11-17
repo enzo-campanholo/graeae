@@ -5,7 +5,13 @@ import { defineConfig } from "vite";
 
 const app = (path: string) => new URL(`./src/app/${path}`, import.meta.url).pathname;
 
-export default defineConfig(({ command }) => ({
+/** The Vite mode that builds the app on the fake media server and fake media client, for Seam 2. */
+const FAKE_MEDIA_MODE = "fake-media";
+
+export default defineConfig(({ command, mode }) => ({
+  // Seam 2 builds with `--mode fake-media`; every other build, the deploy's included, gets
+  // the real media layer and media client, and the fakes are left out of it.
+  define: { __GRAEAE_FAKE_MEDIA__: JSON.stringify(mode === FAKE_MEDIA_MODE) },
   plugins: [
     svelte(),
     tailwindcss(),
