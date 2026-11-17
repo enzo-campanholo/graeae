@@ -277,7 +277,11 @@ describe("a sharer's lost connection", () => {
 
     await biaTab.drop();
     await pass(instance, 30 * SECOND - 1, [ownerTab]);
-    expect(ownerTab.queued()).toEqual([reconnecting(biaId)]);
+    expect(ownerTab.queued()).toEqual([
+      reconnecting(biaId),
+      { type: "shares", change: { type: "reconnecting", share: { member: biaId, kind: "webcam" } } },
+    ]);
+    await ownerTab.next();
     await ownerTab.next();
     expect(instance.media.connections()).toEqual(tracks);
 

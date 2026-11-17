@@ -50,6 +50,13 @@ export class Instance extends DurableObject<Env> {
       ctx,
       (address) => this.relist(address),
       () => this.schedule(),
+      // A share's own mark: the tab sending it has fallen silent, or is heard again.
+      (address, tab, silent, exceptTab) => {
+        for (const share of this.shares.liveFrom(tab)) {
+          const change = { type: silent ? ("reconnecting" as const) : ("reconnected" as const), share };
+          this.signaling.toRoom(address, { type: "shares", change }, exceptTab);
+        }
+      },
     );
     this.shares = new Shares(
       ctx.storage.sql,
@@ -399,7 +406,7 @@ export class Instance extends DurableObject<Env> {
         present: [...this.signaling.present(room.address)],
         reconnecting: this.signaling.reconnecting(room.address),
       },
-      shares: { live: this.shares.live(room.address) },
+      shares: { live: this.shares.live(room.address, this.signaling.silentTabs(room.address)) },
       // A new tab opens with nothing on its stage; one that reconnects in time finds its stage as it was.
       watching: { stage: this.shares.stage(tab), watchers: this.shares.watchers(room.address, member.id) },
       usage: {},

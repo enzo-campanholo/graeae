@@ -90,9 +90,17 @@ const LIST_TAG = "list";
 const LOST_KEY = "signaling:lost";
 const MARKS_KEY = "signaling:reconnecting";
 const OPEN_KEY = "signaling:open";
+const SILENT_KEY = "signaling:silent-tabs";
 
-/** The members each room has been told are "reconnecting", by address. */
+/** The members each room has been told are "reconnecting", by address; under `SILENT_KEY`, the tabs. */
 type Marks = Record<string, string[]>;
+
+/**
+ * Hears that the tab `tab` in the room at `address` has fallen silent (unheard for about
+ * 10 seconds) or is heard again, so the room can be told about the shares it sends. The
+ * room's tabs but `exceptTab` are to hear of it.
+ */
+export type TabSilence = (address: string, tab: string, silent: boolean, exceptTab?: string) => void;
 
 export class Signaling {
   /**
@@ -100,11 +108,13 @@ export class Signaling {
    * changed, once the change is counted, so the lists of rooms can be told. `schedule`
    * is called whenever the next moment this needs the alarm for (`nextMoment`) may have
    * changed: the instance sets one alarm for the earliest of everything it waits for.
+   * `tabSilence` hears each room tab falling silent and being heard again.
    */
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly presenceChanged: (address: string) => void = () => {},
     private readonly schedule: () => void = () => {},
+    private readonly tabSilence: TabSilence = () => {},
   ) {}
 
   /**
@@ -283,8 +293,13 @@ export class Signaling {
 
     socket.serializeAttachment({ ...tab, heardAt: Date.now() });
     send(socket, HEARTBEAT.answer);
-    // A heartbeat can only take a mark away, and only its own member's.
-    if (isRoomTab(tab) && this.reconnecting(tab.room).includes(tab.member)) this.mark(tab.room);
+    // A heartbeat can only take a mark away, and only its own member's or its own tab's.
+    if (
+      isRoomTab(tab) &&
+      (this.reconnecting(tab.room).includes(tab.member) || this.silentTabs(tab.room).includes(tab.id))
+    ) {
+      this.mark(tab.room);
+    }
     return null;
   }
 
@@ -320,7 +335,11 @@ export class Signaling {
       }
     }
 
-    const rooms = new Set([...this.roomTabs().map((tab) => tab.room), ...Object.keys(this.marks())]);
+    const rooms = new Set([
+      ...this.roomTabs().map((tab) => tab.room),
+      ...Object.keys(this.marks()),
+      ...Object.keys(this.marks(SILENT_KEY)),
+    ]);
     for (const address of rooms) this.mark(address);
     return [...ended, ...silent];
   }
@@ -386,6 +405,9 @@ export class Signaling {
 
   /** `tab` is gone: the room hears that its member left if it was their last tab there. */
   private left(tab: Tab) {
+    // Its shares end with it, so its own mark goes without a word.
+    const silent = this.silentTabs(tab.room);
+    if (silent.includes(tab.id)) this.saveMarks(tab.room, silent.filter((id) => id !== tab.id), SILENT_KEY);
     const others = this.tabs(tab.room).filter((other) => other.id !== tab.id);
     if (others.some((other) => other.member === tab.member)) {
       // Their other tabs may all be silent: the mark depends on those alone now.
@@ -417,29 +439,46 @@ export class Signaling {
    */
   private mark(address: string, exceptTab?: string) {
     const now = Date.now();
+    const tabs = this.tabs(address);
     const heard = new Map<string, number>();
-    for (const tab of this.tabs(address)) heard.set(tab.member, Math.max(heard.get(tab.member) ?? 0, tab.heardAt));
+    for (const tab of tabs) heard.set(tab.member, Math.max(heard.get(tab.member) ?? 0, tab.heardAt));
     const silent = [...heard].filter(([, at]) => now - at >= RECONNECTING_AFTER_MS).map(([member]) => member);
 
     const before = this.reconnecting(address);
     const marked = silent.filter((member) => !before.includes(member));
     const back = before.filter((member) => heard.has(member) && !silent.includes(member));
     const gone = before.filter((member) => !heard.has(member));
-    if (marked.length === 0 && back.length === 0 && gone.length === 0) return;
+    if (marked.length > 0 || back.length > 0 || gone.length > 0) {
+      this.saveMarks(address, silent);
+      for (const member of marked) {
+        this.toRoom(address, { type: "presence", change: { type: "reconnecting", member } }, exceptTab);
+      }
+      for (const member of back) {
+        this.toRoom(address, { type: "presence", change: { type: "reconnected", member } }, exceptTab);
+      }
+    }
 
-    this.saveMarks(address, silent);
-    for (const member of marked) {
-      this.toRoom(address, { type: "presence", change: { type: "reconnecting", member } }, exceptTab);
-    }
-    for (const member of back) {
-      this.toRoom(address, { type: "presence", change: { type: "reconnected", member } }, exceptTab);
-    }
+    // The same for each tab, which marks the shares it sends.
+    const silentTabs = tabs.filter((tab) => now - tab.heardAt >= RECONNECTING_AFTER_MS).map((tab) => tab.id);
+    const tabsBefore = this.silentTabs(address);
+    const tabsMarked = silentTabs.filter((tab) => !tabsBefore.includes(tab));
+    const tabsBack = tabsBefore.filter((id) => tabs.some((tab) => tab.id === id) && !silentTabs.includes(id));
+    const tabsGone = tabsBefore.filter((id) => !tabs.some((tab) => tab.id === id));
+    if (tabsMarked.length === 0 && tabsBack.length === 0 && tabsGone.length === 0) return;
+    this.saveMarks(address, silentTabs, SILENT_KEY);
+    for (const tab of tabsMarked) this.tabSilence(address, tab, true, exceptTab);
+    for (const tab of tabsBack) this.tabSilence(address, tab, false, exceptTab);
   }
 
   /** Forgets that the room at `address` was told `member` is "reconnecting", without telling it. */
   private unmark(address: string, member: string) {
     const before = this.reconnecting(address);
     if (before.includes(member)) this.saveMarks(address, before.filter((other) => other !== member));
+  }
+
+  /** The ids of the tabs in the room at `address` that have not been heard for about 10 seconds. */
+  silentTabs(address: string): string[] {
+    return this.marks(SILENT_KEY)[address] ?? [];
   }
 
   /**
@@ -513,16 +552,16 @@ export class Signaling {
     else this.ctx.storage.kv.delete(LOST_KEY);
   }
 
-  private marks(): Marks {
-    return this.ctx.storage.kv.get<Marks>(MARKS_KEY) ?? {};
+  private marks(key = MARKS_KEY): Marks {
+    return this.ctx.storage.kv.get<Marks>(key) ?? {};
   }
 
-  private saveMarks(address: string, members: string[]) {
-    const others = { ...this.marks() };
+  private saveMarks(address: string, ids: string[], key = MARKS_KEY) {
+    const others = { ...this.marks(key) };
     delete others[address];
-    const marks = members.length > 0 ? { ...others, [address]: members } : others;
-    if (Object.keys(marks).length > 0) this.ctx.storage.kv.put(MARKS_KEY, marks);
-    else this.ctx.storage.kv.delete(MARKS_KEY);
+    const marks = ids.length > 0 ? { ...others, [address]: ids } : others;
+    if (Object.keys(marks).length > 0) this.ctx.storage.kv.put(key, marks);
+    else this.ctx.storage.kv.delete(key);
   }
 }
 

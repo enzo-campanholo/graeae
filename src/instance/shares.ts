@@ -212,11 +212,19 @@ export class Shares {
     private readonly schedule: () => void = () => {},
   ) {}
 
-  /** The live shares in the room at `address`, oldest first. */
-  live(address: string): ListedShare[] {
+  /**
+   * The live shares in the room at `address`, oldest first. Those sent from one of
+   * `silentTabs` are marked "reconnecting".
+   */
+  live(address: string, silentTabs: readonly string[] = []): ListedShare[] {
     return this.records("WHERE room_address = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address).map(
-      toListedShare,
+      (share) => (silentTabs.includes(share.tab) ? { ...toListedShare(share), reconnecting: true } : toListedShare(share)),
     );
+  }
+
+  /** The live shares the tab `tab` sends. */
+  liveFrom(tab: string): LiveShare[] {
+    return this.records("WHERE tab_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", tab).map(toLiveShare);
   }
 
   /** Every live share of `member`, wherever it is live, oldest first. */
