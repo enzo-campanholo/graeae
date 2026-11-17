@@ -250,16 +250,15 @@ describe("a watch request", () => {
     expect(instance.media.connections()).toHaveLength(1);
   });
 
-  it("is refused to a device the instance has forgotten, though its tab is still open", async () => {
-    const { instance, ownerTab, biasWebcam } = await biaSharing();
+  it("cannot be asked from a device the instance has forgotten: its open tab is cut off", async () => {
+    const { instance, ownerTab } = await biaSharing();
     await connectMedia(ownerTab);
     // Using the setup secret again forgets every other device of the owner's.
     await setUpOwner(instance.browser());
 
-    startWatching(ownerTab, biasWebcam);
-
-    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
-    expect(instance.media.connections()[1]).toEqual([]);
+    expect(await ownerTab.next()).toEqual({ type: "gone" });
+    await ownerTab.closed();
+    expect(instance.media.connections().flat()).toHaveLength(1); // Bia's webcam alone
   });
 
   it("is refused to a tab on another room than the one the share is live in", async () => {

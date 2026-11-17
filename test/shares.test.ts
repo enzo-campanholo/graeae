@@ -134,15 +134,14 @@ describe("starting a webcam share", () => {
     expect(instance.media.connections().flat()).toHaveLength(1);
   });
 
-  it("is refused to a device the instance has forgotten, though its tab is still open", async () => {
+  it("cannot be started from a device the instance has forgotten: its open tab is cut off", async () => {
     const { instance, ownerTab } = await twoPresent();
     await connectMedia(ownerTab);
     // Using the setup secret again forgets every other device of the owner's.
     await setUpOwner(instance.browser());
 
-    startWebcam(ownerTab);
-
-    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
+    expect(await ownerTab.next()).toEqual({ type: "gone" });
+    await ownerTab.closed();
     expect(instance.media.connections().flat()).toEqual([]);
   });
 
