@@ -185,3 +185,35 @@ describe("the two-qualities migration", () => {
     });
   });
 });
+
+describe("the usage migration", () => {
+  const added = migrations.find((migration) => migration.name === "usage")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance with a live share, whose watching is then counted", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await shareWebcam(biaTab);
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 0, resetDay: 1 });
+    // Bia's tab comes back within its grace period, her webcam still live, and the owner watches it.
+    await openRoom(bia, room);
+    const { tab: ownerTab, state } = await openRoom(owner, room);
+    expect(state.shares.live).toEqual([biasWebcam]);
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasWebcam);
+    ownerTab.send({ type: "usage", request: { type: "received", bytes: 1_000_000, relayed: false } });
+    await ownerTab.heartbeat();
+    await instance.clock.advance(2000);
+    await ownerTab.close();
+    // 1 MB with 5% added, and 2 seconds at the webcam's 1.5 Mbps since.
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_050_000 + 375_000 });
+  });
+});

@@ -162,3 +162,22 @@ export interface UnconfirmedCutOff {
 export interface GrantAnswer {
   person: MemberEntry;
 }
+
+/**
+ * `GET /api/owner/usage`, and `PUT /api/owner/usage/reset-day` with `{ day }`: the
+ * month's usage as the owner page shows it. Bytes are counted by the instance's own
+ * rules, the 5% margin and the rest already applied; a gigabyte is 10⁹ bytes.
+ */
+export interface UsageAnswer {
+  /** Usage this month so far, in bytes. */
+  used: number;
+  /** The usage budget, in bytes. */
+  budget: number;
+  /** The month so far extended to its end at the same daily rate, in bytes. */
+  projected: number;
+  /** The day of the month, in UTC, on which usage resets: 1 to 31, the last day of a shorter month. */
+  resetDay: number;
+  /** When this month began and when it ends, in milliseconds since the epoch. */
+  since: number;
+  until: number;
+}
