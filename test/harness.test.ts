@@ -4,8 +4,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { Instance } from "../src/instance/instance.ts";
-import { INSTANCE_NAME } from "../src/worker/index.ts";
+import { Instance, INSTANCE_NAME } from "../src/instance/instance.ts";
 import { startInstance } from "./harness.ts";
 
 const START = new Date("2040-03-01T00:00:00Z");

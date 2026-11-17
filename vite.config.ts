@@ -6,7 +6,13 @@ import { defineConfig } from "vite";
 const app = (path: string) => new URL(`./src/app/${path}`, import.meta.url).pathname;
 
 export default defineConfig(({ command }) => ({
-  plugins: [svelte(), tailwindcss(), cloudflare()],
+  plugins: [
+    svelte(),
+    tailwindcss(),
+    // The Seam 2 tests start each run on an empty instance held in memory, leaving the
+    // instance `pnpm dev` keeps in `.wrangler/` alone.
+    cloudflare({ persistState: process.env.GRAEAE_EMPTY_INSTANCE !== "1" }),
+  ],
   resolve: {
     alias: {
       $lib: app("lib"),

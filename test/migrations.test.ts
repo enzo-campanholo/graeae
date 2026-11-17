@@ -1,41 +1,37 @@
-import { runInDurableObject } from "cloudflare:test";
-import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
-import { INSTANCE_NAME } from "../src/worker/index.ts";
 import { startInstance } from "./harness.ts";
+import { setUpOwner } from "./steps.ts";
 
-// Stand-in migrations owning their own table, so these tests outlive any real schema.
-const olderCode: Migration[] = [
-  { number: 1, name: "people", sql: "CREATE TABLE person (name TEXT NOT NULL)" },
-  { number: 2, name: "first person", sql: "INSERT INTO person (name) VALUES ('Ada')" },
-];
-const newerCode: Migration[] = [
-  ...olderCode,
-  {
-    number: 3,
-    name: "greetings",
-    sql: "ALTER TABLE person ADD COLUMN greeting TEXT NOT NULL DEFAULT 'hello'",
-  },
+// Stand-ins for migrations later code might ship, so these tests outlive any real
+// schema change. The second needs the first's table, and neither can run twice.
+const next = migrations.length + 1;
+const laterCode: Migration[] = [
+  ...migrations,
+  { number: next, name: "a later table", sql: "CREATE TABLE later_table (value TEXT)" },
+  { number: next + 1, name: "a later column", sql: "ALTER TABLE later_table ADD COLUMN extra TEXT" },
 ];
 
 describe("migrations", () => {
-  it("start an instance holding an older schema on newer code, keeping what it holds", async () => {
-    const instance = await startInstance({ migrations: olderCode });
-    await instance.fetch("/");
+  it("start an instance holding an older schema on newer code, keeping its owner and rooms", async () => {
+    const instance = await startInstance({ migrations });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
 
-    await instance.restart({ migrations: newerCode });
-    await instance.fetch("/");
+    await instance.restart({ migrations: laterCode });
 
-    // Nothing in the protocol shows these stand-in tables, so this one look goes inside.
-    expect(await people()).toEqual([{ name: "Ada", greeting: "hello" }]);
+    expect((await owner.fetch(room)).status).toBe(200);
+    expect(await (await owner.fetch("/api/me")).json()).toMatchObject({ name: "Owner", owner: true });
   });
 
-  it("are applied in order on first start", async () => {
-    const instance = await startInstance({ migrations: newerCode });
-    await instance.fetch("/");
+  it("are applied in order on first start, and once each", async () => {
+    const instance = await startInstance({ migrations: laterCode });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
 
-    expect(await people()).toEqual([{ name: "Ada", greeting: "hello" }]);
+    await instance.restart();
+
+    expect((await owner.fetch(room)).status).toBe(200);
   });
 });
 
@@ -45,26 +41,23 @@ describe("the shipped migrations", () => {
   });
 });
 
+
+// Two stand-ins numbered 1 and 2, to number wrongly.
+const standIns: Migration[] = laterCode.slice(-2).map((m, i) => ({ ...m, number: i + 1 }));
+
 describe("migration numbering", () => {
   it("is refused when two migrations share a number", () => {
-    const shared = [olderCode[0]!, { ...olderCode[1]!, number: 1 }];
+    const shared = [standIns[0]!, { ...standIns[1]!, number: 1 }];
     expect(() => checkNumbering(shared)).toThrow(/share number 1/);
   });
 
   it("is refused when migrations are out of order", () => {
-    const swapped = [olderCode[1]!, olderCode[0]!];
+    const swapped = [standIns[1]!, standIns[0]!];
     expect(() => checkNumbering(swapped)).toThrow(/out of order/);
   });
 
   it("is refused when a number is skipped", () => {
-    const skipped = [olderCode[0]!, { ...olderCode[1]!, number: 3 }];
+    const skipped = [standIns[0]!, { ...standIns[1]!, number: 3 }];
     expect(() => checkNumbering(skipped)).toThrow(/out of order/);
   });
 });
-
-async function people() {
-  const stub = env.INSTANCE.getByName(INSTANCE_NAME);
-  return runInDurableObject(stub, (_, state) =>
-    state.storage.sql.exec("SELECT * FROM person").toArray(),
-  );
-}

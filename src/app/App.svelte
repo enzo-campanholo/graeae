@@ -5,6 +5,7 @@
   import OwnerAddress from "./pages/OwnerAddress.svelte";
   import Room from "./pages/Room.svelte";
   import Rooms from "./pages/Rooms.svelte";
+  import Setup from "./pages/Setup.svelte";
   import You from "./pages/You.svelte";
   import Router from "./router/Router.svelte";
   import type { Route } from "./router/router.svelte.ts";
@@ -14,6 +15,7 @@
   const routes: Route[] = [
     { path: "/", component: Rooms },
     { path: "/r/:room", component: Room },
+    { path: "/setup", component: Setup },
     { path: "/you", component: You },
     { path: "/invite/:invite", component: Invite },
     { path: "/owner", component: OwnerAddress },
