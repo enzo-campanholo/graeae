@@ -175,7 +175,7 @@ Secrets left out of the file keep their values on the Worker.
 
 - **`SETUP_SECRET`**: generate a new one with the command under [step 3](#3-fill-in-the-secrets-file). The old one stops working at once. Owner devices stay remembered.
 - **`SFU_APP_ID` and `SFU_APP_SECRET`**: create a new media server application under Realtime › Serverless SFU, deploy both of its values together, then delete the old application. Do this when nobody has a room open: shares and watching on the old application end when it goes.
-- **`TURN_KEY_ID` and `TURN_KEY_TOKEN`**: create a new TURN key under Realtime, TURN, deploy both of its values together, then delete the old key. Tabs pick up the new key when they next make their media connection.
+- **`TURN_KEY_ID` and `TURN_KEY_TOKEN`**: create a new TURN key under Realtime, TURN, deploy both of its values together, then delete the old key. Open tabs get a credential from the new key at their next renewal, within 11 hours, or sooner if they reconnect.
 
 ### Emergency stop for relay abuse
 
