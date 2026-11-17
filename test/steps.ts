@@ -3,6 +3,8 @@
 import { expect } from "vitest";
 import type { CreateInviteAnswer, CreateRoomAnswer, JoinAnswer, PendingInvite } from "../src/shared/api.ts";
 import { SETUP_SECRET, type TestBrowser, type TestInstance } from "./harness.ts";
+import type { Tab } from "./sockets.ts";
+import type { IceServer } from "../src/shared/socket/index.ts";
 
 /** What the setup page sends: the part of `/setup#<secret>` after the `#`. */
 export function useSetupSecret(browser: TestBrowser, secret = SETUP_SECRET, headers: HeadersInit = {}) {
@@ -80,4 +82,45 @@ export function renameRoom(owner: TestBrowser, address: string, name: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
+}
+
+/** What the fake media client offers: no media server could read it, and the fake needs nothing more. */
+export const FAKE_OFFER = "v=0 a stand-in offer";
+
+/** The mid the fake media client gives its camera's transceiver. */
+export const FAKE_VIDEO_MID = "0";
+
+/** Has `tab` make its media connection, and returns the relay it was handed. */
+export async function connectMedia(tab: Tab): Promise<IceServer[]> {
+  tab.send({ type: "media", request: { type: "connect" } });
+  const connected = await tab.next();
+  if (connected.type !== "media" || connected.change.type !== "connected") {
+    throw new Error(`expected the media connection, got ${JSON.stringify(connected)}`);
+  }
+  return connected.change.iceServers;
+}
+
+/** What the page sends to start a webcam share, once its media connection is made. */
+export function startWebcam(tab: Tab) {
+  tab.send({ type: "shares", request: { type: "start", kind: "webcam", offer: FAKE_OFFER, video: FAKE_VIDEO_MID } });
+}
+
+/** What the page sends when the sharer presses stop. */
+export function stopWebcam(tab: Tab) {
+  tab.send({ type: "shares", request: { type: "stop", kind: "webcam" } });
+}
+
+/**
+ * Has `tab` share its webcam, as the page does on "Share webcam": make the media
+ * connection, offer, and read the instance's answer, then the share going live.
+ */
+export async function shareWebcam(tab: Tab) {
+  await connectMedia(tab);
+  startWebcam(tab);
+  expect(await tab.next()).toEqual({
+    type: "media",
+    change: { type: "published", kind: "webcam", answer: expect.any(String) },
+  });
+  const started = await tab.next();
+  expect(started).toMatchObject({ type: "shares", change: { type: "started", share: { kind: "webcam" } } });
 }

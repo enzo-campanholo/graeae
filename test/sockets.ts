@@ -1,9 +1,15 @@
 // A tab's signaling connection, as the tests drive it: open a room's socket or the list
-// of rooms' socket, read what the instance sends, close it the way a closing tab does.
+// of rooms' socket, read what the instance sends, send requests, close it the way a
+// closing tab does.
 
 import { expect, onTestFinished } from "vitest";
 import { LIST_SOCKET_PATH, type ListMessage, type ListState } from "../src/shared/socket/list.ts";
-import { roomSocketPath, type RoomView, type ServerMessage } from "../src/shared/socket/index.ts";
+import {
+  roomSocketPath,
+  type ClientMessage,
+  type RoomView,
+  type ServerMessage,
+} from "../src/shared/socket/index.ts";
 import type { Client } from "./harness.ts";
 
 /** How long a test waits for a message before it fails. */
@@ -12,6 +18,10 @@ const WAIT_MS = 2000;
 export interface Tab<Message = ServerMessage> {
   /** The next message the instance sent this tab, in order. */
   next(): Promise<Message>;
+  /** Every message the instance has sent this tab so far, read or not, the full state first. */
+  received(): readonly Message[];
+  /** Sends a request, as the page does. */
+  send(message: ClientMessage): void;
   /** Closes the socket cleanly, as a tab that is closed, reloaded or navigated away does. */
   close(): Promise<void>;
 }
@@ -44,19 +54,26 @@ async function open<Message extends { type: string }, State>(
 }
 
 function listen<Message>(socket: WebSocket): Tab<Message> {
+  const all: Message[] = [];
   const arrived: Message[] = [];
   const waiting: ((message: Message) => void)[] = [];
   const closed = new Promise<void>((resolve) => socket.addEventListener("close", () => resolve()));
 
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data as string) as Message;
+    all.push(message);
     const waiter = waiting.shift();
     if (waiter) waiter(message);
     else arrived.push(message);
   });
-  // Every tab leaves before the next test resets the instance under it.
+  // Every tab leaves before the next test resets the instance under it. A restart of
+  // the instance has already cut its socket, which can then no longer be touched.
   onTestFinished(async () => {
-    if (socket.readyState === WebSocket.OPEN) socket.close(1000, "left");
+    try {
+      if (socket.readyState === WebSocket.OPEN) socket.close(1000, "left");
+    } catch {
+      return;
+    }
     await closed;
   });
 
@@ -71,6 +88,10 @@ function listen<Message>(socket: WebSocket): Tab<Message> {
           resolve(message);
         });
       });
+    },
+    received: () => [...all],
+    send(message) {
+      socket.send(JSON.stringify(message));
     },
     async close() {
       socket.close(1000, "left");

@@ -2,6 +2,9 @@
 // sockets against the real Worker, which runs the real Durable Object with real SQLite.
 // Time is the test's: the instance sees only the clock below, and its alarms run when
 // the test advances that clock past them.
+//
+// The media server is the in-memory fake (`src/instance/media/fake.ts`), which a test reads
+// and steers through `instance.media`.
 
 import {
   evictDurableObject,
@@ -13,6 +16,7 @@ import { env, exports } from "cloudflare:workers";
 import { onTestFinished, vi } from "vitest";
 import { Instance, INSTANCE_NAME } from "../src/instance/instance.ts";
 import type { Migration } from "../src/instance/migrations.ts";
+import { fakeMediaControl, type FakeMediaControl } from "../src/instance/media/fake.ts";
 
 const ORIGIN = "https://graeae.test";
 
@@ -67,6 +71,11 @@ export interface TestInstance extends Client {
   browser(options?: { userAgent?: string; cookies?: string }): TestBrowser;
   clock: TestClock;
   /**
+   * The fake media server behind the instance: its tracks per media connection, and a
+   * control to make a call fail or wait. It outlives `restart`, as a real one would.
+   */
+  media: FakeMediaControl;
+  /**
    * Stops the instance and starts it again on the same storage, as after a deploy or a
    * Cloudflare restart. `migrations` swaps the code's migrations, to start an instance
    * holding an older schema on newer code.
@@ -83,6 +92,7 @@ export interface TestClock {
 /** Starts a fresh instance with empty storage, as on a first deploy. */
 export async function startInstance(options: StartOptions = {}): Promise<TestInstance> {
   await reset();
+  fakeMediaControl.reset();
 
   const stub = env.INSTANCE.getByName(INSTANCE_NAME);
   const shippedMigrations = Instance.migrations;
@@ -146,6 +156,7 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
       };
     },
     clock,
+    media: fakeMediaControl,
     async restart(restartOptions = {}) {
       if (restartOptions.migrations) Instance.migrations = restartOptions.migrations;
       await evictDurableObject(stub).catch(() => {

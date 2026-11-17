@@ -8,7 +8,7 @@
 // The conversation. Every message is one JSON text frame. The instance sends
 // `{ type: "state" }` first, holding the whole list, then a `rooms` change each time a
 // room's line in the list changes: a room renamed, someone arriving or leaving, or a
-// room the member newly has access to. A list that connects again gets the whole list
+// room the member newly has access to, a share starting or ending. A list that connects again gets the whole list
 // again. The list sends nothing yet (ticket 06 adds the heartbeat).
 
 import { unknownChange } from "./area.ts";
@@ -22,6 +22,8 @@ export interface ListedRoom {
   name: string;
   /** The display names of the members present, in alphabetical order. */
   present: string[];
+  /** How many shares are live in the room. */
+  live: number;
 }
 
 export interface ListState {

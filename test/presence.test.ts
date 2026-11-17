@@ -34,7 +34,7 @@ describe("a tab on a room", () => {
       room: { address: addressOf(room), name: "First room" },
       people: { you, members: [{ id: you.id, name: "Owner" }] },
       presence: { present: [you.id] },
-      shares: {},
+      shares: { live: [] },
       usage: {},
     });
   });
