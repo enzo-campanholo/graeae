@@ -18,8 +18,9 @@
 //
 // A failed forced close keeps its record and is tried again on a backoff (1 s, 2 s, 4 s,
 // up to 30 s between tries), until it succeeds or a sweep shows the track gone. The tries
-// to come are kept in storage, so they outlast a restart, and the instance's alarm wakes
-// it for each.
+// to come are kept in storage (`retries.ts`), so they outlast a restart, and the
+// instance's alarm wakes it for each. The faltering tabs (`faltering.ts`) and the
+// hand-overs under way (`hand-overs.ts`) are kept beside them.
 //
 // The sweep asks the media server which tracks a media connection really has, closes
 // any its records do not account for, and drops any record whose track is gone. It runs
@@ -30,7 +31,10 @@ import type { IceServer } from "../shared/socket/media.ts";
 import type { EncodingPlan } from "../shared/encoding.ts";
 import type { ListedShare, LiveShare, ShareKind } from "../shared/socket/shares.ts";
 import { sameShare, type ChosenQuality, type QualityChoice } from "../shared/socket/watching.ts";
+import { Falterings } from "./faltering.ts";
+import { HandOvers } from "./hand-overs.ts";
 import type { MediaLayer, Pulled, Track } from "./media/index.ts";
+import { Retries, type Subject } from "./retries.ts";
 import type { Tab } from "./signaling.ts";
 
 /** A share as the instance recorded it. */
@@ -52,14 +56,6 @@ interface ShareRecord {
   /** The id of the share of the member's this one was started to replace, by a hand-over; null for none. */
   replaces: string | null;
 }
-
-/**
- * Hand-overs under way: each new share's id, with the id of the share it replaces. Kept
- * in the instance's key-value storage beside the share records, like retries: there are
- * few, and briefly, and they outlast a restart. A mark goes once either share's record
- * is dropped.
- */
-const HAND_OVERS_KEY = "shares:hand-overs";
 
 /** A track pulled for a watch: the share's track name, on the mid the media server gave it, null until then. */
 interface PulledTrack {
@@ -89,53 +85,8 @@ interface WatchRecord {
   quality: QualityChoice;
 }
 
-/**
- * The member a cut-off was for, when the owner should hear that it could not be
- * confirmed: a removal, or a forgotten device. `at` is when it began.
- */
-export interface Subject {
-  member: string;
-  name: string;
-  at: number;
-}
-
-/** A forced close that failed, and when it is tried next. */
-interface Retry {
-  /** The share or watch record whose close failed, or a track no record names. */
-  kind: "share" | "watch" | "track";
-  /** The record's id; for a track, its media connection and mid. */
-  id: string;
-  /** For a track: where it is and what it is. */
-  connection?: string;
-  track?: Track;
-  /** How many tries have failed so far. */
-  tries: number;
-  next: number;
-  subject?: Subject;
-}
-
-/** Retries are kept in the instance's key-value storage, all under one key: there are few, and briefly. */
-const RETRIES_KEY = "shares:retries";
-
-/**
- * The tabs whose media connection has faltered while their socket is fine, each with
- * when it said so. Kept like retries: few, and briefly.
- */
-const FALTERING_KEY = "shares:faltering";
-
 /** The tabs whose media connection was made after their socket was lost, so they never heard of it. */
 const UNANSWERED_KEY = "shares:unanswered";
-
-/** How long a tab's shares stay live while its media connection falters, before they end. */
-export const FALTERING_MS = 30_000;
-
-/** The wait before the next try once `tries` tries have failed: 1 s, then doubling, at most 30 s. */
-export function retryDelay(tries: number): number {
-  return Math.min(1000 * 2 ** (tries - 1), 30_000);
-}
-
-/** How long closes may go on failing before the owner hears a cut-off could not be confirmed. */
-export const UNCONFIRMED_AFTER_MS = 60_000;
 
 /** What a cut-off covers: the shares it ends and the watching it closes. */
 export type Covered =
@@ -259,6 +210,9 @@ export class Shares {
    * leaves them alone. After a restart there are none: whatever was under way never returns.
    */
   private readonly inFlight = new Set<string>();
+  private readonly retries: Retries;
+  private readonly falterings: Falterings;
+  private readonly handOvers: HandOvers;
 
   /**
    * `schedule` is called whenever the next try of a failed close (`nextRetry`) may have
@@ -270,7 +224,11 @@ export class Shares {
     private readonly media: MediaLayer,
     private readonly listener: WatchingListener,
     private readonly schedule: () => void = () => {},
-  ) {}
+  ) {
+    this.retries = new Retries(kv, () => this.schedule());
+    this.falterings = new Falterings(kv, () => this.schedule());
+    this.handOvers = new HandOvers(sql, kv);
+  }
 
   /**
    * The live shares in the room at `address`, oldest first. Those sent from one of
@@ -454,7 +412,7 @@ export class Shares {
       Date.now(),
     );
     // Marked as replacing the old one before the media server is called.
-    if (share.replaces) this.saveHandOvers({ ...this.handOvers(), [share.id]: share.replaces });
+    if (share.replaces) this.handOvers.mark(share.id, share.replaces);
 
     this.inFlight.add(share.id);
     try {
@@ -660,7 +618,7 @@ export class Shares {
    * carried over: their tabs, like everyone's, were cut off by the restart.
    */
   async finishHandOvers(): Promise<Ended[]> {
-    const replaced = this.replaced();
+    const replaced = this.handOvers.replaced();
     const stuck = this.records("WHERE live_at IS NOT NULL").filter(
       (share) => replaced.has(share.id) && !this.ending.has(share.id) && !this.inFlight.has(share.id),
     );
@@ -839,7 +797,7 @@ export class Shares {
 
   /** The room of the live share that replaced the share `id` by a hand-over, or null when none did. */
   private replacementRoom(id: string): string | null {
-    const by = Object.entries(this.handOvers()).find(([, old]) => old === id)?.[0];
+    const by = this.handOvers.replacing(id);
     return by === undefined ? null : (this.records("WHERE id = ? AND live_at IS NOT NULL", by)[0]?.room ?? null);
   }
 
@@ -854,13 +812,13 @@ export class Shares {
       // A screen share's video and audio close together, in one call.
       if (typeof mediaId === "string" && !gone) await this.media.close(mediaId, tracksOf(share));
     } catch {
-      this.failed({ kind: "share", id: share.id }, subject);
+      this.retries.failed({ kind: "share", id: share.id }, subject);
       return false;
     }
     this.sql.exec("DELETE FROM share WHERE id = ?", share.id);
     // A hand-over it was part of is over: done when it is the old share, failed when it is the new.
-    this.forgetHandOvers(share.id);
-    this.confirmed(share.id);
+    this.handOvers.forget(share.id);
+    this.retries.confirmed(share.id);
     return true;
   }
 
@@ -884,12 +842,12 @@ export class Shares {
       const pulled = pulledTracksOf(watch).flatMap((track) => (track.mid === null ? [] : [{ name: track.name, mid: track.mid }]));
       if (typeof mediaId === "string" && pulled.length > 0 && !gone) await this.media.close(mediaId, pulled);
     } catch {
-      this.failed({ kind: "watch", id: watch.id }, subject);
+      this.retries.failed({ kind: "watch", id: watch.id }, subject);
       return false;
     } finally {
       this.closing.delete(watch.id);
     }
-    this.confirmed(watch.id);
+    this.retries.confirmed(watch.id);
     const drop = () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
     if (!watch.watching) {
       drop();
@@ -978,7 +936,7 @@ export class Shares {
       try {
         await this.media.close(mediaId, [track]);
       } catch {
-        this.failed({ kind: "track", id: `${mediaId} ${track.mid}`, connection: mediaId, track });
+        this.retries.failed({ kind: "track", id: `${mediaId} ${track.mid}`, connection: mediaId, track });
       }
     }
     return ended;
@@ -990,23 +948,22 @@ export class Shares {
    * connection of one that is not is forgotten once nothing is left on it.
    */
   async retry(present: (tab: string) => boolean): Promise<Ended[]> {
-    const now = Date.now();
     const ended: Ended[] = [];
     const touched = new Set<string>();
-    for (const due of this.retries().filter((retry) => retry.next <= now)) {
+    for (const due of this.retries.due()) {
       if (due.kind === "track") {
         try {
           await this.media.close(due.connection!, [due.track!]);
-          this.confirmed(due.id);
+          this.retries.confirmed(due.id);
         } catch {
-          this.failed(due);
+          this.retries.failed(due);
         }
         continue;
       }
       if (due.kind === "share") {
         const share = this.records("WHERE id = ?", due.id)[0];
         if (!share) {
-          this.confirmed(due.id);
+          this.retries.confirmed(due.id);
           continue;
         }
         touched.add(share.tab);
@@ -1016,7 +973,7 @@ export class Shares {
       }
       const watch = this.watches("WHERE id = ?", due.id)[0];
       if (!watch) {
-        this.confirmed(due.id);
+        this.retries.confirmed(due.id);
         continue;
       }
       touched.add(watch.tab);
@@ -1028,8 +985,7 @@ export class Shares {
 
   /** When the next failed close is due to be tried again, or null when none is. */
   nextRetry(): number | null {
-    const moments = this.retries().map((retry) => retry.next);
-    return moments.length > 0 ? Math.min(...moments) : null;
+    return this.retries.next();
   }
 
   /**
@@ -1038,19 +994,12 @@ export class Shares {
    * tries to recover, and end then (`faltered`) unless it recovers first.
    */
   faltering(tab: string) {
-    const faltering = this.falterings();
-    if (faltering[tab] !== undefined) return;
-    this.saveFalterings({ ...faltering, [tab]: Date.now() });
-    this.schedule();
+    this.falterings.falters(tab);
   }
 
   /** The tab `tab`'s media connection has recovered, or the tab is gone: its shares no longer wait to end. */
   recovered(tab: string) {
-    const faltering = this.falterings();
-    if (faltering[tab] === undefined) return;
-    delete faltering[tab];
-    this.saveFalterings(faltering);
-    this.schedule();
+    this.falterings.recovered(tab);
   }
 
   /**
@@ -1061,12 +1010,8 @@ export class Shares {
    * whose connection was forgotten.
    */
   async faltered(): Promise<{ ended: Ended[]; dropped: string[] }> {
-    const now = Date.now();
-    const faltering = this.falterings();
-    const due = Object.keys(faltering).filter((tab) => faltering[tab]! + FALTERING_MS <= now);
+    const due = this.falterings.takeDue();
     if (due.length === 0) return { ended: [], dropped: [] };
-    for (const tab of due) delete faltering[tab];
-    this.saveFalterings(faltering);
     const ended: Ended[] = [];
     const dropped: string[] = [];
     for (const tab of due) {
@@ -1078,17 +1023,7 @@ export class Shares {
 
   /** When the shares of a tab whose media connection falters are next due to end, or null when none are. */
   nextFaltered(): number | null {
-    const moments = Object.values(this.falterings()).map((since) => since + FALTERING_MS);
-    return moments.length > 0 ? Math.min(...moments) : null;
-  }
-
-  private falterings(): Record<string, number> {
-    return this.kv.get<Record<string, number>>(FALTERING_KEY) ?? {};
-  }
-
-  private saveFalterings(faltering: Record<string, number>) {
-    if (Object.keys(faltering).length > 0) this.kv.put(FALTERING_KEY, faltering);
-    else this.kv.delete(FALTERING_KEY);
+    return this.falterings.next();
   }
 
   /**
@@ -1096,44 +1031,7 @@ export class Shares {
    * the owner hears that it could not be confirmed.
    */
   unconfirmed(): { member: string; name: string }[] {
-    const now = Date.now();
-    const members = new Map<string, string>();
-    for (const { subject } of this.retries()) {
-      if (subject && now - subject.at >= UNCONFIRMED_AFTER_MS) members.set(subject.member, subject.name);
-    }
-    return [...members].map(([member, name]) => ({ member, name }));
-  }
-
-  /** A close failed: tries it again after the next wait of the backoff. */
-  private failed(what: Pick<Retry, "kind" | "id" | "connection" | "track">, subject?: Subject) {
-    const retries = this.retries();
-    const before = retries.find((retry) => retry.id === what.id);
-    const tries = (before?.tries ?? 0) + 1;
-    const retry: Retry = {
-      kind: what.kind,
-      id: what.id,
-      ...(what.connection ? { connection: what.connection, track: what.track } : {}),
-      tries,
-      next: Date.now() + retryDelay(tries),
-      ...((before?.subject ?? subject) ? { subject: before?.subject ?? subject } : {}),
-    };
-    this.saveRetries([...retries.filter((other) => other.id !== what.id), retry]);
-  }
-
-  /** A close succeeded, or a sweep showed its track gone: it is tried no more. */
-  private confirmed(id: string) {
-    const retries = this.retries();
-    if (retries.some((retry) => retry.id === id)) this.saveRetries(retries.filter((retry) => retry.id !== id));
-  }
-
-  private retries(): Retry[] {
-    return this.kv.get<Retry[]>(RETRIES_KEY) ?? [];
-  }
-
-  private saveRetries(retries: Retry[]) {
-    if (retries.length > 0) this.kv.put(RETRIES_KEY, retries);
-    else this.kv.delete(RETRIES_KEY);
-    this.schedule();
+    return this.retries.unconfirmed();
   }
 
   /** Makes `change` to a watch of `watch`'s share, and tells the sharer if who watches it changed. */
@@ -1190,44 +1088,12 @@ export class Shares {
    * counted against the member's one share of its kind.
    */
   private current(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
-    const replaced = this.replaced();
+    const replaced = this.handOvers.replaced();
     return this.records(where, ...bindings).filter((share) => !replaced.has(share.id));
   }
 
-  /** The ids of the shares a hand-over has replaced with a share that is live. */
-  private replaced(): Set<string> {
-    const handOvers = Object.entries(this.handOvers());
-    if (handOvers.length === 0) return new Set();
-    const live = new Set(
-      this.sql
-        .exec<{ id: string }>(
-          `SELECT id FROM share WHERE live_at IS NOT NULL AND id IN (${handOvers.map(() => "?").join(", ")})`,
-          ...handOvers.map(([id]) => id),
-        )
-        .toArray()
-        .map((row) => row.id),
-    );
-    return new Set(handOvers.filter(([id]) => live.has(id)).map(([, old]) => old));
-  }
-
-  private handOvers(): Record<string, string> {
-    return this.kv.get<Record<string, string>>(HAND_OVERS_KEY) ?? {};
-  }
-
-  private saveHandOvers(handOvers: Record<string, string>) {
-    if (Object.keys(handOvers).length > 0) this.kv.put(HAND_OVERS_KEY, handOvers);
-    else this.kv.delete(HAND_OVERS_KEY);
-  }
-
-  /** Forgets every hand-over the share `id` is part of, as the new share or the old. */
-  private forgetHandOvers(id: string) {
-    const handOvers = this.handOvers();
-    const left = Object.entries(handOvers).filter(([by, old]) => by !== id && old !== id);
-    if (left.length !== Object.keys(handOvers).length) this.saveHandOvers(Object.fromEntries(left));
-  }
-
   private records(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
-    const handOvers = this.handOvers();
+    const handOvers = this.handOvers.all();
     return this.sql
       .exec<ShareRow>(
         `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at,
