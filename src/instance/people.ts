@@ -35,6 +35,12 @@ export interface Visitor {
   member: Member;
 }
 
+/** A device the instance has just forgotten, and the member it belonged to. */
+export interface Forgotten {
+  device: string;
+  member: Member;
+}
+
 export interface Room {
   address: string;
   name: string;
@@ -121,12 +127,13 @@ export class People {
   /**
    * Makes the browser behind `request` an owner device and forgets every other device
    * of the owner. On a fresh instance it first makes the owner and the first room.
-   * Returns the owner, and the cookie that remembers the new device.
+   * Returns the owner, the cookie that remembers the new device, and the devices it
+   * forgot, whose tabs the caller cuts off.
    */
   async becomeOwner(
     request: Request,
     current: Visitor | null,
-  ): Promise<{ owner: Member; cookie: string }> {
+  ): Promise<{ owner: Member; cookie: string; forgotten: Forgotten[] }> {
     const remember = await this.newDevice(request, current);
 
     let owner = this.owner();
@@ -140,8 +147,7 @@ export class People {
       );
       this.createRoom(FIRST_ROOM_NAME);
     }
-    this.sql.exec("DELETE FROM device WHERE member_id = ?", owner.id);
-    return { owner, cookie: remember(owner) };
+    return { owner, ...remember(owner, { forgetOthers: true }) };
   }
 
   /**
@@ -267,13 +273,13 @@ export class People {
    * for "Let back in", the one device of the member it is for, whose other devices are
    * forgotten; for "Add a device", another device of the member who made it. Null, and
    * nothing changed, when the invite is not pending. Returns the member, the cookie that
-   * remembers the new device, and the ids of the devices it forgot.
+   * remembers the new device, and the devices it forgot, whose tabs the caller cuts off.
    */
   async join(
     request: Request,
     current: Visitor | null,
     code: string,
-  ): Promise<{ member: Member; cookie: string; forgotten: string[] } | null> {
+  ): Promise<{ member: Member; cookie: string; forgotten: Forgotten[] } | null> {
     const remember = await this.newDevice(request, current);
     // Nothing below waits, so two presses of one invite cannot both use it.
     const invite = this.inviteRow(code);
@@ -281,14 +287,7 @@ export class People {
     const rooms = this.inviteRooms(code);
     this.deleteInvite(code);
     if (invite.member) {
-      const forgotten =
-        invite.kind === "owner"
-          ? this.sql
-              .exec<{ id: string }>("DELETE FROM device WHERE member_id = ? RETURNING id", invite.member.id)
-              .toArray()
-              .map((row) => row.id)
-          : [];
-      return { member: invite.member, cookie: remember(invite.member), forgotten };
+      return { member: invite.member, ...remember(invite.member, { forgetOthers: invite.kind === "owner" }) };
     }
     const member: Member = { id: crypto.randomUUID(), name: invite.name, owner: false };
     this.sql.exec(
@@ -300,7 +299,7 @@ export class People {
     for (const room of rooms) {
       this.sql.exec("INSERT INTO access (member_id, room_address) VALUES (?, ?)", member.id, room.address);
     }
-    return { member, cookie: remember(member), forgotten: [] };
+    return { member, ...remember(member) };
   }
 
   /**
@@ -489,15 +488,30 @@ export class People {
    * Gets ready to remember the browser behind `request` as a new device. This is the
    * one step that waits, so callers take it before they check or change anything. The
    * function it returns forgets the device this browser held before, whoever's it was,
-   * records the new one as `member`'s, and returns the cookie that remembers it.
+   * and with `forgetOthers` every other device of `member`'s. It records the new one as
+   * `member`'s, and returns the cookie that remembers it and the devices it forgot.
    */
-  private async newDevice(request: Request, current: Visitor | null): Promise<(member: Member) => string> {
+  private async newDevice(
+    request: Request,
+    current: Visitor | null,
+  ): Promise<(member: Member, options?: { forgetOthers?: boolean }) => { cookie: string; forgotten: Forgotten[] }> {
     const token = newToken();
     const tokenHash = await hash(token);
     const { browser, os } = describeBrowser(request.headers);
-    return (member) => {
+    return (member, { forgetOthers = false } = {}) => {
       const now = Date.now();
-      if (current) this.sql.exec("DELETE FROM device WHERE id = ?", current.deviceId);
+      const forgotten: Forgotten[] = [];
+      // The visitor's device may have been forgotten while the token was hashed.
+      if (current && this.sql.exec("DELETE FROM device WHERE id = ?", current.deviceId).rowsWritten > 0) {
+        forgotten.push({ device: current.deviceId, member: current.member });
+      }
+      if (forgetOthers) {
+        for (const { id } of this.sql
+          .exec<{ id: string }>("DELETE FROM device WHERE member_id = ? RETURNING id", member.id)
+          .toArray()) {
+          forgotten.push({ device: id, member });
+        }
+      }
       this.sql.exec(
         `INSERT INTO device (id, member_id, token_hash, browser, os, created_at, last_used_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -509,7 +523,7 @@ export class People {
         now,
         now,
       );
-      return deviceCookie(token);
+      return { cookie: deviceCookie(token), forgotten };
     };
   }
 

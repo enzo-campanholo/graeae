@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { startInstance, type TestBrowser, type TestInstance } from "./harness.ts";
 import { addMember, answer, createInvite, invite, pressJoin, setUpOwner } from "./steps.ts";
+import { openRoom } from "./sockets.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const INVITE_LIFE = 7 * DAY;
@@ -200,6 +201,21 @@ describe("an owner's invite", () => {
 
     expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Caio" });
     expect((await biaBefore.fetch(room)).status).toBe(404);
+  });
+
+  it("pressed on a browser that is already remembered cuts off its old device's open tabs", async () => {
+    const { instance, owner, room } = await withOwner();
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: biaTab, state } = await openRoom(bia, room);
+    expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "arrived", member: state.people.you.id } });
+    const { code } = await invite(owner, "Caio");
+
+    expect((await pressJoin(bia, code)).status).toBe(200);
+
+    expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: state.people.you.id } });
+    expect(await biaTab.next()).toEqual({ type: "gone" });
+    await biaTab.closed();
   });
 });
 

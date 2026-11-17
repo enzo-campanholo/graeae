@@ -26,7 +26,7 @@ import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/soc
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
-import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
+import { FORGET_DEVICE_COOKIE, People, type Forgotten, type Member, type Visitor } from "./people.ts";
 import { Relay, RELAY_LIVES, type RelayLives } from "./relay.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
 import { Shares, type Covered, type Ended } from "./shares.ts";
@@ -282,8 +282,17 @@ export class Instance extends DurableObject<Env> {
     // Storage first, so the forgotten browser is refused from this instant, then its tabs.
     // The answer does not wait for the media server.
     if (!this.people.forgetDevice(member, id)) return null;
-    this.inBackground(this.cutOff({ device: id }, this.signaling.cutDevice(id), member));
+    this.devicesForgotten([{ device: id, member }]);
     return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
+  }
+
+  /**
+   * Devices just forgotten in storage: their tabs are cut off at once, and what they were
+   * sending and watching through the cut-off routine, which the answer does not wait for.
+   */
+  private devicesForgotten(forgotten: readonly Forgotten[]) {
+    const cuts = forgotten.map(({ device, member }) => ({ device, member, cut: this.signaling.cutDevice(device) }));
+    for (const { device, member, cut } of cuts) this.inBackground(this.cutOff({ device }, cut, member));
   }
 
   override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
@@ -847,7 +856,9 @@ export class Instance extends DurableObject<Env> {
     const body = await request.json<{ secret?: unknown }>().catch(() => null);
     if (!(await isSetupSecret(this.env, body?.secret))) return nothingHere(this.env.ASSETS, request);
 
-    const { owner, cookie } = await this.people.becomeOwner(request, visitor);
+    // Every other device of the owner's is forgotten, and the browser's own old one.
+    const { owner, cookie, forgotten } = await this.people.becomeOwner(request, visitor);
+    this.devicesForgotten(forgotten);
     return withCookie(
       json({ to: this.landing(owner), missing: missingSecrets(this.env) } satisfies SetupAnswer),
       cookie,
@@ -858,8 +869,9 @@ export class Instance extends DurableObject<Env> {
   private async join(request: Request, visitor: Visitor | null, code: string): Promise<Response> {
     const joined = await this.people.join(request, visitor, code);
     if (!joined) return nothingHere(this.env.ASSETS, request);
-    // "Let back in" forgot the member's other devices: their tabs close as on forgetting one.
-    for (const device of joined.forgotten) await this.cutOff({ device }, this.signaling.cutDevice(device), joined.member);
+    // "Let back in" forgot the member's other devices, and a remembered browser its old one,
+    // whoever's it was: their tabs close as on forgetting one.
+    this.devicesForgotten(joined.forgotten);
     const { id, name } = joined.member;
     for (const room of this.people.rooms(joined.member)) {
       this.signaling.toRoom(room.address, { type: "people", change: { type: "added", person: { id, name } } });
