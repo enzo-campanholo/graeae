@@ -35,15 +35,17 @@ export interface FakeMediaControl {
   endScreen(): void;
   /** The media connection falters, as when the browser loses its path to the media server. */
   falter(): void;
+  /** The browser gives the media connection up ("failed"): only a restart brings it back. */
+  fail(): void;
   /** The media connection recovers from faltering. */
   recover(): void;
   /** How many media connections the page has made, the current one included. */
   connections: number;
   /** The relay credential the media connection holds now: the one it was made with, or a fresh one since. */
   iceServers: IceServer[] | null;
-  /** How many times the page has restarted its media connection with a fresh credential. */
+  /** How many times the page has restarted its media connection: with a fresh credential, or after "failed". */
   restarts: number;
-  /** Whether the next restarts fail, as when the browser finds no path with the fresh credential. */
+  /** Whether the next restarts fail, as when the browser finds no path. A restart that succeeds makes the connection fine. */
   restartFails: boolean;
   /**
    * The quality every share this tab watches arrives at: 1080p unless a journey says

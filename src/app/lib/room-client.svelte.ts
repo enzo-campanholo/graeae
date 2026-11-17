@@ -46,10 +46,20 @@ import {
 import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
-import { createMediaClient, type BrowserFamily, type Capture, type MediaClient, type Offer } from "./media/index.ts";
+import {
+  createMediaClient,
+  type BrowserFamily,
+  type Capture,
+  type MediaClient,
+  type MediaHealth,
+  type Offer,
+} from "./media/index.ts";
 import { renewal } from "./media/renewal.ts";
 import type { SharerNotes } from "./media/sending.ts";
 import { UsageReports } from "./usage-reports.ts";
+
+/** The wait between a restart of a failed media connection that found no path and the next. */
+const RESTART_AGAIN_MS = 2_000;
 
 /** What this tab receives of a share it watches. */
 export interface Picture {
@@ -117,6 +127,12 @@ export class RoomClient {
   private made = false;
   /** Whether the media connection falters, as the media client last said. */
   private faltering = false;
+  /** Whether the browser has given the media connection up, as the media client last said. */
+  private givenUp = false;
+  /** Whether the tab is restarting a media connection the browser gave up on (`recover`). */
+  private recovering = false;
+  /** The relay credential the media connection holds: the one it was made with, or the last fresh one. */
+  private iceServers: IceServer[] = [];
   /** Captures the browser ended by itself while their share was starting, to stop once it is live. */
   private readonly over = new WeakSet<Capture>();
   /** Requests waiting for their answer in the media area, oldest first. */
@@ -422,6 +438,7 @@ export class RoomClient {
     this.usage.stop();
     for (const stop of this.listening.values()) stop();
     this.listening.clear();
+    this.givenUp = false;
     this.media.close();
     this.socket.close();
   }
@@ -562,6 +579,7 @@ export class RoomClient {
    */
   private async renew(iceServers: IceServer[]) {
     if (!this.made) return;
+    this.iceServers = iceServers;
     const totals = await this.media.transport().catch(() => null);
     const how = renewal(totals?.relayed ?? false);
     if (how === "silently") {
@@ -715,6 +733,7 @@ export class RoomClient {
     this.connection = null;
     this.made = false;
     this.faltering = false;
+    this.givenUp = false;
   }
 
   /** The tab's media connection, made the first time it is needed. False if it could not be made. */
@@ -728,7 +747,8 @@ export class RoomClient {
         this.connection = null;
         return false;
       }
-      this.media.connect(change.iceServers, (faltering) => this.falter(faltering));
+      this.iceServers = change.iceServers;
+      this.media.connect(change.iceServers, (health) => this.healthChanged(health));
       this.made = true;
       this.usage.start();
       return true;
@@ -740,10 +760,38 @@ export class RoomClient {
     return this.connection;
   }
 
-  /** The media connection falters, or recovers: the instance gives this tab's shares 30 seconds. */
-  private falter(faltering: boolean) {
-    this.faltering = faltering;
-    this.send({ type: "media", request: { type: faltering ? "faltering" : "recovered" } });
+  /**
+   * How the media connection is doing has changed. The instance hears when it falters,
+   * which gives this tab's shares 30 seconds, and when it recovers. One the browser has
+   * given up on is restarted (`recover`).
+   */
+  private healthChanged(health: MediaHealth) {
+    const faltering = health !== "fine";
+    if (faltering !== this.faltering) {
+      this.faltering = faltering;
+      this.send({ type: "media", request: { type: faltering ? "faltering" : "recovered" } });
+    }
+    this.givenUp = health === "failed";
+    if (this.givenUp) void this.recover();
+  }
+
+  /**
+   * Restarts the media connection the browser gave up on, keeping every share and watch,
+   * and again a moment after each restart that finds no path, as the network may still be
+   * down. Stops once it recovers, or once it is no longer this tab's: the instance let it
+   * go, its shares having faltered for 30 seconds, or the tab left.
+   */
+  private async recover() {
+    if (this.recovering) return;
+    this.recovering = true;
+    try {
+      while (this.made && this.givenUp) {
+        if (await this.restart(this.iceServers)) return;
+        await new Promise((resolve) => setTimeout(resolve, RESTART_AGAIN_MS));
+      }
+    } finally {
+      this.recovering = false;
+    }
   }
 
   /**

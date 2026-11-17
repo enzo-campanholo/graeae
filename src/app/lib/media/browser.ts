@@ -13,7 +13,7 @@
 import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
-import type { Capture, MediaClient, Offer } from "./client.ts";
+import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
@@ -21,6 +21,13 @@ import { every } from "../ticker.ts";
 
 /** How often a watched share's statistics are read for the quality it arrives at. */
 const RECEIVED_EVERY_MS = 2000;
+
+/** How each state of a connection reads; the others leave it as it was. */
+const HEALTH: Partial<Record<RTCPeerConnectionState, MediaHealth>> = {
+  connected: "fine",
+  disconnected: "faltering",
+  failed: "failed",
+};
 
 /** How long a restarted connection has to find its path again before the restart counts as failed. */
 const RESTART_WAIT_MS = 15_000;
@@ -68,20 +75,18 @@ export class BrowserMediaClient implements MediaClient {
     return { kind: "screen", stream, audio: stream.getAudioTracks().length > 0, ended: endedOf(stream) };
   }
 
-  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
+  connect(iceServers: IceServer[], health: (health: MediaHealth) => void) {
     // The relay is offered from the start, over UDP, TCP and TLS, in `iceServers`; the
     // browser uses a direct path whenever one works.
     const connection = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
     this.connection = connection;
     // "disconnected" is the browser losing its path and looking for another by itself;
-    // "failed" is it giving up. Either way the instance gives the shares 30 seconds.
-    // No ICE restart is attempted here: the only one is the relay credential's (`restart`).
-    let was = false;
+    // "failed" is it giving up, which the room client answers with a restart.
+    let was: MediaHealth = "fine";
     connection.addEventListener("connectionstatechange", () => {
       if (connection !== this.connection) return;
-      const state = connection.connectionState;
-      const now = state === "disconnected" || state === "failed" ? true : state === "connected" ? false : was;
-      if (now !== was) faltering(now);
+      const now = HEALTH[connection.connectionState] ?? was;
+      if (now !== was) health(now);
       was = now;
     });
   }

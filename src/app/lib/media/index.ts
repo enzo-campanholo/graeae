@@ -6,7 +6,7 @@ import { BrowserMediaClient } from "./browser.ts";
 import { FakeMediaClient } from "./fake.ts";
 import type { MediaClient } from "./client.ts";
 
-export type { Capture, MediaClient, Offer } from "./client.ts";
+export type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 export type { BrowserFamily } from "./capture.ts";
 
 export function createMediaClient(): MediaClient {

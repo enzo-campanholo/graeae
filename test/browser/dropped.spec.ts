@@ -5,7 +5,8 @@ import { SETUP_SECRET } from "./app.ts";
 
 // Media through dropped connections. A member's socket is routed through the test, which
 // can hold its opening or stop passing anything either way, as on a dropped network. The
-// media on both sides is fake. Members Kim, Kit and Ines are this file's alone.
+// media on both sides is fake. Members Kim, Kit, Ines, Rhea, Tove and Wren are this
+// file's alone.
 
 const opened: BrowserContext[] = [];
 
@@ -228,5 +229,77 @@ test("a sharer's tab tells the instance when its media connection falters and re
   await expect(kit.getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
   await kit.close();
+  await owner.close();
+});
+
+test("a sharer's tab restarts a media connection the browser gave up on, until a restart finds a path", async ({ browser, baseURL }) => {
+  const { owner, room, member: tove, code } = await ownerAndInvited(browser, baseURL, "Tove");
+  const sent: string[] = [];
+  tove.on("websocket", (socket) => socket.on("framesent", (frame) => sent.push(String(frame.payload))));
+  await tove.goto(`/invite/${code}`);
+  await tove.getByRole("button", { name: "Join as Tove" }).click();
+  await expect(tove).toHaveURL(room);
+  await tove.getByRole("button", { name: "Share webcam" }).click();
+  await expect(tove.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Tove's webcam" }).click();
+  await expect(tove.getByText("Owner watching")).toBeVisible();
+  const media = (act: (control: FakeMediaControl) => unknown) =>
+    tove.evaluate(`(${act.toString()})(globalThis.graeaeFakeMedia)`) as Promise<unknown>;
+  const restarts = () => media((control) => control.restarts) as Promise<number>;
+  const faltering = JSON.stringify({ type: "media", request: { type: "faltering" } });
+  const recovered = JSON.stringify({ type: "media", request: { type: "recovered" } });
+
+  // The browser looking for another path by itself is left to it.
+  await media((control) => control.falter());
+  await expect.poll(() => sent).toContainEqual(faltering);
+  await tove.waitForTimeout(1_500);
+  expect(await restarts()).toBe(0);
+
+  // The browser gives up: the tab restarts the connection, and tries again while no restart finds a path.
+  await media((control) => (control.restartFails = true));
+  await media((control) => control.fail());
+  await expect.poll(restarts, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  expect(sent).not.toContainEqual(recovered);
+
+  // The network is back: the next restart finds a path, and nothing was ended or carried anywhere.
+  await media((control) => (control.restartFails = false));
+  await expect.poll(() => sent, { timeout: 10_000 }).toContainEqual(recovered);
+  await expect(tove.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(tove.getByText("Owner watching")).toBeVisible();
+  expect(await media((control) => control.connections)).toBe(1);
+  const settled = await restarts();
+  await tove.waitForTimeout(2_000);
+  expect(await restarts()).toBe(settled);
+
+  await tove.close();
+  await owner.close();
+});
+
+test("a sharer's tab stops restarting a failed media connection once the instance has ended its share", async ({ browser, baseURL }) => {
+  test.setTimeout(90_000);
+  const { owner, room, member: wren, code } = await ownerAndInvited(browser, baseURL, "Wren");
+  await wren.goto(`/invite/${code}`);
+  await wren.getByRole("button", { name: "Join as Wren" }).click();
+  await expect(wren).toHaveURL(room);
+  await wren.getByRole("button", { name: "Share webcam" }).click();
+  await expect(wren.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  const media = (act: (control: FakeMediaControl) => unknown) =>
+    wren.evaluate(`(${act.toString()})(globalThis.graeaeFakeMedia)`) as Promise<unknown>;
+  const restarts = () => media((control) => control.restarts) as Promise<number>;
+
+  // The network stays down: no restart finds a path, and after 30 seconds the instance ends the share.
+  await media((control) => (control.restartFails = true));
+  await media((control) => control.fail());
+  await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Wren's webcam" })).toBeVisible();
+  await expect(wren.getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
+  await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Wren's webcam" })).toHaveCount(0);
+
+  // The connection is gone, so nothing is restarted any more.
+  const tried = await restarts();
+  expect(tried).toBeGreaterThanOrEqual(2);
+  await wren.waitForTimeout(5_000);
+  expect(await restarts()).toBe(tried);
+
+  await wren.close();
   await owner.close();
 });

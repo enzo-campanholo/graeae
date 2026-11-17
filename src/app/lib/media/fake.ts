@@ -14,7 +14,7 @@
 import { encodingPlan, TWO_QUALITIES, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
-import type { Capture, MediaClient, Offer } from "./client.ts";
+import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import type { FakeMediaControl } from "./fake-control.ts";
 import type { TransportTotals } from "./transport.ts";
 import { follow, NotesBoard, readingOf, STEP_DOWN, type SharerNotes } from "./sending.ts";
@@ -46,6 +46,7 @@ function control(): FakeMediaControl {
       screenAudio: null,
       endScreen: () => undefined,
       falter: () => undefined,
+      fail: () => undefined,
       recover: () => undefined,
       connections: 0,
       iceServers: null,
@@ -76,6 +77,8 @@ interface FakeCapture extends Capture {
 export class FakeMediaClient implements MediaClient {
   private nextMid = 0;
   private connected = false;
+  /** Hears how the media connection is doing, while there is one. */
+  private health: (health: MediaHealth) => void = () => undefined;
   /** The capture of the last offer, followed once it is accepted. */
   private offered: Capture | null = null;
   /** The notes on each live share, for its sharer. */
@@ -112,20 +115,24 @@ export class FakeMediaClient implements MediaClient {
     return screen;
   }
 
-  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
+  connect(iceServers: IceServer[], health: (health: MediaHealth) => void) {
     this.connected = true;
+    this.health = health;
     const fake = control();
     fake.connections += 1;
     fake.iceServers = iceServers;
-    fake.falter = () => faltering(true);
-    fake.recover = () => faltering(false);
+    fake.falter = () => health("faltering");
+    fake.fail = () => health("failed");
+    fake.recover = () => health("fine");
   }
 
   reset() {
     this.connected = false;
     const fake = control();
     fake.iceServers = null;
+    this.health = () => undefined;
     fake.falter = () => undefined;
+    fake.fail = () => undefined;
     fake.recover = () => undefined;
     this.nextMid = 0;
     this.pulled.clear();
@@ -148,6 +155,8 @@ export class FakeMediaClient implements MediaClient {
   async restarted(answer: string) {
     void answer;
     if (control().restartFails) throw new Error("The fake was told the restart fails");
+    // As a real connection's state goes back to "connected"; one already fine hears nothing new.
+    this.health("fine");
   }
 
   async offer(capture: Capture): Promise<Offer> {

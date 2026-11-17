@@ -35,6 +35,13 @@ export interface Capture {
   ended: Promise<void>;
 }
 
+/**
+ * How the media connection is doing, as the browser says: "fine" once it has a path;
+ * "faltering" when it has lost it and looks for another by itself ("disconnected");
+ * "failed" when it has given up, and only a restart brings it back.
+ */
+export type MediaHealth = "fine" | "faltering" | "failed";
+
 /** An offer to send a capture over the media connection, for the instance to answer. */
 export interface Offer {
   /** The browser's SDP offer. */
@@ -60,11 +67,10 @@ export interface MediaClient {
   captureScreen(): Promise<Capture | null>;
   /**
    * Makes the tab's one media connection, offering the relay in `iceServers`. Called
-   * the first time the tab shares or watches, and again after `reset`. `faltering`
-   * hears the connection falter (true) while the browser tries to recover it, and
-   * recover (false).
+   * the first time the tab shares or watches, and again after `reset`. `health` hears
+   * each change in how the connection is doing.
    */
-  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void): void;
+  connect(iceServers: IceServer[], health: (health: MediaHealth) => void): void;
   /**
    * Closes the media connection but keeps every capture going, so a new connection can
    * send them again: the instance has closed everything the old one carried.
