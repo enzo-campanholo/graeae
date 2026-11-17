@@ -107,7 +107,7 @@
         {#snippet header()}
           <BarHeader
             {name}
-            home={room?.home}
+            home={room?.home ?? (view ? view.people.you.rooms > 1 : false)}
             gear={room?.gear ?? view?.people.you.owner}
             oncollapse={() => fold(true)}
           />
