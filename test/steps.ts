@@ -122,9 +122,12 @@ export async function connectMedia(tab: Tab): Promise<IceServer[]> {
   return connected.change.iceServers;
 }
 
-/** What the page sends to start a webcam share, once its media connection is made. */
-export function startWebcam(tab: Tab) {
-  tab.send({ type: "shares", request: { type: "start", kind: "webcam", offer: FAKE_OFFER, video: FAKE_VIDEO_MID } });
+/**
+ * What the page sends to start a webcam share, once its media connection is made, on the
+ * transceiver `video`.
+ */
+export function startWebcam(tab: Tab, video = FAKE_VIDEO_MID) {
+  tab.send({ type: "shares", request: { type: "start", kind: "webcam", offer: FAKE_OFFER, video } });
 }
 
 /** What the page sends when the sharer presses stop. */
@@ -168,7 +171,8 @@ export async function watch(tab: Tab, share: LiveShare): Promise<string> {
   if (pulled.type !== "media" || pulled.change.type !== "pulled") {
     throw new Error(`expected the pull, got ${JSON.stringify(pulled)}`);
   }
-  expect(pulled.change).toEqual({ type: "pulled", share, offer: expect.any(String), video: expect.any(String) });
+  // A screen share's audio, when it has any, comes on a transceiver of its own.
+  expect(pulled.change).toMatchObject({ type: "pulled", share, offer: expect.any(String), video: expect.any(String) });
   expect(await tab.next()).toEqual({ type: "watching", change: { type: "watched", share } });
   tab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
   expect(await tab.next()).toEqual({ type: "media", change: { type: "answered" } });

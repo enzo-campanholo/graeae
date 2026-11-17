@@ -18,6 +18,7 @@
   let {
     name,
     kind,
+    videoOnly = false,
     aspect = 16 / 9,
     place = "grid",
     onstop,
@@ -27,6 +28,8 @@
   }: {
     name: string;
     kind: ShareKind;
+    /** A screen share with no screen audio: its caption says "video only". */
+    videoOnly?: boolean;
     /** The picture's width over its height, once the video reports it. */
     aspect?: number;
     /** In the grid, the one focused share, or in the strip beneath it. */
@@ -100,7 +103,7 @@
   </div>
   <figcaption class="flex h-5 min-w-0 items-baseline gap-1.5 px-0.5">
     <span class="text-soft truncate font-medium">{name}</span>
-    <span class="text-dim text-xs">{kind}</span>
+    <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true"> · </span>video only{/if}</span>
   </figcaption>
 </figure>
 

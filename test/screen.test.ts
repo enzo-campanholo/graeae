@@ -100,7 +100,7 @@ describe("starting a screen share", () => {
     await shareScreen(biaTab);
     await ownerTab.next(); // the screen went live
 
-    startWebcam(biaTab);
+    startWebcam(biaTab, "2"); // after the screen's video and audio
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published", kind: "webcam" } });
 
     const { state } = await openRoom(owner, room);

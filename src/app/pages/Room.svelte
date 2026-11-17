@@ -11,6 +11,7 @@
   import PersonRow from "$lib/components/room/PersonRow.svelte";
   import Rail from "$lib/components/room/Rail.svelte";
   import SharePreview from "$lib/components/room/SharePreview.svelte";
+  import ScreenNotice from "$lib/components/room/ScreenNotice.svelte";
   import ShareButtons from "$lib/components/room/ShareButtons.svelte";
   import Shortcuts from "$lib/components/room/Shortcuts.svelte";
   import Stage from "$lib/components/room/Stage.svelte";
@@ -75,13 +76,36 @@
 
   // Your own shares from this tab, at the bar's foot once they are live.
   const mine = $derived((client?.mine ?? []).filter((share) => share.state !== "starting"));
-  const webcamStarting = $derived(!!client?.mine.some((share) => share.kind === "webcam" && share.state === "starting"));
-  // A webcam of yours live from any tab or device: one webcam share per member at a time.
-  const webcamLive = $derived(
+  const starting = (kind: ShareKind) =>
+    !!client?.mine.some((share) => share.kind === kind && share.state === "starting");
+  // A share of yours live from any tab or device: one of each kind per member at a time.
+  const liveAnywhere = (kind: ShareKind) =>
     room
-      ? room.mine.some((share) => share.kind === "webcam")
-      : !!view && (isLive(view.people.you.id, "webcam") || mine.some((share) => share.kind === "webcam")),
-  );
+      ? room.mine.some((share) => share.kind === kind)
+      : !!view && (isLive(view.people.you.id, kind) || mine.some((share) => share.kind === kind));
+  const shareButtons = $derived({
+    screenLive: liveAnywhere("screen"),
+    screenStarting: starting("screen"),
+    webcamLive: liveAnywhere("webcam"),
+    webcamStarting: starting("webcam"),
+  });
+
+  // "Share screen" goes straight to the browser's picker. The first time on this device a
+  // short notice comes first, once; going on from it is the click that opens the picker.
+  const NOTICE_KEY = "graeae:screen-notice";
+  let notice = $state(false);
+
+  function shareScreen() {
+    if (!client || shareButtons.screenLive || shareButtons.screenStarting) return;
+    if (readStored(NOTICE_KEY) === "seen") void client.shareScreen();
+    else notice = true;
+  }
+
+  function noticeRead() {
+    notice = false;
+    writeStored(NOTICE_KEY, "seen");
+    void client?.shareScreen();
+  }
 
   // Your own live shares sent from another tab or device, which this tab can watch.
   const ownRowShare = (kind: ShareKind) =>
@@ -94,6 +118,8 @@
     key: string;
     name: string;
     kind: ShareKind;
+    /** A screen share with no screen audio. */
+    videoOnly?: boolean;
     share?: LiveShare;
     stream?: MediaStream | null;
     scene?: Scene;
@@ -107,6 +133,7 @@
             key: `${share.member}:${share.kind}`,
             name: nameOf(share.member),
             kind: share.kind,
+            videoOnly: view?.shares.live.some((live) => sameShare(live, share) && live.audio === false),
             share,
             stream: client?.pictures.find((picture) => sameShare(picture.share, share))?.stream ?? null,
           })),
@@ -137,6 +164,9 @@
     if (event.key === "[" && isShortcut(event)) {
       event.preventDefault();
       fold(!folded);
+    } else if (event.key.toLowerCase() === "s" && !event.altKey && !event.repeat && isShortcut(event)) {
+      event.preventDefault();
+      shareScreen();
     }
   }
 
@@ -179,7 +209,10 @@
         onfollow={(id) => client?.follow(id)}
       >
         {#snippet foot()}
-          <ShareButtons compact {webcamLive} {webcamStarting} onwebcam={() => client?.shareWebcam()} />
+          {#if notice && client}
+            <ScreenNotice floating browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
+          {/if}
+          <ShareButtons compact {...shareButtons} onscreen={shareScreen} onwebcam={() => client?.shareWebcam()} />
         {/snippet}
       </Rail>
     {:else}
@@ -263,16 +296,23 @@
             <OwnShare
               kind={share.kind}
               watchers={view ? watchersOf({ member: view.people.you.id, kind: share.kind }) : []}
+              audio={share.audio}
               stopping={share.state === "stopping"}
               onstop={() => client?.stop(share.kind)}
+              onaudio={(on) => client?.setScreenAudio(on)}
             >
               <SharePreview kind={share.kind} stream={share.capture?.stream ?? null} />
             </OwnShare>
           {/each}
-          {#if client?.failed === "webcam"}
-            <p class="text-muted-foreground px-0.5 pb-2 text-xs" role="status">Your webcam didn't start. Try again.</p>
+          {#if client?.failed}
+            <p class="text-muted-foreground px-0.5 pb-2 text-xs" role="status">
+              Your {client.failed === "screen" ? "screen share" : "webcam"} didn't start. Try again.
+            </p>
           {/if}
-          <ShareButtons {webcamLive} {webcamStarting} onwebcam={() => client?.shareWebcam()} />
+          {#if notice && client}
+            <ScreenNotice browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
+          {/if}
+          <ShareButtons {...shareButtons} onscreen={shareScreen} onwebcam={() => client?.shareWebcam()} />
         {/snippet}
       </Bar>
     {/if}
@@ -306,6 +346,7 @@
   <StageTile
     name={tile.name}
     kind={tile.kind}
+    videoOnly={tile.videoOnly}
     {place}
     onstop={tile.share ? () => tile.share && client?.unwatch(tile.share) : undefined}
     onfocus={() => (focusedKey = tile.key)}
