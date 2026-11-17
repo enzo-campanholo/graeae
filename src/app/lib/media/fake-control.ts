@@ -2,7 +2,7 @@
 // `window.graeaeFakeMedia`. Types only, so the journeys can import them too.
 
 import type { QualityName } from "../../../shared/encoding.ts";
-import type { ShareKind } from "../../../shared/socket/index.ts";
+import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
 import type { BrowserFamily, ScreenCaptureRequest } from "./capture.ts";
 import type { Degradation, StatsEntry, StepEncoding } from "./sending.ts";
 
@@ -29,6 +29,12 @@ export interface FakeMediaControl {
   recover(): void;
   /** How many media connections the page has made, the current one included. */
   connections: number;
+  /** The relay credential the media connection holds now: the one it was made with, or a fresh one since. */
+  iceServers: IceServer[] | null;
+  /** How many times the page has restarted its media connection with a fresh credential. */
+  restarts: number;
+  /** Whether the next restarts fail, as when the browser finds no path with the fresh credential. */
+  restartFails: boolean;
   /**
    * The quality every share this tab watches arrives at: 1080p unless a journey says
    * otherwise. A real browser reads it from the frames received.

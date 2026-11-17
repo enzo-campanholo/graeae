@@ -21,12 +21,19 @@
 // connection the instance dropped sends its final total before the next one is made.
 // One lost with the grace period sends none: the instance has already charged it, and
 // the tab is a new one there.
+//
+// 11 hours after the tab's relay credential was minted, the instance hands it a fresh
+// one. On a direct path the tab takes it silently. On the relay it sends its final total
+// and restarts its media connection with it; if that fails, it reconnects the ordinary
+// way on the same socket: the instance ends what the connection carried, and the tab
+// makes a new one, starts its shares again and watches again what it watched.
 
 import type { QualityName } from "../../shared/encoding.ts";
 import {
   applyMessage,
   roomSocketPath,
   type ClientMessage,
+  type IceServer,
   type LiveShare,
   type MediaChange,
   type MediaState,
@@ -42,6 +49,7 @@ import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
+import { renewal } from "./media/renewal.ts";
 import { every } from "./ticker.ts";
 import type { SharerNotes } from "./media/sending.ts";
 
@@ -125,6 +133,17 @@ export class RoomClient {
   private synced = false;
   /** The usage reports read but not yet sent, which the next one waits for. */
   private reporting: Promise<void> = Promise.resolve();
+  /**
+   * What comes off the media connection's totals before they are reported: its total at
+   * the last restart, sent as final, since the instance counts from zero after one. One
+   * per media connection, so a report read on an old one never meets a new one's.
+   */
+  private counting = { since: 0 };
+  /** Whether the tab is making its media connection again after a failed restart: the stage says it is reconnecting. */
+  private rebuilding = $state(false);
+  /** The captures of this tab's shares being carried to a new media connection: their ending on the old one keeps them. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
+  private readonly carrying = new Set<Capture>();
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
@@ -145,9 +164,12 @@ export class RoomClient {
     return this.socket.refused;
   }
 
-  /** Whether the instance has gone unheard for about 3 seconds, while the connection reconnects. */
+  /**
+   * Whether the tab is reconnecting: the instance has gone unheard for about 3 seconds
+   * while the connection reconnects, or the media connection is being made again.
+   */
   get reconnecting(): boolean {
-    return this.socket.reconnecting;
+    return this.socket.reconnecting || this.rebuilding;
   }
 
   /** The browser family this tab runs in, which decides what the first-time notice says. */
@@ -390,14 +412,17 @@ export class RoomClient {
 
   private receive(message: ServerMessage) {
     if (message.type === "media") {
+      const index = this.waiting.findIndex((request) => request.accepts(message.change));
+      if (index >= 0) {
+        this.waiting.splice(index, 1);
+        return;
+      }
       // Its media faltered too long and the instance let go of it: the next share or watch makes a new one.
       if (message.change.type === "dropped") {
         if (this.made) this.report({ final: true });
         this.resetMedia();
-        return;
       }
-      const index = this.waiting.findIndex((request) => request.accepts(message.change));
-      if (index >= 0) this.waiting.splice(index, 1);
+      if (message.change.type === "renewed") void this.renew(message.change.iceServers);
       return;
     }
     const before = this.view;
@@ -466,24 +491,112 @@ export class RoomClient {
       return;
     }
 
+    void this.rebuild(before.watching);
+  }
+
+  /**
+   * Builds the tab's media connection again, the instance having closed the old one with
+   * everything on it: a new one, made by the first share or watch. Its shares start again
+   * with the captures it still holds, unless a share of that kind of the member's is live
+   * from elsewhere, and it watches again what was on `before`'s stage and still is live,
+   * or follows again the member it followed. Settles once each has been asked for.
+   */
+  private rebuild(before: RoomView["watching"]): Promise<unknown> {
+    const view = this.view!;
+    const you = view.people.you.id;
+    const liveOfYours = (kind: ShareKind) =>
+      view.shares.live.some((share) => share.member === you && share.kind === kind);
     this.resetMedia();
     this.pictures = [];
     // A watch at a chosen quality goes back to it once watched again; a new watch would be at Auto.
-    this.restoring = before.watching.qualities;
+    this.restoring = before.qualities;
+    const asked: Promise<unknown>[] = [];
     for (const own of this.mine) {
       // One still starting finds the new connection by itself.
       if (own.state === "starting") continue;
       if (own.state === "live" && own.capture && !liveOfYours(own.kind)) {
         this.update(own.kind, { state: "starting" });
-        void this.publish(own.kind, own.capture);
+        asked.push(this.publish(own.kind, own.capture));
       } else {
         this.tidy(own);
       }
     }
     if (this.following) this.follow(this.following);
     else
-      for (const share of before.watching.stage)
-        if (view.shares.live.some((live) => sameShare(live, share))) void this.watch(share);
+      for (const share of before.stage)
+        if (view.shares.live.some((live) => sameShare(live, share))) asked.push(this.watch(share));
+    return Promise.all(asked);
+  }
+
+  /**
+   * The instance handed this tab a fresh relay credential, 11 hours after its last was
+   * minted. On a direct path the tab takes it silently; on the relay it restarts its media
+   * connection with it, and reconnects the ordinary way if the restart fails, or if the
+   * switch in `renewal.ts` says to reconnect instead.
+   */
+  private async renew(iceServers: IceServer[]) {
+    if (!this.made) return;
+    const totals = await this.media.transport().catch(() => null);
+    const how = renewal(totals?.relayed ?? false);
+    if (how === "silently") {
+      this.media.renew(iceServers);
+      return;
+    }
+    if (how === "restart" && (await this.restart(iceServers))) return;
+    await this.reconnectMedia();
+  }
+
+  /**
+   * Restarts the media connection with the fresh credential `iceServers`, as its next
+   * negotiation, after sending the final total of what it received: the restart resets
+   * the total. True once the connection has its path back.
+   */
+  private restart(iceServers: IceServer[]): Promise<boolean> {
+    return this.negotiate(async () => {
+      if (!this.made) return false;
+      this.report({ final: true, restarting: true });
+      await this.reporting;
+      const offer = await this.media.restart(iceServers);
+      const answer = await this.request(
+        { type: "media", request: { type: "restart", offer } },
+        (change) => change.type === "restarted" || change.type === "restart-refused",
+      );
+      if (answer.type !== "restarted") return false;
+      await this.media.restarted(answer.answer);
+      return true;
+    }).catch(() => false);
+  }
+
+  /**
+   * The ordinary reconnect path on the same socket, after a failed restart: the tab sends
+   * its final total, the instance ends everything its media connection carried and lets
+   * it go, and the tab builds it again (`rebuild`). The stage says "Reconnecting…"
+   * meanwhile. Done once.
+   */
+  private async reconnectMedia() {
+    if (!this.made || this.rebuilding || !this.view) return;
+    this.rebuilding = true;
+    const before = this.view.watching;
+    // Its own shares end on the old connection, but keep their captures for the new one.
+    for (const own of this.mine) if (own.state === "live" && own.capture) this.carrying.add(own.capture);
+    try {
+      // Its last report: one after it would be counted from zero again.
+      this.stopReporting?.();
+      this.stopReporting = null;
+      this.report({ final: true });
+      await this.reporting;
+      await this.negotiate(() =>
+        this.request({ type: "media", request: { type: "reconnect" } }, (change) => change.type === "dropped"),
+      );
+      this.carrying.clear();
+      await this.rebuild(before);
+    } catch {
+      // The socket was lost on the way: the room's state on the next one says whether
+      // the instance let the connection go, and the tab rebuilds from that.
+    } finally {
+      this.carrying.clear();
+      this.rebuilding = false;
+    }
   }
 
   /** The instance closed this tab's pull of `share`: the tab lets go of its picture. */
@@ -523,7 +636,7 @@ export class RoomClient {
   private ended(share: LiveShare) {
     if (share.member !== this.view?.people.you.id) return;
     const own = this.mine.find((candidate) => candidate.kind === share.kind && candidate.state !== "starting");
-    if (!own) return;
+    if (!own || (own.capture && this.carrying.has(own.capture))) return;
     this.tidy(own);
   }
 
@@ -543,6 +656,7 @@ export class RoomClient {
     this.connection = null;
     this.made = false;
     this.faltering = false;
+    this.counting = { since: 0 };
   }
 
   /** The tab's media connection, made the first time it is needed. False if it could not be made. */
@@ -575,13 +689,21 @@ export class RoomClient {
    * straight after; reports go out in the order they were read. One due while the socket
    * is lost, or before a new socket has brought the room, is dropped, and the next makes
    * up for it.
+   *
+   * A final total sent before a `restarting` connection is restarted makes its later
+   * totals count from that one: the instance counts from zero after it, while the browser
+   * may count on. A total below it shows the browser counted from zero too.
    */
-  private report({ final = false } = {}) {
+  private report({ final = false, restarting = false } = {}) {
     const read = this.media.transport();
+    const counting = this.counting;
     this.reporting = this.reporting.then(async () => {
       const totals = await read.catch(() => null);
       if (!totals || !this.synced) return;
-      const bytes = Math.max(0, Math.round(totals.received));
+      const received = Math.max(0, Math.round(totals.received));
+      if (received < counting.since) counting.since = 0;
+      const bytes = received - counting.since;
+      if (restarting) counting.since = received;
       const request: UsageRequest = { type: "received", bytes, relayed: totals.relayed };
       this.send({ type: "usage", request: final ? { ...request, final: true } : request });
     });
