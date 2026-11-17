@@ -16,7 +16,8 @@ import {
 } from "../src/app/lib/media/sending.ts";
 import { encodingPlan, type EncodingPlan } from "../src/shared/encoding.ts";
 
-const chromiumScreen = encodingPlan("chromium", "screen");
+// A Chromium screen share sent at two qualities, whose 1080p quality is the first to stop.
+const chromiumScreen = encodingPlan("chromium", "screen", { twoQualities: true });
 
 /** A share whose first reading comes once its first 10 seconds have passed. */
 function start(plan: EncodingPlan): Sending {

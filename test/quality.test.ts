@@ -1,7 +1,8 @@
 // A viewer's choice of quality: "Auto", "1080p" or "720p" on each watched screen share
-// that goes out at two qualities. The choice goes through the instance, which sets the
-// preferred quality on the media server mid-watch. Tabs are driven only through their
-// sockets and the instance's HTTP routes; the fake media server shows what it was asked.
+// that goes out at two qualities, as its sharer says when it starts. The choice goes
+// through the instance, which sets the preferred quality on the media server mid-watch.
+// Tabs are driven only through their sockets and the instance's HTTP routes; the fake
+// media server shows what it was asked.
 
 import { describe, expect, it } from "vitest";
 import type { LiveShare, QualityChoice } from "../src/shared/socket/index.ts";
@@ -21,10 +22,13 @@ async function twoPresent() {
   return { instance, owner, bia, room, ownerTab, biaTab, ownerId: ownerState.people.you.id, biaId: biaState.people.you.id };
 }
 
-/** The owner watching Bia's screen share, sent from a browser of `browser`'s family. */
-async function watchingBiasScreen({ browser = "chromium" as "chromium" | "firefox" } = {}) {
+/**
+ * The owner watching Bia's screen share, sent from a browser of `browser`'s family, at
+ * two qualities unless `twoQualities` says otherwise.
+ */
+async function watchingBiasScreen({ browser = "chromium" as "chromium" | "firefox", twoQualities = true } = {}) {
   const present = await twoPresent();
-  await shareScreen(present.biaTab, { browser });
+  await shareScreen(present.biaTab, { browser, twoQualities });
   const started = await present.ownerTab.next();
   if (started.type !== "shares" || started.change.type !== "started") throw new Error("expected Bia's screen share");
   const screen: LiveShare = { member: present.biaId, kind: "screen" };
@@ -37,7 +41,7 @@ function choose(tab: Tab, share: LiveShare, quality: unknown) {
   tab.send({ type: "watching", request: { type: "quality", share, quality: quality as QualityChoice } });
 }
 
-describe("a Chromium screen share", () => {
+describe("a Chromium screen share sent at two qualities", () => {
   it("is listed as having two qualities, and a viewer's pull asks the media server for Auto", async () => {
     const { instance, listed, biaId, mid } = await watchingBiasScreen();
 
@@ -143,7 +147,18 @@ describe("a choice of quality", () => {
 });
 
 describe("a share with one quality", () => {
-  it("is a Firefox screen share: listed with no choice, and pulled with no preferred quality", async () => {
+  it("is a Chromium screen share sent at one quality: listed with no choice, and pulled with no preferred quality", async () => {
+    const { instance, listed, biaId, ownerTab, screen } = await watchingBiasScreen({ twoQualities: false });
+
+    expect(listed).toEqual({ member: biaId, kind: "screen", audio: true });
+    expect(instance.media.preferred()).toEqual([]);
+
+    choose(ownerTab, screen, "720p");
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "quality", share: screen, quality: "auto" } });
+    expect(instance.media.calls("setQuality")).toBe(0);
+  });
+
+  it("is a Firefox screen share, even one whose sharer says it sends two", async () => {
     const { instance, listed, biaId, ownerTab, screen } = await watchingBiasScreen({ browser: "firefox" });
 
     expect(listed).toEqual({ member: biaId, kind: "screen", audio: true });

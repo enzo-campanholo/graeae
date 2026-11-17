@@ -5,9 +5,10 @@ import { SETUP_SECRET } from "./app.ts";
 
 // The quality a viewer watches a screen share at: "Auto", "1080p" or "720p" on a share
 // that goes out at two qualities, and a "720p" mark on one received at the lower one.
-// The media is fake: a journey says which browser family a member's page runs in, and
+// The media is fake: a journey says which browser family a member's page runs in,
+// whether its Chromium screen share goes out at two qualities (one today, ticket 17), and
 // which quality the shares a page watches arrive at, through `window.graeaeFakeMedia`.
-// Journeys share one instance; these name their members Kai and Lou, whom no other
+// Journeys share one instance; these name their members Kai, Lou and Noor, whom no other
 // journey uses.
 
 /** The page's global, as a journey reads it inside `page.evaluate`. */
@@ -35,15 +36,22 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined) {
   await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
   const room = owner.url();
 
-  async function join(name: string, family: FakeMediaControl["browser"] = "chromium"): Promise<Page> {
+  async function join(
+    name: string,
+    family: FakeMediaControl["browser"] = "chromium",
+    { twoQualities = false } = {},
+  ): Promise<Page> {
     const made = await ownerContext.request.post("/api/owner/invites", { data: { name } });
     expect(made.status(), "the invite was refused").toBe(200);
     const { invite } = (await made.json()) as CreateInviteAnswer;
     const context = await newBrowser(browser, baseURL);
-    // The browser family is fixed before the page's own scripts run.
-    await context.addInitScript((browser) => {
-      (globalThis as { graeaeFakeMedia?: Partial<FakeMediaControl> }).graeaeFakeMedia = { browser };
-    }, family);
+    // The browser family and the qualities are fixed before the page's own scripts run.
+    await context.addInitScript(
+      ({ browser, twoQualities }) => {
+        (globalThis as { graeaeFakeMedia?: Partial<FakeMediaControl> }).graeaeFakeMedia = { browser, twoQualities };
+      },
+      { browser: family, twoQualities },
+    );
     const page = await context.newPage();
     await page.goto(`/invite/${invite.code}`);
     await page.getByRole("button", { name: `Join as ${name}` }).click();
@@ -67,12 +75,12 @@ async function receive(page: Page, quality: "1080p" | "720p") {
   await page.evaluate((quality) => (globalThis as unknown as Fake).graeaeFakeMedia.receive(quality), quality);
 }
 
-test("a viewer chooses the quality of a Chromium screen share, and sees a 720p mark while it arrives at 720p", async ({
+test("a viewer chooses the quality of a Chromium screen share sent at two qualities, and sees a 720p mark while it arrives at 720p", async ({
   browser,
   baseURL,
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
-  const kai = await join("Kai");
+  const kai = await join("Kai", "chromium", { twoQualities: true });
   const here = owner.getByRole("region", { name: "Here" });
   const stage = owner.getByRole("main", { name: "Stage" });
   await shareScreen(kai);
@@ -124,6 +132,20 @@ test("a Firefox screen share has one quality: no choice and no mark", async ({ b
 
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Lou", exact: true }).click();
   await expect(stage.getByRole("img", { name: "Lou's screen, with no picture" })).toBeVisible();
+  await receive(owner, "720p");
+
+  await expect(stage.getByRole("radiogroup")).toHaveCount(0);
+  await expect(stage.getByText("Received at 720p")).toHaveCount(0);
+});
+
+test("a Chromium screen share sent at one quality, as today, has no choice and no mark", async ({ browser, baseURL }) => {
+  const { owner, join } = await ownerInRoom(browser, baseURL);
+  const noor = await join("Noor");
+  const stage = owner.getByRole("main", { name: "Stage" });
+  await shareScreen(noor);
+
+  await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Noor", exact: true }).click();
+  await expect(stage.getByRole("img", { name: "Noor's screen, with no picture" })).toBeVisible();
   await receive(owner, "720p");
 
   await expect(stage.getByRole("radiogroup")).toHaveCount(0);

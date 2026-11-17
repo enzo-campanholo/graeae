@@ -46,7 +46,7 @@ import {
 import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
-import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
+import { createMediaClient, type BrowserFamily, type Capture, type MediaClient, type Offer } from "./media/index.ts";
 import { renewal } from "./media/renewal.ts";
 import type { SharerNotes } from "./media/sending.ts";
 import { UsageReports } from "./usage-reports.ts";
@@ -251,7 +251,7 @@ export class RoomClient {
         const offer = await this.media.offer(capture);
         const answer = await this.request(
           // A share that starts again by itself sends the browser family too, through here.
-          { type: "shares", request: startRequest(kind, offer, this.media.browser, handOver) },
+          { type: "shares", request: startRequest(kind, offer, this.media, handOver) },
           (change) => (change.type === "published" || change.type === "refused") && change.kind === kind,
         );
         if (answer.type !== "published") return false;
@@ -766,13 +766,15 @@ export class RoomClient {
 }
 
 /**
- * What the page sends to start a share of `kind` with `offer`. A screen share says the
- * browser family sending it, whose encoding plan says how many qualities it goes out at.
+ * What the page sends to start a share of `kind` with `offer` from `media`. A screen
+ * share says the browser family sending it, and whether it goes out at two qualities.
  * A hand-over says so.
  */
-function startRequest(kind: ShareKind, offer: Offer, browser: BrowserFamily, handOver: boolean): SharesRequest {
+function startRequest(kind: ShareKind, offer: Offer, media: MediaClient, handOver: boolean): SharesRequest {
   const replacing = handOver ? { handOver: true as const } : {};
   if (kind === "webcam") return { type: "start", kind, offer: offer.sdp, video: offer.video, ...replacing };
   const audio = offer.audio ? { audio: offer.audio } : {};
-  return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio, ...replacing };
+  const twoQualities = media.plan(kind).qualities.length > 1 ? { twoQualities: true as const } : {};
+  const browser = media.browser;
+  return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio, ...twoQualities, ...replacing };
 }

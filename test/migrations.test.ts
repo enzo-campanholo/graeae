@@ -171,7 +171,7 @@ describe("the two-qualities migration", () => {
 
     expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
     const { tab: biaTab, state: biaState } = await openRoom(bia, room);
-    await shareScreen(biaTab);
+    await shareScreen(biaTab, { twoQualities: true });
     const biasScreen = { member: biaState.people.you.id, kind: "screen" as const };
     const { tab: ownerTab, state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([{ ...biasScreen, audio: true, twoQualities: true }]);

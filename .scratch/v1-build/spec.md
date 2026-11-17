@@ -20,7 +20,7 @@ graeae is a private, open-source (0BSD) web app. An owner deploys one instance t
 
 An instance has permanent rooms. In a room, a bar on the left lists people and a stage fills the rest. A member shares a screen (with the sound of the tab or application shared, where the browser can capture it) and a webcam. Other present members choose what to watch: click a name to watch that member, or click single icons to combine shares from several members. Discord keeps voice and text; graeae never touches a microphone.
 
-Every share travels through Cloudflare's media server in the owner's account. A Chromium screen share is sent at 1080p60 and at 720p60, so a viewer on a weak link drops to the lower quality alone. graeae counts usage itself and stops all watching when it reaches the owner's usage budget, which defaults to Cloudflare's free 1,000 GB a month, so the expected cost is $0.
+Every share travels through Cloudflare's media server in the owner's account. A Chromium screen share is sent at 1080p60 on the sharer's hardware encoder. A second, 720p60 quality for viewers on a weak link is built but switched off, since the media server freezes it ([ticket 29](issues/29-two-qualities-as-two-tracks.md)). graeae counts usage itself and stops all watching when it reaches the owner's usage budget, which defaults to Cloudflare's free 1,000 GB a month, so the expected cost is $0.
 
 ## User Stories
 
@@ -72,7 +72,7 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 38. As a viewer, I want the volume I set for a member remembered on that device, so that a loud friend stays turned down.
 39. As a viewer, I want mute not to be remembered, so that I never return to a silent friend without knowing why.
 40. As a viewer, I want a share with no audio labelled "video only", so that I do not wonder whether my sound is broken.
-41. As a viewer on a weak link, I want to receive a screen share at 720p60 by myself while the other viewers keep 1080p, so that my connection harms nobody else.
+41. *(Switched off by build ticket 17, as are 42 and 43; ticket 29.)* As a viewer on a weak link, I want to receive a screen share at 720p60 by myself while the other viewers keep 1080p, so that my connection harms nobody else.
 42. As a viewer, I want a choice of "Auto", "1080p" or "720p" on each watched screen share, so that I can ease the load on my machine or spend less usage.
 43. As a viewer, I want a small "720p" mark on a share I am receiving at the lower quality, so that I know why it looks softer.
 44. As a viewer, I want a share that is not watched to show no live picture anywhere, so that nothing is spent on thumbnails.
@@ -254,18 +254,18 @@ All numbers are fixed. Neither the sharer nor the owner gets a setting.
 
 | Share | Qualities | Codec | Maximum bitrate |
 |---|---|---|---|
-| Chromium screen share | 1080p at 60 fps, and 720p at 60 fps | H.264 high profile, then main | 12 Mbps and 4 Mbps |
+| Chromium screen share | 1080p at 60 fps (720p at 60 fps as well, switched off) | H.264 baseline profile (`42001f`) | 12 Mbps (and 4 Mbps) |
 | Firefox screen share | 1080p at 30 fps | VP9 | 6 Mbps |
 | Webcam share | 720p at 30 fps | Same rule as a Chromium screen share | 1.5 Mbps |
 
-- **Hardware encoding.** Only H.264 main and high profile are hardware encoded in Chrome on Windows; constrained baseline and the browser's default choice are software. So main and high are offered first, and a software codec last so that a share always starts. Which software codec is left to the build.
+- **Hardware encoding.** Chrome on Windows hardware encodes H.264 baseline, main and high profile (Quality proof; baseline and high again in ticket 17); constrained baseline (`42e01f`) and the browser's default choice (VP8) are software. On a share sent at two qualities the media server answers main and high with VP8, and given every H.264 profile it picks constrained baseline; offered baseline (`42001f`) alone, it takes it, and both qualities stay on the hardware encoder (ticket 17, measured on the owner's RTX 5070 Ti). Firefox decodes baseline and cannot decode main or high. The media server also picks its own favourite among the codecs offered, whatever their order: offered baseline and VP8, it answers VP8. So a browser offers the first codec of the plan it has, alone: H.264 baseline, or VP8 on a browser without it, so that a share always starts. A Firefox screen share offers VP9 alone.
 - **One codec per share.** Every share uses a codec both Chromium and Firefox decode. Never HEVC, and no per-viewer codec choice.
 - **Frame rate.** Capture is asked for 120 fps and the sender is limited to 60. Capture follows the monitor's refresh rate on Windows 11 (48 fps at 144 Hz, 60 at 120 Hz, over 120 on some machines), so both halves are needed.
-- **Two qualities** for a Chromium screen share means two encodes. It is decided but not yet verified to stay on the hardware encoder; see Verification. If the check fails, every Chromium screen share is one 1080p60 quality at 12 Mbps, and the quality choice and the "720p" mark go away.
-- **A viewer on a weak link** is stepped down to 720p60 by the media server, alone. The viewer's "Auto / 1080p / 720p" choice sets the preferred quality on the media server mid-watch.
-- **Firefox screen shares and webcam shares** have a single quality, so a weak viewer can pull one down for everyone. Accepted.
-- **A sharer on a weak upload.** The 1080p quality stops first and every viewer gets 720p60. If that does not fit, frame rate drops to 30. Below 720p30 the browser degrades as it sees fit. The browser has no setting for a resolution floor, so the media client watches the share's statistics and steps it down itself. Bitrate, frame rate and scale are changed on the live share without renegotiating.
-- **Upload budget.** 12 + 4 + 1.5 = 17.5 Mbps for a screen and a webcam, inside the assumed 20 Mbps floor.
+- **Two qualities are switched off** (`TWO_QUALITIES` in `src/shared/encoding.ts`), so every Chromium screen share is one 1080p60 quality at 12 Mbps, with no quality choice and no "720p" mark. Two qualities are two encodes sent as simulcast. The owner's check on Cloudflare (ticket 17) kept both on the hardware encoder with the game's frame rate unchanged, but a viewer of the 720p quality of an H.264 share froze for about half the time, in Chromium and Firefox alike, while 1080p and VP8's 720p did not. Ticket 29 tries two tracks of one quality each.
+- **With two qualities on,** a viewer on a weak link is stepped down to 720p60 by the media server, alone, and the viewer's "Auto / 1080p / 720p" choice sets the preferred quality on the media server mid-watch. The sharer tells the instance it sends two qualities when it starts the share, so the instance's side stays tested while the switch is off.
+- **Every share has a single quality** while the switch is off, so a weak viewer can pull one down for everyone. Accepted.
+- **A sharer on a weak upload.** The share scales down to 720p60 (with two qualities, the 1080p quality stops first and every viewer gets 720p60). If that does not fit, frame rate drops to 30. Below 720p30 the browser degrades as it sees fit. The browser has no setting for a resolution floor, so the media client watches the share's statistics and steps it down itself. Bitrate, frame rate and scale are changed on the live share without renegotiating.
+- **Upload budget.** 12 + 1.5 = 13.5 Mbps for a screen and a webcam (17.5 with two qualities), inside the assumed 20 Mbps floor.
 
 ### Media connections and records
 
@@ -461,7 +461,7 @@ A failure outside the named gaps is fixed or added to the platform table as a ga
 
 - Vivaldi and Brave each share at 1080p60 with hardware H.264. A browser that fails drops to Limited with its gap named.
 - Single-application audio for a game started through a launcher. A failure adds a caveat.
-- Both qualities stay on the hardware encoder with the game's frame rate unchanged. A failure means one quality, as set out under Encoding and quality.
+- ~~Both qualities stay on the hardware encoder with the game's frame rate unchanged.~~ Passed in build ticket 17 (RTX 5070 Ti, Chrome on Windows 11, CS2), but two qualities are switched off for the media server's freezes, as set out under Encoding and quality.
 - An expired relay credential and a relay in use; a connection restart with a fresh credential without a visible blip. If the restart fails, a tab on the relay reconnects once at 11 hours.
 
 **Measured once something is built.**
@@ -520,10 +520,13 @@ Not designed, and free for the implementer to settle without reopening a decisio
 - The 8 Mbps screen bitrate behind the 385 GB estimate was replaced by 12 Mbps in Quality adaptation.
 - The "fixed overhead if graeae under-counts" in Usage budget was set at 5% by Usage count accuracy, and the reported figure became a running total per media connection.
 - The friend's GPU in Quality proof is an RTX 5060 Ti, not a GTX 980.
+- H.264 high profile, then main, from Quality proof and Quality adaptation, was replaced by baseline profile (`42001f`) in build ticket 17. Quality proof sent one quality; with two, the media server answers main and high with VP8. The media server relabels baseline as constrained baseline to viewers, as it did high profile (under Unverified facts).
+- The two qualities for a Chromium screen share from Quality adaptation are switched off by build ticket 17, for the media server's freezes on the lower one; ticket 29 tries them as two tracks.
 
 ### Unverified facts the design rests on
 
-- The media server describes a track to viewers as constrained baseline while forwarding high profile unchanged. It works in Chromium and Firefox and is undocumented.
+- The media server describes a baseline (`42001f`) track to viewers as constrained baseline (`42e01f`) while forwarding it unchanged. It works in Chromium and Firefox and is undocumented.
+- Why a viewer of an H.264 share's lower simulcast quality freezes. Ticket 17's dumps point to the media server's padding while it probes for bandwidth; Cloudflare documents nothing of it.
 - How the media server judges that a viewer needs the lower quality is undocumented.
 - Whether Cloudflare ever tears down a cut-off media connection with no tracks, and whether it drops packets a cut-off sharer keeps sending. A cut-off sharer's bitrate collapses by itself within 30 seconds.
 - Whether Cloudflare's allowance follows the calendar month or the billing date, hence the owner-set reset day.

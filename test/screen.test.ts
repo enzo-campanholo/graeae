@@ -48,7 +48,7 @@ describe("a screen share", () => {
 
     expect(await ownerTab.next()).toEqual({
       type: "shares",
-      change: { type: "started", share: { member: biaId, kind: "screen", audio: true, twoQualities: true } },
+      change: { type: "started", share: { member: biaId, kind: "screen", audio: true } },
     });
     expect(instance.media.connections()).toEqual([
       [
@@ -65,7 +65,7 @@ describe("a screen share", () => {
 
     expect(await ownerTab.next()).toEqual({
       type: "shares",
-      change: { type: "started", share: { member: biaId, kind: "screen", audio: false, twoQualities: true } },
+      change: { type: "started", share: { member: biaId, kind: "screen", audio: false } },
     });
     expect(instance.media.connections()).toEqual([[{ name: expect.any(String), mid: "0" }]]);
   });
@@ -105,7 +105,7 @@ describe("starting a screen share", () => {
 
     const { state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([
-      { member: biaId, kind: "screen", audio: true, twoQualities: true },
+      { member: biaId, kind: "screen", audio: true },
       { member: biaId, kind: "webcam" },
     ]);
   });
@@ -190,7 +190,7 @@ describe("a live screen share", () => {
     stopScreen(biaTab);
     const { state } = await openRoom(owner, room);
 
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true, twoQualities: true }]);
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true }]);
     expect(instance.media.connections().flat()).toHaveLength(2);
   });
 
@@ -201,7 +201,7 @@ describe("a live screen share", () => {
     await instance.restart();
 
     const { state } = await openRoom(owner, room);
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: false, twoQualities: true }]);
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: false }]);
   });
 });
 
@@ -279,7 +279,7 @@ describe("the sweep after a restart", () => {
     const { tab: back, state } = await openRoom(owner, room);
     await back.heartbeat(); // the sweep has had its turn
 
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true, twoQualities: true }]);
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true }]);
     expect(instance.media.connections().flat()).toHaveLength(2);
   });
 

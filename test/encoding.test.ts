@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 import { codecPreferences, receivedQuality, sendEncodings } from "../src/app/lib/media/encodings.ts";
 import { encodingPlan } from "../src/shared/encoding.ts";
 
-const H264_HIGH = { mimeType: "video/H264", profile: "high" };
-const H264_MAIN = { mimeType: "video/H264", profile: "main" };
+const HARDWARE_FIRST = [{ mimeType: "video/H264", profile: "baseline" }, { mimeType: "video/VP8" }];
 
-describe("a Chromium screen share", () => {
-  const plan = encodingPlan("chromium", "screen");
+const SENT_AT_TWO_QUALITIES = { twoQualities: true };
+
+describe("a Chromium screen share sent at two qualities", () => {
+  const plan = encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES);
 
   it("goes out at 1080p60 limited to 12 Mbps and at 720p60 limited to 4 Mbps", () => {
     expect(plan.qualities).toEqual([
@@ -18,8 +19,8 @@ describe("a Chromium screen share", () => {
     ]);
   });
 
-  it("offers H.264 high profile, then main, then a software codec last", () => {
-    expect(plan.codecs).toEqual([H264_HIGH, H264_MAIN, { mimeType: "video/VP8" }]);
+  it("offers H.264 baseline profile, then a software codec last", () => {
+    expect(plan.codecs).toEqual(HARDWARE_FIRST);
   });
 
   it("asks the capture for 120 fps, at most 1080p, while the sender is limited to 60", () => {
@@ -60,7 +61,7 @@ describe.each(["chromium", "firefox"] as const)("a webcam share on %s", (browser
   });
 
   it("follows the same codec rule as a Chromium screen share", () => {
-    expect(plan.codecs).toEqual([H264_HIGH, H264_MAIN, { mimeType: "video/VP8" }]);
+    expect(plan.codecs).toEqual(HARDWARE_FIRST);
   });
 
   it("counts 1.5 Mbps as its maximum bitrate", () => {
@@ -69,10 +70,14 @@ describe.each(["chromium", "firefox"] as const)("a webcam share on %s", (browser
 });
 
 describe("with two qualities switched off", () => {
+  it("is how a Chromium screen share goes out today (ticket 17)", () => {
+    expect(encodingPlan("chromium", "screen")).toEqual(encodingPlan("chromium", "screen", { twoQualities: false }));
+  });
+
   it("leaves a Chromium screen share one 1080p60 quality at 12 Mbps", () => {
     const plan = encodingPlan("chromium", "screen", { twoQualities: false });
     expect(plan.qualities).toEqual([{ name: "1080p", height: 1080, maxFramerate: 60, maxBitrate: 12_000_000 }]);
-    expect(plan.codecs).toEqual([H264_HIGH, H264_MAIN, { mimeType: "video/VP8" }]);
+    expect(plan.codecs).toEqual(HARDWARE_FIRST);
     expect(plan.capture.frameRate).toBe(120);
     expect(plan.maxBitrate).toBe(12_000_000);
   });
@@ -84,12 +89,12 @@ describe("with two qualities switched off", () => {
 });
 
 describe("every share", () => {
-  it("never offers HEVC, and never offers H.264 constrained baseline", () => {
+  it("never offers HEVC, and offers H.264 in baseline profile alone", () => {
     for (const browser of ["chromium", "firefox"] as const) {
       for (const kind of ["screen", "webcam"] as const) {
         for (const codec of encodingPlan(browser, kind).codecs) {
           expect(codec.mimeType).not.toMatch(/H265|HEVC/i);
-          if (codec.mimeType === "video/H264") expect(["high", "main"]).toContain(codec.profile);
+          if (codec.mimeType === "video/H264") expect(codec.profile).toBe("baseline");
         }
       }
     }
@@ -128,45 +133,54 @@ const fmtp = (codec: { mimeType: string; sdpFmtpLine?: string }) =>
   `${codec.mimeType} ${codec.sdpFmtpLine?.match(/profile-level-id=(\w+)/)?.[1] ?? ""}`.trim();
 
 describe("the codec order a browser is given", () => {
-  it("on Chromium is H.264 high, then main, then VP8, with the repair formats after", () => {
-    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, CHROMIUM_CODECS).map(fmtp);
-    expect(order).toEqual(["video/H264 640034", "video/H264 4d001f", "video/VP8", "video/rtx", "video/red", "video/ulpfec"]);
+  // The media server picks its own favourite among the codecs offered, whatever their
+  // order: offered H.264 baseline and VP8, it answers VP8. So only one codec is offered.
+  it("on Chromium is H.264 baseline in packetization mode 1 alone, with the repair formats after", () => {
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, CHROMIUM_CODECS);
+    expect(order.map(fmtp)).toEqual(["video/H264 42001f", "video/rtx", "video/red", "video/ulpfec"]);
+    expect(order[0]?.sdpFmtpLine).toMatch(/packetization-mode=1/);
   });
 
-  it("never holds constrained baseline, plain baseline or HEVC", () => {
+  it("is VP8 alone on a browser with no H.264 baseline", () => {
+    const noH264 = CHROMIUM_CODECS.filter((codec) => codec.mimeType !== "video/H264");
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, noH264).map(fmtp);
+    expect(order).toEqual(["video/VP8", "video/rtx", "video/red", "video/ulpfec"]);
+  });
+
+  it("never holds constrained baseline, main, high or HEVC", () => {
     const order = codecPreferences(encodingPlan("chromium", "webcam").codecs, CHROMIUM_CODECS).map(fmtp);
-    expect(order.join(" ")).not.toMatch(/42e01f|42001f|H265/);
+    expect(order.join(" ")).not.toMatch(/42e01f|4d001f|640034|H265/);
   });
 
-  it("falls to VP8 for a webcam on Firefox, which has no H.264 high or main", () => {
+  it("is H.264 baseline alone for a webcam on Firefox", () => {
     const order = codecPreferences(encodingPlan("firefox", "webcam").codecs, FIREFOX_CODECS).map(fmtp);
-    expect(order).toEqual(["video/VP8", "video/ulpfec", "video/red", "video/rtx"]);
+    expect(order).toEqual(["video/H264 42001f", "video/ulpfec", "video/red", "video/rtx"]);
   });
 
-  it("puts VP9 first for a Firefox screen share", () => {
+  it("is VP9 alone for a Firefox screen share", () => {
     const order = codecPreferences(encodingPlan("firefox", "screen").codecs, FIREFOX_CODECS).map(fmtp);
-    expect(order).toEqual(["video/VP9", "video/VP8", "video/ulpfec", "video/red", "video/rtx"]);
+    expect(order).toEqual(["video/VP9", "video/ulpfec", "video/red", "video/rtx"]);
   });
 });
 
 describe("the encodings a share is sent with", () => {
   it("scale a 1440p monitor down to 1080p and to 720p for a Chromium screen share", () => {
-    expect(sendEncodings(encodingPlan("chromium", "screen"), 1440)).toEqual([
+    expect(sendEncodings(encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES), 1440)).toEqual([
       { rid: "f", maxBitrate: 12_000_000, maxFramerate: 60, scaleResolutionDownBy: 1440 / 1080 },
       { rid: "h", maxBitrate: 4_000_000, maxFramerate: 60, scaleResolutionDownBy: 2 },
     ]);
   });
 
   it("send a 1080p capture as it is, and at 720p", () => {
-    expect(sendEncodings(encodingPlan("chromium", "screen"), 1080).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1.5]);
+    expect(sendEncodings(encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES), 1080).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1.5]);
   });
 
   it("never scale a small window up", () => {
-    expect(sendEncodings(encodingPlan("chromium", "screen"), 600).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1]);
+    expect(sendEncodings(encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES), 600).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1]);
   });
 
   it("take the capture as asked when the browser does not say its size", () => {
-    expect(sendEncodings(encodingPlan("chromium", "screen"), undefined).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1.5]);
+    expect(sendEncodings(encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES), undefined).map((e) => e.scaleResolutionDownBy)).toEqual([1, 1.5]);
   });
 
   it("are one, with no rid, for a single-quality share", () => {

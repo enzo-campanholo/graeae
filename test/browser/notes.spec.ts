@@ -141,6 +141,10 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const rosa = await join("Rosa");
   const own = rosa.getByRole("figure").filter({ has: rosa.getByRole("button", { name: "Stop your screen" }) });
+  // Sent at two qualities, so the 1080p one is the first to stop.
+  await rosa.evaluate(() => {
+    (globalThis as unknown as Fake).graeaeFakeMedia.twoQualities = true;
+  });
   await shareScreen(rosa);
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Rosa's screen" }).click();
   await expect(owner.getByRole("img", { name: "Rosa's screen, with no picture" })).toBeVisible();

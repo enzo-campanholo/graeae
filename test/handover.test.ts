@@ -27,9 +27,10 @@ import { addressOf, openRoom, type Tab } from "./sockets.ts";
 /**
  * The owner and Bia, each with a tab on the first room. Bia's laptop shares its webcam
  * and the owner watches it. Bia's phone, another of her devices, has a tab on `phoneRoom`
- * (the first room unless a test says otherwise) with its media connection made.
+ * (the first room unless a test says otherwise) with its media connection made. A screen
+ * share goes out at two qualities when `twoQualities` says so.
  */
-async function biaOnTwoDevices({ otherRoom = false, kind = "webcam" as "webcam" | "screen" } = {}) {
+async function biaOnTwoDevices({ otherRoom = false, kind = "webcam" as "webcam" | "screen", twoQualities = false } = {}) {
   const instance = await startInstance();
   const owner = instance.browser();
   const room = await setUpOwner(owner);
@@ -39,7 +40,7 @@ async function biaOnTwoDevices({ otherRoom = false, kind = "webcam" as "webcam" 
   const { tab: laptop, state } = await openRoom(bia, room);
   await settle(ownerTab); // Bia arrived
   if (kind === "webcam") await shareWebcam(laptop);
-  else await shareScreen(laptop);
+  else await shareScreen(laptop, { twoQualities });
   await settle(ownerTab); // Bia's share went live
   const share: LiveShare = { member: state.people.you.id, kind };
   await connectMedia(ownerTab);
@@ -55,7 +56,11 @@ async function biaOnTwoDevices({ otherRoom = false, kind = "webcam" as "webcam" 
 }
 
 /** What the page sends to share `kind` from here, stopping it on the member's other device. */
-function handOver(tab: Tab, kind: "webcam" | "screen" = "webcam", { audio = true, video = FAKE_VIDEO_MID } = {}) {
+function handOver(
+  tab: Tab,
+  kind: "webcam" | "screen" = "webcam",
+  { audio = true, video = FAKE_VIDEO_MID, twoQualities = false } = {},
+) {
   tab.send({
     type: "shares",
     request:
@@ -69,6 +74,7 @@ function handOver(tab: Tab, kind: "webcam" | "screen" = "webcam", { audio = true
             browser: "chromium",
             handOver: true,
             ...(audio ? { audio: FAKE_AUDIO_MID } : {}),
+            ...(twoQualities ? { twoQualities: true as const } : {}),
           },
   });
 }
@@ -206,11 +212,11 @@ describe("a viewer of a share handed over within the room", () => {
   });
 
   it("keeps the quality they chose when the new share has two qualities too", async () => {
-    const { instance, phone, ownerTab, share } = await biaOnTwoDevices({ kind: "screen" });
+    const { instance, phone, ownerTab, share } = await biaOnTwoDevices({ kind: "screen", twoQualities: true });
     ownerTab.send({ type: "watching", request: { type: "quality", share, quality: "720p" } });
     await until(ownerTab, (message) => message.type === "watching" && message.change.type === "quality");
 
-    handOver(phone, "screen");
+    handOver(phone, "screen", { twoQualities: true });
 
     expect(await until(ownerTab, (message) => message.type === "media")).toMatchObject({ change: { type: "moved" } });
     await settle(ownerTab);
@@ -219,7 +225,7 @@ describe("a viewer of a share handed over within the room", () => {
   });
 
   it("is told it watches at Auto when the new share has one quality", async () => {
-    const { phone, ownerTab, share } = await biaOnTwoDevices({ kind: "screen" });
+    const { phone, ownerTab, share } = await biaOnTwoDevices({ kind: "screen", twoQualities: true });
     ownerTab.send({ type: "watching", request: { type: "quality", share, quality: "720p" } });
     await until(ownerTab, (message) => message.type === "watching" && message.change.type === "quality");
 

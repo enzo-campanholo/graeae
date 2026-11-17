@@ -15,6 +15,11 @@ export type FakePick = { surface: "tab" | "window" | "screen"; audio: boolean } 
 export interface FakeMediaControl {
   /** The browser family the page believes it runs in. Set it before the page loads. */
   browser: BrowserFamily;
+  /**
+   * Whether a Chromium screen share goes out at two qualities: as `TWO_QUALITIES` in
+   * `src/shared/encoding.ts` says, unless a journey says otherwise before it shares.
+   */
+  twoQualities: boolean;
   /** What the picker returns next. A tab with its sound, unless a journey says otherwise. */
   picker: FakePick;
   /** Every request made of the picker, oldest first. */

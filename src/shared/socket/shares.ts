@@ -80,7 +80,9 @@ export type SharesRequest =
    * Start a screen share from this tab, likewise. `audio` is the mid of the transceiver
    * that sends its screen audio, left out when the browser's picker gave no sound: the
    * share is then video only. `browser` is the family of the browser sending it, whose
-   * encoding plan says how many qualities it goes out at.
+   * encoding plan says how it goes out. `twoQualities` says it is sent at two qualities,
+   * which only a Chromium screen share can be; the instance takes it from the sharer,
+   * the one that knows what it sends.
    *
    * Either kind may say `handOver`: when the member's share of that kind is already live
    * from another tab or device, it is stopped there and this one replaces it. Without
@@ -93,6 +95,7 @@ export type SharesRequest =
       video: string;
       audio?: string;
       browser: BrowserFamily;
+      twoQualities?: true;
       handOver?: true;
     }
   /** Stop this tab's share of `kind`. */

@@ -413,7 +413,7 @@ export class Instance extends DurableObject<Env> {
               kind,
               details.offer,
               details.mids,
-              encodingPlan(family, kind),
+              encodingPlan(family, kind, { twoQualities: details.twoQualities }),
               () => this.signaling.isOpen(tab.id),
               { handOver: details.handOver },
             )

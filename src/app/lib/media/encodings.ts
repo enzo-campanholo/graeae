@@ -15,14 +15,18 @@ export interface CodecCapability {
 /** Formats that repair a stream rather than carry it, kept after the codecs in the browser's own order. */
 const REPAIR = /^video\/(rtx|red|ulpfec|flexfec-03)$/i;
 
-/** The H.264 profile-level-id prefixes of high and main profile. Constrained baseline is 42e0, baseline 4200. */
-const H264_PROFILE = { high: "64", main: "4d" } as const;
+/**
+ * The H.264 profile-level-id prefix of each profile graeae offers: the profile and its
+ * constraint flags, before the level. Baseline is 4200; constrained baseline, 42e0, has
+ * the same profile with constraint flags set, so the flags are part of the match.
+ */
+const H264_PROFILE = { baseline: "4200" } as const;
 
 function matches(codec: Codec, capability: CodecCapability): boolean {
   if (capability.mimeType.toLowerCase() !== codec.mimeType.toLowerCase()) return false;
   const fmtp = capability.sdpFmtpLine ?? "";
   if (codec.mimeType === "video/H264") {
-    const profile = /profile-level-id=([0-9a-f]{2})/i.exec(fmtp)?.[1]?.toLowerCase();
+    const profile = /profile-level-id=([0-9a-f]{4})/i.exec(fmtp)?.[1]?.toLowerCase();
     // Packetization mode 1 only: mode 0 cannot carry a 1080p frame in one packet.
     return profile === H264_PROFILE[codec.profile] && /packetization-mode=1/.test(fmtp);
   }
@@ -31,12 +35,17 @@ function matches(codec: Codec, capability: CodecCapability): boolean {
 }
 
 /**
- * The browser's `capabilities` that the plan's `codecs` name, in the plan's order, then
- * the repair formats. Anything the plan does not name, constrained baseline and HEVC
- * among them, is left out, so the media server cannot answer with it.
+ * The browser's `capabilities` for the first of the plan's `codecs` it has, alone, then
+ * the repair formats. The media server picks its own favourite among the codecs offered,
+ * whatever their order: offered H.264 baseline and VP8, it answers VP8 (ticket 17, the
+ * owner's check on Cloudflare). So a later codec is offered only to a browser without
+ * the earlier ones. Anything the plan does not name, constrained baseline and HEVC among
+ * them, is never offered, so the media server cannot answer with it.
  */
 export function codecPreferences<T extends CodecCapability>(codecs: readonly Codec[], capabilities: readonly T[]): T[] {
-  const chosen = codecs.flatMap((codec) => capabilities.filter((capability) => matches(codec, capability)));
+  const chosen =
+    codecs.map((codec) => capabilities.filter((capability) => matches(codec, capability))).find((found) => found.length > 0) ??
+    [];
   return [...chosen, ...capabilities.filter((capability) => REPAIR.test(capability.mimeType))];
 }
 

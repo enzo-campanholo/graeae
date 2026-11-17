@@ -38,8 +38,12 @@ export class BrowserMediaClient implements MediaClient {
   /** The notes on each live share, for its sharer. */
   private readonly board = new NotesBoard<Capture>();
 
+  plan(kind: Capture["kind"]): EncodingPlan {
+    return encodingPlan(this.browser, kind);
+  }
+
   async captureWebcam(): Promise<Capture> {
-    const { width, height, frameRate } = encodingPlan(this.browser, "webcam").capture;
+    const { width, height, frameRate } = this.plan("webcam").capture;
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: frameRate, max: frameRate } },
       audio: false,
@@ -133,7 +137,7 @@ export class BrowserMediaClient implements MediaClient {
     const [video] = capture.stream?.getVideoTracks() ?? [];
     const [audio] = capture.stream?.getAudioTracks() ?? [];
     if (!video) throw new Error("The capture has no picture to send");
-    const plan = encodingPlan(this.browser, capture.kind);
+    const plan = this.plan(capture.kind);
     // One encoding per quality, each scaled down to its height: a larger monitor to 1080p.
     const height = video.getSettings().height;
     const encodings = sendEncodings(plan, height);
@@ -294,9 +298,10 @@ export class BrowserMediaClient implements MediaClient {
 }
 
 /**
- * Offers only the plan's codecs, in its order: hardware H.264 high and main before the
- * software codec, so the media server answers with the best this browser has. A browser
- * that refuses the list is left to its own order, so the share still starts.
+ * Offers only the first of the plan's codecs this browser has: hardware H.264 baseline,
+ * or the software codec on a browser without it, since the media server picks its own
+ * favourite among several. A browser that refuses the list is left to its own order, so
+ * the share still starts.
  */
 function preferCodecs(transceiver: RTCRtpTransceiver, plan: EncodingPlan) {
   const codecs = codecPreferences(plan.codecs, RTCRtpSender.getCapabilities("video")?.codecs ?? []);

@@ -22,6 +22,8 @@ export interface StartDetails {
   mids: ShareMids;
   /** The family of the browser sending it, when it said one graeae knows. */
   browser: BrowserFamily | null;
+  /** Whether the sharer says it sends two qualities. The encoding plan holds it to a Chromium screen share. */
+  twoQualities: boolean;
   handOver: boolean;
 }
 
@@ -69,12 +71,15 @@ const CHECKS: { [Name in RequestName]: (request: Fields) => Checked<Name> | null
     const checked = asLiveShare(share);
     return checked && isQualityChoice(quality) ? { name: "watching.quality", share: checked, quality } : null;
   },
-  "shares.start": ({ kind, offer, video, audio, browser, handOver }) => {
+  "shares.start": ({ kind, offer, video, audio, browser, twoQualities, handOver }) => {
     if (!isShareKind(kind)) return null;
     // A screen share's audio is left out when the browser's picker gave no sound.
     const mids = !isMid(video) ? null : audio === undefined ? { video } : isMid(audio) ? { video, audio } : null;
     const family: BrowserFamily | null = browser === "chromium" || browser === "firefox" ? browser : null;
-    const details = isSdp(offer) && mids ? { offer, mids, browser: family, handOver: handOver === true } : null;
+    const details =
+      isSdp(offer) && mids
+        ? { offer, mids, browser: family, twoQualities: twoQualities === true, handOver: handOver === true }
+        : null;
     return { name: "shares.start", kind, details };
   },
   "shares.stop": ({ kind }) => (isShareKind(kind) ? { name: "shares.stop", kind } : null),

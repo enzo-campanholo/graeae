@@ -12,7 +12,7 @@
 // sees, are one pure rule too, in `sending.ts`.
 
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
-import type { QualityName } from "../../../shared/encoding.ts";
+import type { EncodingPlan, QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily } from "./capture.ts";
 import type { TransportTotals } from "./transport.ts";
 import type { SharerNotes } from "./sending.ts";
@@ -48,6 +48,8 @@ export interface Offer {
 export interface MediaClient {
   /** The browser family this tab runs in, which decides what a screen capture asks for. */
   readonly browser: BrowserFamily;
+  /** How a share of `kind` goes out from this tab: its codecs and qualities. */
+  plan(kind: Capture["kind"]): EncodingPlan;
   /** Starts the webcam, at once and with no dialog of graeae's own. Throws if the browser refuses. */
   captureWebcam(): Promise<Capture>;
   /**

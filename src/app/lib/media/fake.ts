@@ -5,12 +5,13 @@
 // every step the real client does.
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
-// browser family, what the browser's picker returns, the browser ending a screen share
-// by itself, the quality the shares it watches arrive at, the statistics of the shares it
+// browser family, whether a Chromium screen share goes out at two qualities, what the
+// browser's picker returns, the browser ending a screen share by itself, the quality the
+// shares it watches arrive at, the statistics of the shares it
 // sends, which go through the same rule as the real client's, and the bytes its media
 // connection has received for the usage count. It is in a build for Seam 2 only.
 
-import { encodingPlan, type QualityName } from "../../../shared/encoding.ts";
+import { encodingPlan, TWO_QUALITIES, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
@@ -38,6 +39,7 @@ function control(): FakeMediaControl {
   if (!("endScreen" in preset)) {
     const made: FakeMediaControl = {
       browser: "chromium",
+      twoQualities: TWO_QUALITIES,
       picker: { surface: "tab", audio: true },
       asked: [],
       screenAudio: null,
@@ -86,6 +88,10 @@ export class FakeMediaClient implements MediaClient {
 
   get browser(): BrowserFamily {
     return control().browser;
+  }
+
+  plan(kind: Capture["kind"]): EncodingPlan {
+    return encodingPlan(this.browser, kind, { twoQualities: control().twoQualities });
   }
 
   async captureWebcam(): Promise<Capture> {
@@ -157,7 +163,7 @@ export class FakeMediaClient implements MediaClient {
     this.offered = null;
     if (!capture) return;
     // Its statistics come from the journey, at times counted from the share's start.
-    const sending = follow(encodingPlan(this.browser, capture.kind), undefined, 0, {
+    const sending = follow(this.plan(capture.kind), undefined, 0, {
       apply: (encodings, degradation) => {
         control().sent = { ...control().sent, [capture.kind]: { encodings, degradation } };
       },

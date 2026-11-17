@@ -107,7 +107,10 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's webcam" }).click();
   const ownersPicture = inesStage.getByRole("img", { name: "Owner's webcam, with no picture" });
   await expect(ownersPicture).toBeVisible();
-  // She also watches the owner's screen, at 720p by choice.
+  // She also watches the owner's screen, sent at two qualities, at 720p by choice.
+  await owner.evaluate(() => {
+    (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.twoQualities = true;
+  });
   await owner.getByRole("button", { name: "Share screen" }).click();
   await owner.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
   await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's screen" }).click();

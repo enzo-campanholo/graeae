@@ -8,23 +8,33 @@
 import type { ShareKind } from "./socket/shares.ts";
 
 /**
- * Two qualities for a Chromium screen share, the one place they are switched off. Two
- * encodes are decided but not yet verified to stay on the hardware encoder (spec,
- * Verification). If the owner's check fails, set this to false: every Chromium screen
- * share is then one 1080p60 quality at 12 Mbps, and viewers get no quality choice and no
- * "720p" mark.
+ * Two qualities for a Chromium screen share, the one place they are switched on or off.
+ * Off: every Chromium screen share is one 1080p60 quality at 12 Mbps, and viewers get no
+ * quality choice and no "720p" mark.
+ *
+ * Off since the owner's check on Cloudflare (ticket 17). Both encodes stayed on the
+ * hardware encoder, but the media server pads the 720p quality of an H.264 share while
+ * probing for bandwidth, and Chromium and Firefox viewers freeze on it, for about half
+ * the time. VP8 copes with the padding but is encoded in software. Sending the two
+ * qualities as two tracks of one quality each is the way back to a choice (ticket 29).
+ *
+ * Read by the page only: a sharer tells the instance it sends two qualities when it
+ * starts the share, so the instance's two-quality handling stays tested either way.
  */
-export const TWO_QUALITIES = true;
+export const TWO_QUALITIES = false;
 
-/** The browsers whose shares differ: Chromium has screen audio and two qualities, Firefox neither. */
+/** The browsers whose shares differ: Chromium has screen audio and can send two qualities, Firefox neither. */
 export type BrowserFamily = "chromium" | "firefox";
 
 /**
- * A codec a share may go out in, best first. H.264 is only ever high or main profile,
- * which Chrome on Windows encodes in hardware; never constrained baseline, never HEVC.
+ * A codec a share may go out in, best first. H.264 is only ever baseline profile
+ * (`42001f`): Chrome on Windows encodes it in hardware, the media server accepts it on a
+ * share sent at two qualities, and Firefox decodes it. Never constrained baseline, which
+ * Chrome on Windows encodes in software; never main or high, which the media server
+ * answers with VP8 on a share sent at two qualities and Firefox cannot decode; never HEVC.
  */
 export type Codec =
-  | { mimeType: "video/H264"; profile: "high" | "main" }
+  | { mimeType: "video/H264"; profile: "baseline" }
   | { mimeType: "video/VP8" }
   | { mimeType: "video/VP9" };
 
@@ -51,7 +61,10 @@ export interface Quality {
 }
 
 export interface EncodingPlan {
-  /** The codecs offered, best first. The share goes out in the one negotiated: one codec per share. */
+  /**
+   * The codecs, best first. The browser offers the first it has, alone, since the media
+   * server picks its own favourite among several: one codec per share.
+   */
   codecs: Codec[];
   /** The qualities sent, best first: two for a viewer to choose between, or one. */
   qualities: Quality[];
@@ -62,20 +75,17 @@ export interface EncodingPlan {
 }
 
 /**
- * Hardware H.264 first, high then main, and VP8 last, which every browser encodes in
- * software and decodes, so that a share always starts.
+ * Hardware H.264 in baseline profile, or VP8, which every browser encodes in software
+ * and decodes, on a browser without it, so that a share always starts.
  */
-const HARDWARE_FIRST: Codec[] = [
-  { mimeType: "video/H264", profile: "high" },
-  { mimeType: "video/H264", profile: "main" },
-  { mimeType: "video/VP8" },
-];
+const HARDWARE_FIRST: Codec[] = [{ mimeType: "video/H264", profile: "baseline" }, { mimeType: "video/VP8" }];
 
 const SCREEN_CAPTURE = { width: 1920, height: 1080 };
 
 /**
  * How a share of `kind` goes out from a browser of `browser`'s family. `twoQualities`
- * is for tests of the switched-off plan; everything else takes `TWO_QUALITIES`.
+ * says whether a Chromium screen share goes out at two qualities, and means nothing for
+ * any other share: the page takes `TWO_QUALITIES`, and the instance what the sharer said.
  */
 export function encodingPlan(
   browser: BrowserFamily,
@@ -90,7 +100,8 @@ export function encodingPlan(
     });
   }
   if (browser === "firefox") {
-    // Firefox encodes no H.264 high or main: one quality in VP9.
+    // Firefox encodes H.264 in software only, where VP9 gives it the better picture: one
+    // quality in VP9.
     return plan(
       [{ mimeType: "video/VP9" }, { mimeType: "video/VP8" }],
       [{ name: "1080p", height: 1080, maxFramerate: 30, maxBitrate: 6_000_000 }],

@@ -12,7 +12,7 @@ The first release.
 
 - One instance per Cloudflare account, on the free plan, configured by five secrets and the setup secret's address.
 - Permanent rooms, single-use invites, and devices remembered for 400 days from their last visit.
-- Screen shares at 1080p60 and 720p60 with screen audio, and webcam shares at 720p30, through Cloudflare's media server with the relay offered.
+- Screen shares at 1080p60 in hardware H.264 with screen audio, and webcam shares at 720p30, through Cloudflare's media server with the relay offered.
 - The owner page: people and their access, invites, rooms, and usage with the usage budget, its warnings and its stop.
 
 No manual step: this is a first deploy, so follow [Deploying](README.md#deploying).

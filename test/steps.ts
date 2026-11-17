@@ -189,7 +189,9 @@ export const FAKE_AUDIO_MID = "1";
 /**
  * What the page sends to start a screen share, once its media connection is made: with
  * screen audio on the transceiver `audio`, or video only when the picker gave no sound,
- * from a browser of `browser`'s family (Chromium unless a test says otherwise).
+ * from a browser of `browser`'s family (Chromium unless a test says otherwise), at two
+ * qualities when `twoQualities` says so (one, as the page sends today, unless a test
+ * says otherwise).
  */
 export function startScreen(
   tab: Tab,
@@ -197,11 +199,20 @@ export function startScreen(
     audio = FAKE_AUDIO_MID as string | null,
     video = FAKE_VIDEO_MID,
     browser = "chromium" as BrowserFamily,
+    twoQualities = false,
   } = {},
 ) {
   tab.send({
     type: "shares",
-    request: { type: "start", kind: "screen", offer: FAKE_OFFER, video, browser, ...(audio === null ? {} : { audio }) },
+    request: {
+      type: "start",
+      kind: "screen",
+      offer: FAKE_OFFER,
+      video,
+      browser,
+      ...(audio === null ? {} : { audio }),
+      ...(twoQualities ? { twoQualities: true as const } : {}),
+    },
   });
 }
 
@@ -214,9 +225,12 @@ export function stopScreen(tab: Tab) {
  * Has `tab` share its screen, as the page does once the browser's picker returns: make
  * the media connection, offer, and read the instance's answer, then the share going live.
  */
-export async function shareScreen(tab: Tab, { audio = true, browser = "chromium" as BrowserFamily } = {}) {
+export async function shareScreen(
+  tab: Tab,
+  { audio = true, browser = "chromium" as BrowserFamily, twoQualities = false } = {},
+) {
   await connectMedia(tab);
-  startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null, browser });
+  startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null, browser, twoQualities });
   expect(await tab.next()).toEqual({
     type: "media",
     change: { type: "published", kind: "screen", answer: expect.any(String) },
