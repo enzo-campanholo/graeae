@@ -126,7 +126,8 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
     if (response.webSocket) return response;
     // Read in full at once, so a test that looks only at the status leaves no body
     // streaming out of an instance the next test resets.
-    return new Response(await response.arrayBuffer(), response);
+    const body = await response.arrayBuffer();
+    return new Response(response.status === 204 ? null : body, response);
   };
 
   return {

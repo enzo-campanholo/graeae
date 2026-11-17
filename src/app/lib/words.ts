@@ -52,3 +52,30 @@ export function timeLeft(until: number, now: number): string {
   const minutes = Math.round(left / 60_000);
   return minutes >= 2 ? `in ${minutes} minutes` : "in a minute";
 }
+
+/**
+ * How long ago a moment was, as a device's last use is shown: "just now", "a minute ago",
+ * "5 minutes ago", "3 hours ago", "2 days ago", "3 weeks ago", "4 months ago". Rounded to
+ * the nearest unit, and a larger unit is used once there are at least two of it.
+ */
+export function timeAgo(at: number, now: number): string {
+  const ago = Math.max(0, now - at);
+  const days = Math.round(ago / 86_400_000);
+  if (days >= 60) return `${Math.round(days / 30)} months ago`;
+  if (days >= 14) return `${Math.round(days / 7)} weeks ago`;
+  if (days >= 2) return `${days} days ago`;
+  const hours = Math.round(ago / 3_600_000);
+  if (hours >= 2) return `${hours} hours ago`;
+  const minutes = Math.round(ago / 60_000);
+  if (minutes >= 2) return `${minutes} minutes ago`;
+  return minutes === 1 ? "a minute ago" : "just now";
+}
+
+/** A device as its member knows it: "Chrome on Windows", or less when the browser did not say. */
+export function deviceLabel(browser: string, os: string): string {
+  const known = (value: string) => value !== "" && value !== "Unknown";
+  if (known(browser) && known(os)) return `${browser} on ${os}`;
+  if (known(browser)) return browser;
+  if (known(os)) return `A browser on ${os}`;
+  return "A browser";
+}

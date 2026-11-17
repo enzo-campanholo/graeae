@@ -5,7 +5,7 @@ export interface RoomSummary {
   name: string;
 }
 
-/** Who the visiting device belongs to. */
+/** Who the visiting device belongs to. Also the answer to `POST /api/me/name` with `{ name }`, the member renamed. */
 export interface Me {
   name: string;
   owner: boolean;
@@ -80,6 +80,19 @@ export interface JoinAnswer {
 /** `POST /api/owner/rooms` with `{ name }`: the room just made. */
 export interface CreateRoomAnswer {
   room: RoomSummary;
+}
+
+/** A member's "Add a device" invite: one browser, once, within 10 minutes. */
+export interface DeviceInvite {
+  /** The invite's address is `/invite/<code>`, the same page as an owner's invite. */
+  code: string;
+  /** When it stops working, in milliseconds since the epoch. */
+  expiresAt: number;
+}
+
+/** `POST /api/me/devices`: the press of "Add a device". */
+export interface DeviceInviteAnswer {
+  invite: DeviceInvite;
 }
 
 /** `PATCH /api/owner/rooms/<address>` with `{ name }`: the room as renamed. Its address never changes. */

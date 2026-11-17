@@ -2,6 +2,7 @@
 // page can be checked against its design before the real data reaches it.
 
 import type { Component } from "svelte";
+import type { MeAnswer } from "../../shared/api.ts";
 import type { ShareKind } from "../lib/share.ts";
 
 export type Scene = "game" | "race" | "webcam" | "webcam-2";
@@ -35,7 +36,7 @@ export interface SampleRoom {
 export interface Sample {
   room: SampleRoom;
   rooms: { address: string; name: string; present: string[]; live: number }[];
-  you: { name: string; devices: { id: string; label: string; lastUsed: string; current: boolean }[] };
+  you: MeAnswer;
   invite: { name: string };
   owner: { used: number; budget: number };
 }
