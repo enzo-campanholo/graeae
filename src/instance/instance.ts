@@ -46,15 +46,45 @@ export class Instance extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
-    this.signaling = new Signaling(ctx, (address) => this.relist(address));
+    this.signaling = new Signaling(
+      ctx,
+      (address) => this.relist(address),
+      () => this.schedule(),
+    );
     this.shares = new Shares(ctx.storage.sql, mediaLayer(env), {
       unwatched: (tab, share) => this.signaling.toTab(tab, { type: "watching", change: { type: "unwatched", share } }),
       // Only the sharer learns who is watching.
       watchers: (address, share, members) =>
         this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
     });
-    // Nothing reaches the instance until its storage is on this code's schema.
-    void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
+    // Nothing reaches the instance until its storage is on this code's schema, and until
+    // whoever a restart dropped is in their grace period.
+    void ctx.blockConcurrencyWhile(async () => {
+      applyMigrations(ctx.storage, Instance.migrations);
+      this.restored();
+    });
+  }
+
+  /**
+   * As the instance starts: the tabs a restart dropped become lost tabs, in their grace
+   * period, so their shares and watching carry on while their browsers reconnect.
+   */
+  private restored() {
+    const recorded = this.shares.recordedTabs().flatMap((tab) => {
+      const member = tab.member ?? this.people.deviceMember(tab.device)?.id;
+      return member ? [{ ...tab, member }] : [];
+    });
+    this.signaling.restore(recorded);
+  }
+
+  /**
+   * Sets the instance's one alarm for the earliest moment anything waits for: a grace
+   * period running out, a member falling silent, or a failed close's next try.
+   */
+  private schedule() {
+    const moments = [this.signaling.nextMoment()].filter((moment): moment is number => moment !== null);
+    if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
+    else void this.ctx.storage.deleteAlarm();
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -297,9 +327,10 @@ export class Instance extends DurableObject<Env> {
     this.relist(address);
   }
 
-  /** The grace periods' moments are the only thing the alarm wakes the instance for yet. */
+  /** The alarm: grace periods running out, members falling silent, and failed closes tried again. */
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
+    this.schedule();
   }
 
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */

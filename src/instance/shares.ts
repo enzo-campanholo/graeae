@@ -164,6 +164,22 @@ export class Shares {
   }
 
   /**
+   * Every tab with a media connection on record, with the member its shares or watching
+   * name: null for a connection that carries neither.
+   */
+  recordedTabs(): { id: string; device: string; room: string; member: string | null }[] {
+    return this.sql
+      .exec<{ tab_id: string; device_id: string; room_address: string; member_id: string | null }>(
+        `SELECT tab_id, device_id, room_address,
+           COALESCE((SELECT member_id FROM share WHERE share.tab_id = media_connection.tab_id LIMIT 1),
+                    (SELECT member_id FROM watch WHERE watch.tab_id = media_connection.tab_id LIMIT 1)) AS member_id
+         FROM media_connection`,
+      )
+      .toArray()
+      .map((row) => ({ id: row.tab_id, device: row.device_id, room: row.room_address, member: row.member_id }));
+  }
+
+  /**
    * Makes `tab`'s one media connection and mints the relay credential for it. "already"
    * when the tab has one or is making it; null when the media server fails.
    */
