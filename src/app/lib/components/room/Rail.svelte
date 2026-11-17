@@ -33,7 +33,7 @@
   } = $props();
 </script>
 
-<aside class="flex w-14 shrink-0 flex-col items-center pb-1" aria-label="People">
+<aside class="relative flex w-14 shrink-0 flex-col items-center pb-1" aria-label="People">
   <div class="grid h-11 place-items-center">
     <IconButton label="Show the bar" key="[" side="right" onclick={onexpand}><PanelLeftOpen /></IconButton>
   </div>

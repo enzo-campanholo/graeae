@@ -7,6 +7,7 @@ import { FakeMediaClient } from "./fake.ts";
 import type { MediaClient } from "./client.ts";
 
 export type { Capture, MediaClient, Offer } from "./client.ts";
+export type { BrowserFamily } from "./capture.ts";
 
 export function createMediaClient(): MediaClient {
   return __GRAEAE_FAKE_MEDIA__ ? new FakeMediaClient() : new BrowserMediaClient();

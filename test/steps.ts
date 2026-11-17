@@ -122,9 +122,12 @@ export async function connectMedia(tab: Tab): Promise<IceServer[]> {
   return connected.change.iceServers;
 }
 
-/** What the page sends to start a webcam share, once its media connection is made. */
-export function startWebcam(tab: Tab) {
-  tab.send({ type: "shares", request: { type: "start", kind: "webcam", offer: FAKE_OFFER, video: FAKE_VIDEO_MID } });
+/**
+ * What the page sends to start a webcam share, once its media connection is made, on the
+ * transceiver `video`.
+ */
+export function startWebcam(tab: Tab, video = FAKE_VIDEO_MID) {
+  tab.send({ type: "shares", request: { type: "start", kind: "webcam", offer: FAKE_OFFER, video } });
 }
 
 /** What the page sends when the sharer presses stop. */
@@ -168,7 +171,8 @@ export async function watch(tab: Tab, share: LiveShare): Promise<string> {
   if (pulled.type !== "media" || pulled.change.type !== "pulled") {
     throw new Error(`expected the pull, got ${JSON.stringify(pulled)}`);
   }
-  expect(pulled.change).toEqual({ type: "pulled", share, offer: expect.any(String), video: expect.any(String) });
+  // A screen share's audio, when it has any, comes on a transceiver of its own.
+  expect(pulled.change).toMatchObject({ type: "pulled", share, offer: expect.any(String), video: expect.any(String) });
   expect(await tab.next()).toEqual({ type: "watching", change: { type: "watched", share } });
   tab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
   expect(await tab.next()).toEqual({ type: "media", change: { type: "answered" } });
@@ -177,3 +181,37 @@ export async function watch(tab: Tab, share: LiveShare): Promise<string> {
 
 /** What the fake media client answers to the media server's offer for a pull. */
 export const FAKE_ANSWER = "v=0 a stand-in answer";
+
+/** The mid the fake media client gives a screen's audio transceiver, after its video's. */
+export const FAKE_AUDIO_MID = "1";
+
+/**
+ * What the page sends to start a screen share, once its media connection is made: with
+ * screen audio on the transceiver `audio`, or video only when the picker gave no sound.
+ */
+export function startScreen(tab: Tab, { audio = FAKE_AUDIO_MID as string | null, video = FAKE_VIDEO_MID } = {}) {
+  tab.send({
+    type: "shares",
+    request: { type: "start", kind: "screen", offer: FAKE_OFFER, video, ...(audio === null ? {} : { audio }) },
+  });
+}
+
+/** What the page sends when the sharer stops their screen share, from graeae or the browser's own bar. */
+export function stopScreen(tab: Tab) {
+  tab.send({ type: "shares", request: { type: "stop", kind: "screen" } });
+}
+
+/**
+ * Has `tab` share its screen, as the page does once the browser's picker returns: make
+ * the media connection, offer, and read the instance's answer, then the share going live.
+ */
+export async function shareScreen(tab: Tab, { audio = true } = {}) {
+  await connectMedia(tab);
+  startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null });
+  expect(await tab.next()).toEqual({
+    type: "media",
+    change: { type: "published", kind: "screen", answer: expect.any(String) },
+  });
+  const started = await tab.next();
+  expect(started).toMatchObject({ type: "shares", change: { type: "started", share: { kind: "screen", audio } } });
+}

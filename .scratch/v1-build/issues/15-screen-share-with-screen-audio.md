@@ -8,23 +8,46 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 
 **Blocked by:** 13, 14
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] "Share screen" goes straight to the browser's picker: 3 clicks, 4 the first time on a device
-- [ ] The first time on a device a short notice comes first, once: a tab or a game's window sends sound, a whole screen is video only. No borderless-mode tip
-- [ ] On Firefox the notice instead says: video only, possibly less smooth, a Chromium browser does better
-- [ ] graeae asks the picker to have its audio checkbox ticked and has no audio toggle of its own before the picker
+- [x] "Share screen" goes straight to the browser's picker: 3 clicks, 4 the first time on a device
+- [x] The first time on a device a short notice comes first, once: a tab or a game's window sends sound, a whole screen is video only. No borderless-mode tip
+- [x] On Firefox the notice instead says: video only, possibly less smooth, a Chromium browser does better
+- [x] graeae asks the picker to have its audio checkbox ticked and has no audio toggle of its own before the picker
 - [ ] Screen audio is sent in stereo with echo cancellation, noise suppression and automatic gain off
 - [ ] The sharing page's own audio is always excluded from the capture
-- [ ] The whole system's sound is never requested
-- [ ] A screen share is one unit: its video track and, when there is one, its audio track, recorded and closed together
-- [ ] The sharer's own live share has an audio on and off control
-- [ ] A share that ended up with no audio shows the sharer one line saying so; viewers see "video only"
+- [x] The whole system's sound is never requested
+- [x] A screen share is one unit: its video track and, when there is one, its audio track, recorded and closed together
+- [x] The sharer's own live share has an audio on and off control
+- [x] A share that ended up with no audio shows the sharer one line saying so; viewers see "video only"
 - [ ] The share ends when the sharer presses stop, uses the browser's own "stop sharing" bar, closes the shared tab or window, or leaves
-- [ ] One screen share per member; a second attempt is refused until ticket 19 adds hand-over
-- [ ] The screen icon appears on the member's row, and a name click watches screen and webcam together
-- [ ] The app never checks the operating system and never blocks a browser; extra audio a picker offers elsewhere is passed through
-- [ ] Seam 1 and Seam 2 tests on the fakes
-- [ ] What graeae asks the browser to capture is decided by one pure rule, taking the browser family as an input, and tests assert on its result for Chromium and for Firefox
-- [ ] The fake media client lets a Seam 2 test set the browser family and what the picker returned (tab, window or screen; with or without audio)
-- [ ] The collapsed rail keeps the "Share screen" button
+- [x] One screen share per member; a second attempt is refused until ticket 19 adds hand-over
+- [x] The screen icon appears on the member's row, and a name click watches screen and webcam together
+- [x] The app never checks the operating system and never blocks a browser; extra audio a picker offers elsewhere is passed through
+- [x] Seam 1 and Seam 2 tests on the fakes
+- [x] What graeae asks the browser to capture is decided by one pure rule, taking the browser family as an input, and tests assert on its result for Chromium and for Firefox
+- [x] The fake media client lets a Seam 2 test set the browser family and what the picker returned (tab, window or screen; with or without audio)
+- [x] The collapsed rail keeps the "Share screen" button
+
+## Comments
+
+**Built** on `ticket/15-screen-share-with-screen-audio`, against the fakes, since ticket 13 (the owner's first real deploy) has not happened. `pnpm test` (Seam 1, then Seam 2), `pnpm typecheck` and `pnpm lint` pass. No migration: ticket 10's `share` and ticket 11's `watch` already had the audio columns. Three boxes need real browsers and real media, so the ticket waits for the owner (below). The owner was away, so the impeccable skill's questions were not asked; the UI follows `DESIGN.md`, which gained the notice, the audio switch and the "video only" lines.
+
+- **Protocol.** `shares.start` takes `kind: "screen"` with an optional `audio` mid, left out when the picker gave no sound. Audio on a webcam, or on the same mid as the video, is refused. The room lists a screen share as `ListedShare` (`{ member, kind, audio }`, `audio` only on a screen), so viewers know it is video only. A share is still asked for by `{ member, kind }` alone, and the room client strips the rest before it asks. `media.pulled` gains `audio`, the mid of the pulled screen audio. Shares and watches publish, pull and close their video and audio in one call each (`tracksOf` in `src/instance/shares.ts`), so the cut-off, the sweep and every ordinary stop close both together.
+- **The pure rule** is `screenCapture(browser)` in `src/app/lib/media/capture.ts`, tested in `test/capture.test.ts`. Chromium is asked for audio in stereo with echo cancellation, noise suppression and automatic gain off, `restrictOwnAudio` (the page's own sound left out), `audioSelection: "preferred"` (the picker's checkbox pre-ticked), `systemAudio: "exclude"`, `windowAudio: "window"` and `selfBrowserSurface: "exclude"`. These come from `docs/research/audio-capture.md` on `research/audio-capture` and the quality-proof prototype. Firefox is asked for video only. Every browser that is not Firefox is asked as Chromium is (`browserFamily` reads only "Firefox/" in the user agent), and takes what it understands; any audio track a picker returns is sent. The picture is one quality for now (up to 1920x1080, ideal and max 60 fps, sender limited to 12 Mbps and 60 fps): **ticket 17** replaces it with the encoding plan (120 fps capture, two qualities, codecs).
+- **Stereo** needs the descriptions to say so: `stereoOpus(sdp)` adds `stereo=1;sprop-stereo=1` to Opus in the sharer's offer, to the media server's answer before it is applied, and to a viewer's answer to a pull. It is tested as a pure function; whether Cloudflare forwards it in stereo is for the owner.
+- **The media client** gains `browser`, `captureScreen()` (null when the member closes the picker: nothing shared and nothing said), `setAudio(capture, on)` (the track's `enabled`, so the share keeps going in silence), and `pull(offer, video, audio)`. A `Capture` now has `audio` and `ended`, which settles when the browser ends the capture by itself (its "stop sharing" bar, the shared tab or window closing, a camera unplugged), never on graeae's own stop. The room client then stops the share by the ordinary path, also when this happens while it is still starting. `shareWebcam` and `shareScreen` are one `share(kind)`.
+- **The fake media client** is steered through `window.graeaeFakeMedia` (`FakeMediaControl`, types in `src/app/lib/media/fake-control.ts`): `browser` (set before load with `addInitScript`), `picker` (`{ surface, audio }` or `"cancel"`; by default a tab with its sound), `asked` (every request made of the picker), `screenAudio` (the sharer's switch) and `endScreen()` (the browser ending it). It gives sound only when the request asked for it and the picker gave some, so on Firefox even a tab comes back video only.
+- **The page.** "Share screen" (and its key, **S**, now wired) goes straight to the picker. The first time on a device a short notice comes first: not a modal but a panel above the share buttons, floating beside the folded rail. It says "A tab or a game's window sends its sound. A whole screen is video only." and on Firefox "In Firefox a screen share is video only, and it may be less smooth. A Chromium browser such as Chrome does better." Going on through "Choose what to share" is the click that opens the picker, and it marks the notice seen in `localStorage` (`graeae:screen-notice`); Cancel or Escape leave it unseen, so it shows again next time. Clicks: Share screen, the picker's pick, its Share, and the notice's button once. "Share screen" reads "Starting", then "Screen live" (disabled) while a screen of yours is live anywhere. The sharer's preview has an audio switch beside Stop, or the line "Video only. No one hears this share." A watched tile's caption reads "screen · video only". A refused or failed start says "Your screen share didn't start. Try again."
+- **Viewers hear screen audio now.** `WatchedPicture` plays unmuted, and falls back to muted when the browser refuses sound on a page nobody has clicked (a reload that brings the stage back). **Ticket 16** adds volume, mute and "hear only this one", and should give that muted fallback a way to unmute.
+- **Decisions.** The sharer's audio switch is the tab's own and tells nobody: viewers still see the share as having sound. The notice counts as seen only once the member goes on to the picker. The tab of graeae itself is left out of the picker (`selfBrowserSurface`), since sharing it would echo.
+- **Tests.** `test/screen.test.ts` (18, Seam 1): the unit going live with and without audio, refusals, the record before the call, a failed publish, stop, leave, a failed close keeping both tracks, a restart, and pulling and closing both tracks for viewers. `test/capture.test.ts` (12): the rule for Chromium and Firefox, the family, and `stereoOpus`. Seam 2: `test/browser/screen.spec.ts` (members Mia and Oli): the notice once, the switch, a name watching screen and webcam together, stop, straight to the picker the second time with following picking it up, the browser's own stop, a cancelled picker, a whole screen as video only on both sides, a second tab refused, leaving; and on Firefox the Firefox notice from the folded rail and a video-only share. `stage.spec.ts`'s shortcuts journey now has Tom share a screen, so "Webcams" and "Everything" are told apart (ticket 14's request), and the rail shows "Share screen". `test/steps.ts`: `startWebcam` takes a mid, `startScreen`, `stopScreen`, `shareScreen`, and `watch` accepts a pull with audio.
+- **Merged with ticket 21.** Its retries close a share's or watch's video and audio together, through the same `closeTracks` and `closeWatch`. The sweep counts a screen share's audio, and a watch's pulled audio, as accounted for. A half-made share or pull has whichever of its tracks the media server holds closed. A live share ends only when its picture is gone. Two tests in `test/screen.test.ts` cover it: a live screen share's audio survives the sweep after a restart (red when the sweep counted the video alone), and both tracks of a half-made screen share are closed.
+
+**Needs the owner:** after ticket 13's deploy, on Windows 11 with current Chrome or Helium, and once in Firefox. Three boxes stay unticked until then, and the rest want a look too:
+1. *Stereo with the processing off* (box 5): share a tab playing music with a clear left and right, and listen on another browser. If it comes through in mono, `stereoOpus` is not enough for Cloudflare.
+2. *The page's own sound left out* (box 6): watch someone's share with sound, then share your whole screen or a window while it plays. The others must not hear their own share coming back.
+3. *Every way of ending* (box 11): stop from graeae, from Chrome's own "Stop sharing" bar, and by closing the shared tab. Each must take the share off the viewer's stage at once.
+4. Check that Chrome's picker opens with its audio checkbox ticked for a tab and for a window. Check that a game's window sends only that game's sound, not Discord.
+5. In Firefox: the Firefox notice, and a window share that plays on another browser, as video only.
+6. A caveat to judge, not a bug: the research says Chrome falls back to the whole system's sound for a window on Windows 10 or older macOS, where app-only audio does not exist. graeae cannot tell without checking the system, which the spec forbids. Windows 10 is best effort.

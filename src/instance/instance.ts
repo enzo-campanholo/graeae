@@ -283,7 +283,13 @@ export class Instance extends DurableObject<Env> {
         }
         this.signaling.toTab(tab.id, {
           type: "media",
-          change: { type: "pulled", share, offer: watched.offer, video: watched.video },
+          change: {
+            type: "pulled",
+            share,
+            offer: watched.offer,
+            video: watched.video,
+            ...(watched.audio === null ? {} : { audio: watched.audio }),
+          },
         });
         this.signaling.toTab(tab.id, { type: "watching", change: { type: "watched", share } });
       }
@@ -303,11 +309,13 @@ export class Instance extends DurableObject<Env> {
     }
     if (message.type !== "shares") return;
     if (type === "start") {
-      const { kind, offer, video } = request as { kind?: unknown; offer?: unknown; video?: unknown };
-      if (kind !== "webcam") return;
+      const { kind, offer, video, audio } = request as { kind?: unknown; offer?: unknown; video?: unknown; audio?: unknown };
+      if (kind !== "webcam" && kind !== "screen") return;
+      // A screen share's audio is left out when the browser's picker gave no sound.
+      const mids = !isMid(video) ? null : audio === undefined ? { video } : isMid(audio) ? { video, audio } : null;
       const started =
-        allowed && isSdp(offer) && isMid(video)
-          ? await this.shares.startWebcam(tab, tab.member, offer, video, () => this.signaling.isOpen(tab.id))
+        allowed && isSdp(offer) && mids
+          ? await this.shares.start(tab, tab.member, kind, offer, mids, () => this.signaling.isOpen(tab.id))
           : { live: false as const };
       if (!started.live) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });

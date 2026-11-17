@@ -5,8 +5,8 @@ import { SETUP_SECRET } from "./app.ts";
 // Watching from the bar, and how the stage lays out what is watched. The media on every
 // side is fake, so these cover what the owner sees, not pictures. Journeys share one
 // instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia, Yan, Zoe, Lia
-// and Noa, whom no other journey uses. Only webcams can be shared from a browser so far,
-// so every share here is a webcam.
+// and Noa, whom no other journey uses. Every share here is a webcam, but for Tom's screen
+// in the shortcuts journey, which tells "Webcams" from "Everything".
 
 const opened: BrowserContext[] = [];
 
@@ -55,6 +55,13 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined, viewpo
 async function shareWebcam(page: Page) {
   await page.getByRole("button", { name: "Share webcam" }).click();
   await expect(page.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
+}
+
+/** Shares a screen, through the first-time notice, on the fake picker's default: a tab with its sound. */
+async function shareScreen(page: Page) {
+  await page.getByRole("button", { name: "Share screen" }).click();
+  await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
+  await expect(page.getByRole("button", { name: "Stop your screen" })).toBeVisible();
 }
 
 async function stopWebcam(page: Page) {
@@ -138,17 +145,20 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const tom = await join("Tom");
+  await shareScreen(tom);
   const ugo = await join("Ugo", { share: false });
 
   const stage = owner.getByRole("main", { name: "Stage" });
   const here = owner.getByRole("region", { name: "Here" });
   const toms = stage.getByRole("img", { name: "Tom's webcam, with no picture" });
+  const tomsScreen = stage.getByRole("img", { name: "Tom's screen, with no picture" });
   const ugos = stage.getByRole("img", { name: "Ugo's webcam, with no picture" });
   const ugoName = here.getByRole("button", { name: "Ugo", exact: true });
 
   // On arrival the empty stage offers to watch everything, and it does.
   await stage.getByRole("button", { name: "Watch everything" }).click();
   await expect(toms).toBeVisible();
+  await expect(tomsScreen).toBeVisible();
   // It follows nobody: a share started afterwards does not join by itself.
   await shareWebcam(ugo);
   await expect(here.getByRole("button", { name: "Watch Ugo's webcam" })).toBeVisible();
@@ -160,15 +170,18 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
   await expect(toms).toHaveCount(0);
   await expect(stage.getByText("You're not watching anything yet.")).toBeVisible();
 
-  // "Everything" watches every share, and "Webcams" every webcam.
+  // "Everything" watches every share, and "Webcams" every webcam and nothing else.
   await shortcuts.getByRole("button", { name: "Everything" }).click();
   await expect(toms).toBeVisible();
+  await expect(tomsScreen).toBeVisible();
   await expect(ugos).toBeVisible();
   await shortcuts.getByRole("button", { name: "Nothing" }).click();
   await expect(ugos).toHaveCount(0);
+  await expect(tomsScreen).toHaveCount(0);
   await shortcuts.getByRole("button", { name: "Webcams" }).click();
   await expect(toms).toBeVisible();
   await expect(ugos).toBeVisible();
+  await expect(tomsScreen).toHaveCount(0);
 
   // A shortcut ends following, and is one-off itself.
   await ugoName.click();
@@ -186,13 +199,15 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
   await expect(here.getByRole("button", { name: "Watch Tom's webcam" })).toBeVisible();
   await expect(toms).toHaveCount(0);
 
-  // The rail keeps the share buttons and follows a member in one click.
+  // The rail keeps the share buttons and follows a member in one click: Tom's screen and webcam.
   await owner.getByRole("button", { name: "Hide the bar" }).click();
   const rail = owner.getByRole("complementary", { name: "People" });
+  await expect(rail.getByRole("button", { name: "Share screen" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Share webcam" })).toBeVisible();
   const followTom = rail.getByRole("button", { name: "Follow Tom" });
   await followTom.click();
   await expect(toms).toBeVisible();
+  await expect(tomsScreen).toBeVisible();
   await expect(ugos).toHaveCount(0);
   await expect(followTom).toHaveAttribute("aria-pressed", "true");
   await owner.getByRole("button", { name: "Show the bar" }).click();

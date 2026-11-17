@@ -18,11 +18,12 @@ import {
   type RoomView,
   type ServerMessage,
   type ShareKind,
+  type SharesRequest,
 } from "../../shared/socket/index.ts";
 import { sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
-import { createMediaClient, type Capture } from "./media/index.ts";
+import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
 
 /** What this tab receives of a share it watches. */
 export interface Picture {
@@ -40,6 +41,11 @@ export interface OwnShare {
   state: "starting" | "live" | "stopping";
   /** What is captured, once the browser has it. */
   capture: Capture | null;
+  /**
+   * A screen share's screen audio: on, or turned off by the sharer. Null when the share
+   * has no sound: a webcam, or a screen share that ended up video only.
+   */
+  audio: "on" | "off" | null;
 }
 
 export class RoomClient {
@@ -89,36 +95,75 @@ export class RoomClient {
     return this.socket.refused;
   }
 
+  /** The browser family this tab runs in, which decides what the first-time notice says. */
+  get browser(): BrowserFamily {
+    return this.media.browser;
+  }
+
+  /** Starts a webcam share from this tab. One click, and no dialog of graeae's own. */
+  shareWebcam() {
+    return this.share("webcam", () => this.media.captureWebcam());
+  }
+
   /**
-   * Starts a webcam share from this tab: capture, the media connection the first time,
-   * the offer, the instance's answer. One click, and no dialog of graeae's own.
+   * Starts a screen share from this tab: straight to the browser's picker, and live once
+   * the member has picked. Closing the picker shares nothing and says nothing.
    */
-  async shareWebcam() {
-    if (this.mine.some((share) => share.kind === "webcam")) return;
+  shareScreen() {
+    return this.share("screen", () => this.media.captureScreen());
+  }
+
+  /** Turns the sound of this tab's live screen share on or off, without stopping it. */
+  setScreenAudio(on: boolean) {
+    const share = this.mine.find((own) => own.kind === "screen");
+    if (!share?.capture || share.audio === null) return;
+    this.media.setAudio(share.capture, on);
+    this.update("screen", { audio: on ? "on" : "off" });
+  }
+
+  /**
+   * Starts a share of `kind` from this tab: capture, the media connection the first
+   * time, the offer, the instance's answer. A capture the browser ends by itself (its
+   * "stop sharing" bar, the shared tab closing) stops the share.
+   */
+  private async share(kind: ShareKind, captured: () => Promise<Capture | null>) {
+    if (this.mine.some((share) => share.kind === kind)) return;
     this.failed = null;
-    this.mine = [...this.mine, { kind: "webcam", state: "starting", capture: null }];
+    this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null }];
     let capture: Capture | null = null;
+    let over = false;
     try {
-      capture = await this.media.captureWebcam();
-      this.update("webcam", { capture });
+      capture = await captured();
+      if (!capture) {
+        this.mine = this.mine.filter((share) => share.kind !== kind);
+        return;
+      }
+      const own = capture;
+      void own.ended.then(() => {
+        over = true;
+        if (this.mine.some((share) => share.capture === own)) this.stop(kind);
+      });
+      this.update(kind, { capture, audio: capture.audio ? "on" : null });
       if (!(await this.connected())) throw new Error("no media connection");
       const live = await this.negotiate(async () => {
-        const offer = await this.media.offer(capture!);
+        const offer = await this.media.offer(own);
         const reply = this.answer(
-          (change) => (change.type === "published" || change.type === "refused") && change.kind === "webcam",
+          (change) => (change.type === "published" || change.type === "refused") && change.kind === kind,
         );
-        this.send({ type: "shares", request: { type: "start", kind: "webcam", offer: offer.sdp, video: offer.video } });
+        this.send({ type: "shares", request: startRequest(kind, offer) });
         const answer = await reply;
         if (answer.type !== "published") return false;
         await this.media.accept(answer.answer);
         return true;
       });
       if (!live) throw new Error("the share was refused");
-      this.update("webcam", { state: "live" });
+      this.update(kind, { state: "live" });
+      // The browser ended it while it was starting: it stops now that it can.
+      if (over) this.stop(kind);
     } catch {
       if (capture) this.media.stop(capture);
-      this.mine = this.mine.filter((share) => share.kind !== "webcam");
-      this.failed = "webcam";
+      this.mine = this.mine.filter((share) => share.kind !== kind);
+      this.failed = kind;
     }
   }
 
@@ -178,6 +223,8 @@ export class RoomClient {
   private async watch(share: LiveShare) {
     this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
     if (this.watches(share) || this.asking.some((asked) => sameShare(asked, share))) return;
+    // Asked for by its name alone, whatever else the room's list says of it.
+    share = { member: share.member, kind: share.kind };
     this.asking = [...this.asking, share];
     try {
       if (!(await this.connected())) return;
@@ -188,7 +235,7 @@ export class RoomClient {
         this.send({ type: "watching", request: { type: "watch", share } });
         const pulled = await reply;
         if (pulled.type !== "pulled") return;
-        const { answer, stream } = await this.media.pull(pulled.offer, pulled.video);
+        const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
         this.pictures = [...this.pictures.filter((picture) => !sameShare(picture.share, share)), { share, video: pulled.video, stream }];
         const answered = this.answer((change) => change.type === "answered");
         this.send({ type: "media", request: { type: "answer", answer } });
@@ -318,5 +365,10 @@ export class RoomClient {
   private update(kind: ShareKind, patch: Partial<OwnShare>) {
     this.mine = this.mine.map((share) => (share.kind === kind ? { ...share, ...patch } : share));
   }
+}
 
+/** What the page sends to start a share of `kind` with `offer`. */
+function startRequest(kind: ShareKind, offer: Offer): SharesRequest {
+  if (kind === "webcam") return { type: "start", kind, offer: offer.sdp, video: offer.video };
+  return { type: "start", kind, offer: offer.sdp, video: offer.video, ...(offer.audio ? { audio: offer.audio } : {}) };
 }

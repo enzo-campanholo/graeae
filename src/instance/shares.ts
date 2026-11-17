@@ -27,7 +27,7 @@
 // every connection on record. There is no timed sweep.
 
 import type { IceServer } from "../shared/socket/media.ts";
-import type { LiveShare, ShareKind } from "../shared/socket/shares.ts";
+import type { ListedShare, LiveShare, ShareKind } from "../shared/socket/shares.ts";
 import { sameShare } from "../shared/socket/watching.ts";
 import type { MediaLayer, Pulled, Track } from "./media/index.ts";
 import type { Tab } from "./signaling.ts";
@@ -43,8 +43,16 @@ interface ShareRecord {
   tab: string;
   kind: ShareKind;
   video: Track;
+  /** A screen share's screen audio; null for a webcam share, or a screen share that is video only. */
+  audio: Track | null;
   /** Whether the media server registered it, so the room was told it is live. */
   live: boolean;
+}
+
+/** A track pulled for a watch: the share's track name, on the mid the media server gave it, null until then. */
+interface PulledTrack {
+  name: string;
+  mid: string | null;
 }
 
 /** A watch as the instance recorded it. */
@@ -58,8 +66,10 @@ interface WatchRecord {
   /** The share's id, and the share as the room knows it. */
   shareId: string;
   share: LiveShare;
-  /** The pulled video track: the share's track name, on the mid the media server gave it. */
-  video: { name: string; mid: string | null };
+  /** The pulled video track. */
+  video: PulledTrack;
+  /** The pulled screen audio, when the share has any. */
+  audio: PulledTrack | null;
   /** Whether the pull returned and the share went on the viewer's stage. */
   watching: boolean;
 }
@@ -138,15 +148,15 @@ export interface WatchingListener {
 
 /** What became of a request to watch a share. */
 export type Watched =
-  /** It is on the tab's stage: `offer` and `video` go to the viewer's tab. */
-  | { watching: true; offer: string; video: string }
+  /** It is on the tab's stage: `offer`, `video` and `audio` go to the viewer's tab. */
+  | { watching: true; offer: string; video: string; audio: string | null }
   /** It was refused, or the media server failed it. */
   | { watching: false };
 
 /** What became of a request to start a share. */
 export type Started =
   /** It is live: `answer` goes to the sharer's tab. */
-  | { live: true; share: LiveShare; answer: string }
+  | { live: true; share: ListedShare; answer: string }
   /** It was refused, or the media server failed it. */
   | { live: false };
 
@@ -161,6 +171,8 @@ interface WatchRow extends Record<string, SqlStorageValue> {
   kind: string;
   video_track: string;
   video_mid: string | null;
+  audio_track: string | null;
+  audio_mid: string | null;
 }
 
 interface ShareRow extends Record<string, SqlStorageValue> {
@@ -171,6 +183,8 @@ interface ShareRow extends Record<string, SqlStorageValue> {
   kind: string;
   video_track: string;
   video_mid: string;
+  audio_track: string | null;
+  audio_mid: string | null;
   live_at: number | null;
 }
 
@@ -199,9 +213,9 @@ export class Shares {
   ) {}
 
   /** The live shares in the room at `address`, oldest first. */
-  live(address: string): LiveShare[] {
+  live(address: string): ListedShare[] {
     return this.records("WHERE room_address = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address).map(
-      toLiveShare,
+      toListedShare,
     );
   }
 
@@ -270,34 +284,40 @@ export class Shares {
   }
 
   /**
-   * Starts a webcam share by `member` from `tab`, which the browser's `offer` sends on
-   * the transceiver `mid`. Refused unless the tab's media connection is made and the
-   * member has no other webcam share anywhere in the instance, live or starting.
-   * `stillOpen` says whether the tab is still there once the media server has answered.
+   * Starts a share of `kind` by `member` from `tab`, which the browser's `offer` sends:
+   * its video on the transceiver `mids.video` and, for a screen share with screen audio,
+   * its audio on `mids.audio`. The two are one unit: recorded, published and closed
+   * together. Refused unless the tab's media connection is made and the member has no
+   * other share of that kind anywhere in the instance, live or starting. A webcam share
+   * is video only. `stillOpen` says whether the tab is still there once the media server
+   * has answered.
    */
-  async startWebcam(
+  async start(
     tab: Tab,
     member: string,
+    kind: ShareKind,
     offer: string,
-    mid: string,
+    mids: { video: string; audio?: string },
     stillOpen: () => boolean,
   ): Promise<Started> {
     const mediaId = this.connectionRow(tab.id)?.media_id;
     if (typeof mediaId !== "string") return { live: false };
-    if (this.records("WHERE member_id = ? AND kind = 'webcam'", member).length > 0) return { live: false };
+    if (mids.audio !== undefined && (kind === "webcam" || mids.audio === mids.video)) return { live: false };
+    if (this.records("WHERE member_id = ? AND kind = ?", member, kind).length > 0) return { live: false };
 
     const share: ShareRecord = {
       id: crypto.randomUUID(),
       member,
       room: tab.room,
       tab: tab.id,
-      kind: "webcam",
-      video: { name: `webcam-${crypto.randomUUID()}`, mid },
+      kind,
+      video: { name: `${kind}-${crypto.randomUUID()}`, mid: mids.video },
+      audio: mids.audio === undefined ? null : { name: `${kind}-audio-${crypto.randomUUID()}`, mid: mids.audio },
       live: false,
     };
     this.sql.exec(
-      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       share.id,
       member,
       tab.device,
@@ -306,6 +326,8 @@ export class Shares {
       share.kind,
       share.video.name,
       share.video.mid,
+      share.audio?.name ?? null,
+      share.audio?.mid ?? null,
       Date.now(),
     );
 
@@ -313,7 +335,7 @@ export class Shares {
     try {
       let answer: string;
       try {
-        answer = await this.media.publish(mediaId, offer, [share.video]);
+        answer = await this.media.publish(mediaId, offer, tracksOf(share));
       } catch {
         // The track may exist even so: close it before forgetting it.
         await this.closeTracks(share);
@@ -327,7 +349,7 @@ export class Shares {
         return { live: false };
       }
       this.sql.exec("UPDATE share SET live_at = ? WHERE id = ?", Date.now(), share.id);
-      return { live: true, share: toLiveShare(share), answer };
+      return { live: true, share: toListedShare(share), answer };
     } finally {
       this.inFlight.delete(share.id);
     }
@@ -362,11 +384,12 @@ export class Shares {
       shareId: watched.id,
       share: toLiveShare(watched),
       video: { name: watched.video.name, mid: null },
+      audio: watched.audio ? { name: watched.audio.name, mid: null } : null,
       watching: false,
     };
     this.sql.exec(
-      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, audio_track, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       record.id,
       tab.id,
       tab.member,
@@ -376,6 +399,7 @@ export class Shares {
       watched.member,
       watched.kind,
       record.video.name,
+      record.audio?.name ?? null,
       Date.now(),
     );
 
@@ -383,16 +407,23 @@ export class Shares {
     try {
       let pulled: Pulled;
       try {
-        pulled = await this.media.pull(viewerMediaId, sharerMediaId, [record.video.name]);
+        // A screen share's video and audio are pulled together, as one unit.
+        pulled = await this.media.pull(viewerMediaId, sharerMediaId, pulledTracksOf(record).map((track) => track.name));
       } catch {
         // The media server gave no mid to close by, so the record goes. A pulled track it
         // made all the same is for the sweep, which closes what no record names.
         this.sql.exec("DELETE FROM watch WHERE id = ?", record.id);
         return { watching: false };
       }
-      const mid = pulled.tracks.find((track) => track.name === record.video.name)?.mid ?? pulled.tracks[0]?.mid ?? "";
-      record.video.mid = mid;
-      this.sql.exec("UPDATE watch SET video_mid = ? WHERE id = ?", mid, record.id);
+      const midOf = (name: string) => pulled.tracks.find((track) => track.name === name)?.mid ?? null;
+      record.video.mid = midOf(record.video.name) ?? pulled.tracks[0]?.mid ?? "";
+      if (record.audio) record.audio.mid = midOf(record.audio.name);
+      this.sql.exec(
+        "UPDATE watch SET video_mid = ?, audio_mid = ? WHERE id = ?",
+        record.video.mid,
+        record.audio?.mid ?? null,
+        record.id,
+      );
 
       // A share being ended gains no viewer, even if its own close then fails.
       const shareGone = this.ending.has(watched.id) || this.records("WHERE id = ?", watched.id).length === 0;
@@ -406,7 +437,7 @@ export class Shares {
       this.changeWatchers(record, () =>
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
       );
-      return { watching: true, offer: pulled.offer, video: mid };
+      return { watching: true, offer: pulled.offer, video: record.video.mid, audio: record.audio?.mid ?? null };
     } finally {
       this.inFlight.delete(record.id);
     }
@@ -525,7 +556,8 @@ export class Shares {
   private async closeTracks(share: ShareRecord, { subject, gone = false }: { subject?: Subject; gone?: boolean } = {}) {
     const mediaId = this.connectionRow(share.tab)?.media_id;
     try {
-      if (typeof mediaId === "string" && !gone) await this.media.close(mediaId, [share.video]);
+      // A screen share's video and audio close together, in one call.
+      if (typeof mediaId === "string" && !gone) await this.media.close(mediaId, tracksOf(share));
     } catch {
       this.failed({ kind: "share", id: share.id }, subject);
       return false;
@@ -547,10 +579,8 @@ export class Shares {
     const mediaId = this.connectionRow(watch.tab)?.media_id;
     this.closing.add(watch.id);
     try {
-      const { mid } = watch.video;
-      if (typeof mediaId === "string" && mid !== null && !gone) {
-        await this.media.close(mediaId, [{ name: watch.video.name, mid }]);
-      }
+      const pulled = pulledTracksOf(watch).flatMap((track) => (track.mid === null ? [] : [{ name: track.name, mid: track.mid }]));
+      if (typeof mediaId === "string" && pulled.length > 0 && !gone) await this.media.close(mediaId, pulled);
     } catch {
       this.failed({ kind: "watch", id: watch.id }, subject);
       return;
@@ -609,27 +639,32 @@ export class Shares {
 
     // Every track a record whose call is done, or still under way, accounts for.
     const accounted = new Set<string>();
-    for (const share of shares) if (share.live || busy(share.id) || !before.has(share.id)) accounted.add(share.video.name);
-    for (const watch of watches) if (watch.watching || busy(watch.id) || !before.has(watch.id)) accounted.add(watch.video.name);
+    const account = (tracks: { name: string }[]) => tracks.forEach((track) => accounted.add(track.name));
+    for (const share of shares) if (share.live || busy(share.id) || !before.has(share.id)) account(tracksOf(share));
+    for (const watch of watches) if (watch.watching || busy(watch.id) || !before.has(watch.id)) account(pulledTracksOf(watch));
 
     const ended: Ended[] = [];
     for (const share of shares) {
       if (!before.has(share.id) || busy(share.id)) continue;
       const track = openTrack(share.video.name);
+      const audio = share.audio && openTrack(share.audio.name);
       if (share.live) {
-        // Its track is gone: the share has ended, and its viewers' pulls carry nothing.
+        // Its picture is gone: the share has ended, and its viewers' pulls carry nothing.
         if (!track) ended.push(...(await this.end([share], null, undefined, { gone: true })));
       } else {
-        await this.closeTracks({ ...share, video: track ?? share.video }, { gone: !track });
+        const found = { ...share, video: track ?? share.video, audio: audio ?? share.audio };
+        await this.closeTracks(found, { gone: !track && !audio });
       }
     }
     for (const watch of watches) {
       if (!before.has(watch.id) || busy(watch.id)) continue;
       const track = openTrack(watch.video.name);
+      const audio = watch.audio && openTrack(watch.audio.name);
       if (watch.watching) {
         if (!track) await this.closeWatch(watch, { gone: true });
       } else {
-        await this.closeWatch({ ...watch, video: track ?? watch.video }, { gone: !track });
+        const found = { ...watch, video: track ?? watch.video, audio: audio ?? watch.audio };
+        await this.closeWatch(found, { gone: !track && !audio });
       }
     }
     for (const track of open) {
@@ -777,7 +812,8 @@ export class Shares {
   private records(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
     return this.sql
       .exec<ShareRow>(
-        `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, live_at FROM share ${where}`,
+        `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at
+         FROM share ${where}`,
         ...bindings,
       )
       .toArray()
@@ -788,6 +824,7 @@ export class Shares {
         tab: row.tab_id,
         kind: row.kind as ShareKind,
         video: { name: row.video_track, mid: row.video_mid },
+        audio: row.audio_track !== null && row.audio_mid !== null ? { name: row.audio_track, mid: row.audio_mid } : null,
         live: row.live_at !== null,
       }));
   }
@@ -795,7 +832,9 @@ export class Shares {
   private watches(where: string, ...bindings: SqlStorageValue[]): WatchRecord[] {
     return this.sql
       .exec<WatchRow>(
-        `SELECT id, tab_id, member_id, room_address, share_id, sharer_id, kind, video_track, video_mid, watching_at FROM watch ${where}`,
+        `SELECT id, tab_id, member_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track, audio_mid,
+           watching_at
+         FROM watch ${where}`,
         ...bindings,
       )
       .toArray()
@@ -807,6 +846,7 @@ export class Shares {
         shareId: row.share_id,
         share: { member: row.sharer_id, kind: row.kind as ShareKind },
         video: { name: row.video_track, mid: row.video_mid },
+        audio: row.audio_track !== null ? { name: row.audio_track, mid: row.audio_mid } : null,
         watching: row.watching_at !== null,
       }));
   }
@@ -814,4 +854,19 @@ export class Shares {
 
 function toLiveShare(share: ShareRecord): LiveShare {
   return { member: share.member, kind: share.kind };
+}
+
+/** A share as the room lists it: a screen share says whether it carries screen audio. */
+function toListedShare(share: ShareRecord): ListedShare {
+  return share.kind === "screen" ? { ...toLiveShare(share), audio: share.audio !== null } : toLiveShare(share);
+}
+
+/** A share's own tracks, which are recorded, published and closed together. */
+function tracksOf(share: ShareRecord): Track[] {
+  return share.audio ? [share.video, share.audio] : [share.video];
+}
+
+/** A watch's pulled tracks: the share's video and, when it has any, its screen audio. */
+function pulledTracksOf(watch: WatchRecord): PulledTrack[] {
+  return watch.audio ? [watch.video, watch.audio] : [watch.video];
 }

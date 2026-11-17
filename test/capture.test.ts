@@ -1,0 +1,94 @@
+// What graeae asks the browser's picker for when a member shares their screen: one pure
+// rule, taking the browser family. The expected values come from the spec's Screen audio
+// section, not from the code.
+
+import { describe, expect, it } from "vitest";
+import { browserFamily, screenCapture, stereoOpus } from "../src/app/lib/media/capture.ts";
+
+describe("a screen capture on Chromium", () => {
+  const asked = screenCapture("chromium");
+
+  it("asks for screen audio in stereo, with echo cancellation, noise suppression and automatic gain off", () => {
+    expect(asked.audio).toMatchObject({
+      channelCount: 2,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    });
+  });
+
+  it("always leaves the sharing page's own audio out", () => {
+    expect(asked.audio).toMatchObject({ restrictOwnAudio: true });
+    expect(asked.selfBrowserSurface).toBe("exclude");
+  });
+
+  it("never asks for the whole system's sound, and asks a window for its own application's", () => {
+    expect(asked.systemAudio).toBe("exclude");
+    expect(asked.windowAudio).toBe("window");
+  });
+
+  it("asks the picker to have its audio checkbox ticked", () => {
+    expect(asked.audioSelection).toBe("preferred");
+  });
+
+  it("asks for one quality of picture: up to 1080p at up to 60 fps", () => {
+    expect(asked.video).toEqual({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+  });
+});
+
+describe("a screen capture on Firefox", () => {
+  const asked = screenCapture("firefox");
+
+  it("asks for video only, which is all Firefox captures", () => {
+    expect(asked.audio).toBe(false);
+  });
+
+  it("asks nothing of Chromium's picker", () => {
+    expect(asked).toEqual({ video: screenCapture("chromium").video, audio: false });
+  });
+});
+
+describe("the browser family", () => {
+  it("is Firefox for Firefox", () => {
+    expect(browserFamily("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0")).toBe(
+      "firefox",
+    );
+  });
+
+  it("is Chromium for Chrome, and for any other browser, which takes what it understands of the request", () => {
+    expect(
+      browserFamily(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      ),
+    ).toBe("chromium");
+    expect(
+      browserFamily(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+      ),
+    ).toBe("chromium");
+  });
+});
+
+describe("screen audio's description", () => {
+  const offer = [
+    "v=0",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111 63",
+    "a=rtpmap:111 opus/48000/2",
+    "a=fmtp:111 minptime=10;useinbandfec=1",
+    "a=rtpmap:63 red/48000/2",
+    "a=fmtp:63 111/111",
+    "",
+  ].join("\r\n");
+
+  it("asks for Opus in stereo, both ways", () => {
+    expect(stereoOpus(offer)).toContain("a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1\r\n");
+  });
+
+  it("leaves every other codec alone", () => {
+    expect(stereoOpus(offer)).toContain("a=fmtp:63 111/111\r\n");
+  });
+
+  it("is said once however often it is applied", () => {
+    expect(stereoOpus(stereoOpus(offer))).toBe(stereoOpus(offer));
+  });
+});
