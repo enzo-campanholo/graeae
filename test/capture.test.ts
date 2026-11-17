@@ -31,8 +31,8 @@ describe("a screen capture on Chromium", () => {
     expect(asked.audioSelection).toBe("preferred");
   });
 
-  it("asks for one quality of picture: up to 1080p at up to 60 fps", () => {
-    expect(asked.video).toEqual({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+  it("asks for a picture up to 1080p at 120 fps, so a full 60 gets through to the sender", () => {
+    expect(asked.video).toEqual({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 120, max: 120 } });
   });
 });
 
@@ -43,8 +43,11 @@ describe("a screen capture on Firefox", () => {
     expect(asked.audio).toBe(false);
   });
 
-  it("asks nothing of Chromium's picker", () => {
-    expect(asked).toEqual({ video: screenCapture("chromium").video, audio: false });
+  it("asks for a picture up to 1080p at 30 fps, and nothing of Chromium's picker", () => {
+    expect(asked).toEqual({
+      video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+      audio: false,
+    });
   });
 });
 

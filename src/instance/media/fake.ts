@@ -9,10 +9,24 @@
 // in the instance uses it, and no request can reach it.
 
 import type { IceServer } from "../../shared/socket/media.ts";
-import type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
+import type { MediaConnectionId, MediaLayer, Pulled, QualityChoice, Track } from "./layer.ts";
 
 /** The calls a test can make fail or wait. */
-export type FakeOperation = "connect" | "publish" | "pull" | "renegotiate" | "close" | "tracks" | "relayCredential";
+export type FakeOperation =
+  | "connect"
+  | "publish"
+  | "pull"
+  | "setQuality"
+  | "renegotiate"
+  | "close"
+  | "tracks"
+  | "relayCredential";
+
+/** The quality a viewer prefers a pulled track sent at two qualities at, on the mid it was pulled on. */
+export interface Preferred {
+  mid: string;
+  quality: QualityChoice;
+}
 
 /** A relay credential the fake minted, with the life it was asked for. */
 export interface MintedCredential {
@@ -56,6 +70,8 @@ class FakeMediaServer implements MediaLayer {
   readonly mids = new Map<MediaConnectionId, Set<string>>();
   /** The answers each media connection was given to the offers of its pulls, oldest first. */
   readonly answers = new Map<MediaConnectionId, string[]>();
+  /** The quality each pulled track sent at two qualities is preferred at, by media connection and mid. */
+  readonly preferred = new Map<MediaConnectionId, Map<string, QualityChoice>>();
   readonly credentials: MintedCredential[] = [];
   /** Every identifier the fake has handed the instance, which no browser may ever see. */
   readonly identifiers = new Set<string>();
@@ -69,6 +85,7 @@ class FakeMediaServer implements MediaLayer {
       this.connections.set(id, new Map());
       this.mids.set(id, new Set());
       this.answers.set(id, []);
+      this.preferred.set(id, new Map());
       this.identifiers.add(id);
       return id;
     });
@@ -89,8 +106,14 @@ class FakeMediaServer implements MediaLayer {
     });
   }
 
-  pull(connection: MediaConnectionId, from: MediaConnectionId, names: readonly string[]): Promise<Pulled> {
+  pull(
+    connection: MediaConnectionId,
+    from: MediaConnectionId,
+    names: readonly string[],
+    preferred?: { name: string; quality: QualityChoice },
+  ): Promise<Pulled> {
     return this.call("pull", () => {
+      if (preferred && !names.includes(preferred.name)) throw new Error(`The fake is not pulling ${preferred.name}`);
       const open = this.connection(connection);
       const source = [...this.connection(from).values()];
       for (const name of names) {
@@ -103,9 +126,23 @@ class FakeMediaServer implements MediaLayer {
         const track = { name, mid: String(mid) };
         this.useMid(connection, track.mid);
         open.set(track.mid, track);
+        if (preferred?.name === name) this.preferred.get(connection)!.set(track.mid, preferred.quality);
         return { ...track };
       });
       return { offer: `v=0 a stand-in offer pulling ${tracks.length} track(s)`, tracks };
+    });
+  }
+
+  setQuality(connection: MediaConnectionId, from: MediaConnectionId, track: Track, quality: QualityChoice): Promise<void> {
+    return this.call("setQuality", () => {
+      const pulled = this.connection(connection).get(track.mid);
+      if (pulled?.name !== track.name) throw new Error(`The fake has no pulled track ${track.name} on mid ${track.mid}`);
+      if (![...this.connection(from).values()].some((source) => source.name === track.name)) {
+        throw new Error(`The fake's media connection ${from} sends no track ${track.name}`);
+      }
+      const preferred = this.preferred.get(connection)!;
+      if (!preferred.has(track.mid)) throw new Error(`The fake's track ${track.name} has one quality`);
+      preferred.set(track.mid, quality);
     });
   }
 
@@ -119,7 +156,10 @@ class FakeMediaServer implements MediaLayer {
   close(connection: MediaConnectionId, tracks: readonly Track[]): Promise<void> {
     return this.call("close", () => {
       const open = this.connection(connection);
-      for (const track of tracks) open.delete(track.mid);
+      for (const track of tracks) {
+        open.delete(track.mid);
+        this.preferred.get(connection)!.delete(track.mid);
+      }
     });
   }
 
@@ -151,6 +191,7 @@ class FakeMediaServer implements MediaLayer {
     this.connections.clear();
     this.mids.clear();
     this.answers.clear();
+    this.preferred.clear();
     this.credentials.length = 0;
     this.identifiers.clear();
     this.faults.clear();
@@ -206,6 +247,13 @@ export const fakeMediaControl = {
 
   /** The answers each media connection gave to the offers of its pulls, one list per connection, oldest connection first. */
   answers: (): string[][] => [...server.answers.values()].map((answers) => [...answers]),
+
+  /**
+   * The quality each open pulled track sent at two qualities is preferred at, oldest
+   * connection first. A track with one quality is not listed.
+   */
+  preferred: (): Preferred[] =>
+    [...server.preferred.values()].flatMap((tracks) => [...tracks].map(([mid, quality]) => ({ mid, quality }))),
 
   /** Every relay credential minted, oldest first. */
   credentials: (): readonly MintedCredential[] => [...server.credentials],

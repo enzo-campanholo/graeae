@@ -120,6 +120,10 @@
     kind: ShareKind;
     /** A screen share with no screen audio. */
     videoOnly?: boolean;
+    /** A share at two qualities: the viewer may choose which they watch it at. */
+    twoQualities?: boolean;
+    /** It arrives at the lower of its two qualities. */
+    lower?: boolean;
     share?: LiveShare;
     stream?: MediaStream | null;
     scene?: Scene;
@@ -129,14 +133,21 @@
       ? room.stage.map((share) => ({ key: share.id, name: share.name, kind: share.kind, scene: share.scene }))
       : (view?.watching.stage ?? [])
           .filter((share) => isLive(share.member, share.kind))
-          .map((share) => ({
-            key: `${share.member}:${share.kind}`,
-            name: nameOf(share.member),
-            kind: share.kind,
-            videoOnly: view?.shares.live.some((live) => sameShare(live, share) && live.audio === false),
-            share,
-            stream: client?.pictures.find((picture) => sameShare(picture.share, share))?.stream ?? null,
-          })),
+          .map((share) => {
+            const listed = view?.shares.live.find((live) => sameShare(live, share));
+            const picture = client?.pictures.find((candidate) => sameShare(candidate.share, share));
+            const twoQualities = listed?.twoQualities === true;
+            return {
+              key: `${share.member}:${share.kind}`,
+              name: nameOf(share.member),
+              kind: share.kind,
+              videoOnly: listed?.audio === false,
+              twoQualities,
+              lower: twoQualities && picture?.received === "720p",
+              share,
+              stream: picture?.stream ?? null,
+            };
+          }),
   );
 
   // The focused share, large above a strip of the others, while it is on the stage.
@@ -347,6 +358,10 @@
     name={tile.name}
     kind={tile.kind}
     videoOnly={tile.videoOnly}
+    quality={tile.twoQualities && tile.share && client
+      ? { value: client.quality(tile.share), onchoose: (quality) => tile.share && client?.chooseQuality(tile.share, quality) }
+      : null}
+    lower={tile.lower}
     {place}
     onstop={tile.share ? () => tile.share && client?.unwatch(tile.share) : undefined}
     onfocus={() => (focusedKey = tile.key)}

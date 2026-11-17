@@ -10,6 +10,7 @@ import type {
 } from "../src/shared/api.ts";
 import { SETUP_SECRET, type TestBrowser, type TestInstance } from "./harness.ts";
 import type { Tab } from "./sockets.ts";
+import type { BrowserFamily } from "../src/shared/encoding.ts";
 import type { IceServer, LiveShare } from "../src/shared/socket/index.ts";
 
 /** What the setup page sends: the part of `/setup#<secret>` after the `#`. */
@@ -187,12 +188,20 @@ export const FAKE_AUDIO_MID = "1";
 
 /**
  * What the page sends to start a screen share, once its media connection is made: with
- * screen audio on the transceiver `audio`, or video only when the picker gave no sound.
+ * screen audio on the transceiver `audio`, or video only when the picker gave no sound,
+ * from a browser of `browser`'s family (Chromium unless a test says otherwise).
  */
-export function startScreen(tab: Tab, { audio = FAKE_AUDIO_MID as string | null, video = FAKE_VIDEO_MID } = {}) {
+export function startScreen(
+  tab: Tab,
+  {
+    audio = FAKE_AUDIO_MID as string | null,
+    video = FAKE_VIDEO_MID,
+    browser = "chromium" as BrowserFamily,
+  } = {},
+) {
   tab.send({
     type: "shares",
-    request: { type: "start", kind: "screen", offer: FAKE_OFFER, video, ...(audio === null ? {} : { audio }) },
+    request: { type: "start", kind: "screen", offer: FAKE_OFFER, video, browser, ...(audio === null ? {} : { audio }) },
   });
 }
 
@@ -205,9 +214,9 @@ export function stopScreen(tab: Tab) {
  * Has `tab` share its screen, as the page does once the browser's picker returns: make
  * the media connection, offer, and read the instance's answer, then the share going live.
  */
-export async function shareScreen(tab: Tab, { audio = true } = {}) {
+export async function shareScreen(tab: Tab, { audio = true, browser = "chromium" as BrowserFamily } = {}) {
   await connectMedia(tab);
-  startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null });
+  startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null, browser });
   expect(await tab.next()).toEqual({
     type: "media",
     change: { type: "published", kind: "screen", answer: expect.any(String) },

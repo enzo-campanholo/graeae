@@ -4,12 +4,13 @@
 // that fails or never returns leaves a record with nothing behind it, never a track with
 // no record.
 //
-// This holds only the operations the instance uses so far. Ticket 17 adds changing a
-// viewer's quality. The
-// Cloudflare implementation is in `cloudflare.ts`; the in-memory fake in `fake.ts`
+// The Cloudflare implementation is in `cloudflare.ts`; the in-memory fake in `fake.ts`
 // stands in for it in tests.
 
 import type { IceServer } from "../../shared/socket/media.ts";
+import type { QualityChoice } from "../../shared/socket/watching.ts";
+
+export type { QualityChoice };
 
 /** The media server's own identifier for one media connection. It never reaches a browser. */
 export type MediaConnectionId = string;
@@ -47,8 +48,23 @@ export interface MediaLayer {
    * `connection`, for a viewer. Returns the media server's SDP offer, which the browser
    * answers through `renegotiate`, and the pulled tracks with the mids the media server
    * gave them. Fails if `from` has no such track.
+   *
+   * `preferred` names a track sent at two qualities, and the quality this viewer prefers
+   * it at; every other track has one quality.
    */
-  pull(connection: MediaConnectionId, from: MediaConnectionId, names: readonly string[]): Promise<Pulled>;
+  pull(
+    connection: MediaConnectionId,
+    from: MediaConnectionId,
+    names: readonly string[],
+    preferred?: { name: string; quality: QualityChoice },
+  ): Promise<Pulled>;
+
+  /**
+   * Changes the quality a viewer receives `track`, pulled to `connection` from `from` and
+   * sent at two qualities, at: mid-watch, with nothing needed from the browser. "Auto"
+   * lets the media server step this viewer alone down to 720p when their link is weak.
+   */
+  setQuality(connection: MediaConnectionId, from: MediaConnectionId, track: Track, quality: QualityChoice): Promise<void>;
 
   /** Hands the media server the browser's SDP `answer` to the offer of its last pull. */
   renegotiate(connection: MediaConnectionId, answer: string): Promise<void>;

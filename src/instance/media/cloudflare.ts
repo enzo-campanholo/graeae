@@ -15,17 +15,38 @@
 // | connect        | POST sessions/new                                                     |
 // | publish        | POST sessions/{id}/tracks/new, local tracks and the browser's offer   |
 // | pull           | POST sessions/{id}/tracks/new, remote tracks; gives the server's offer |
+// | setQuality     | PUT sessions/{id}/tracks/update, the pulled track's simulcast choice  |
 // | renegotiate    | PUT sessions/{id}/renegotiate, the browser's answer                   |
 // | close          | PUT sessions/{id}/tracks/close, force: true                           |
 // | tracks         | GET sessions/{id}                                                     |
 //
 // and the relay credential is POST https://rtc.live.cloudflare.com/v1/turn/keys/
 // {TURN_KEY_ID}/credentials/generate-ice-servers.
+//
+// Two qualities are simulcast: the sharer's browser sends one encode per quality, each
+// with its rid (`RIDS` in `src/shared/encoding.ts`), and each viewer's pull names the one
+// it prefers (developers.cloudflare.com/realtime/sfu/simulcast/). The owner's real-media
+// pass (ticket 27) proves it.
 
+import { RIDS } from "../../shared/encoding.ts";
 import type { IceServer } from "../../shared/socket/media.ts";
-import type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
+import type { MediaConnectionId, MediaLayer, Pulled, QualityChoice, Track } from "./layer.ts";
 
 const API = "https://rtc.live.cloudflare.com/v1";
+
+/**
+ * What the media server is told of a viewer's choice. "Auto" prefers 1080p and lets the
+ * media server step down to 720p when this viewer's link cannot carry it; a fixed choice
+ * keeps its quality whatever the link. Either way, a quality the sharer stops sending
+ * (a weak upload) gives way to the other.
+ */
+function simulcast(quality: QualityChoice) {
+  return {
+    preferredRid: RIDS[quality === "720p" ? "720p" : "1080p"],
+    priorityOrdering: quality === "auto" ? "asciibetical" : "none",
+    ridNotAvailable: "asciibetical",
+  };
+}
 
 /** A call that takes longer is given up. Its record stays, as for any failed call. */
 const TIMEOUT_MS = 10_000;
@@ -83,10 +104,20 @@ export class CloudflareMediaServer implements MediaLayer {
     return answer.sessionDescription.sdp;
   }
 
-  async pull(connection: MediaConnectionId, from: MediaConnectionId, names: readonly string[]): Promise<Pulled> {
+  async pull(
+    connection: MediaConnectionId,
+    from: MediaConnectionId,
+    names: readonly string[],
+    preferred?: { name: string; quality: QualityChoice },
+  ): Promise<Pulled> {
     // Built from the instance's own records: the sharer's session and the track names it picked.
     const answer = await this.sfu("POST", `/sessions/${connection}/tracks/new`, {
-      tracks: names.map((name) => ({ location: "remote", sessionId: from, trackName: name })),
+      tracks: names.map((name) => ({
+        location: "remote",
+        sessionId: from,
+        trackName: name,
+        ...(preferred?.name === name ? { simulcast: simulcast(preferred.quality) } : {}),
+      })),
     });
     failedTracks(answer.tracks);
     if (answer.sessionDescription?.type !== "offer") throw new Error("The media server gave no offer for a pull");
@@ -96,6 +127,15 @@ export class CloudflareMediaServer implements MediaLayer {
       return { name, mid: pulled.mid };
     });
     return { offer: answer.sessionDescription.sdp, tracks };
+  }
+
+  async setQuality(connection: MediaConnectionId, from: MediaConnectionId, track: Track, quality: QualityChoice): Promise<void> {
+    const answer = await this.sfu("PUT", `/sessions/${connection}/tracks/update`, {
+      tracks: [
+        { location: "remote", sessionId: from, trackName: track.name, mid: track.mid, simulcast: simulcast(quality) },
+      ],
+    });
+    failedTracks(answer.tracks);
   }
 
   async renegotiate(connection: MediaConnectionId, answer: string): Promise<void> {

@@ -6,8 +6,9 @@
 // that is not Firefox is asked as Chromium is, and takes what it understands of the
 // request: a hint it does not know is ignored, and any audio its picker gives is sent.
 
-/** The browsers whose screen capture differs: Chromium has screen audio, Firefox has none. */
-export type BrowserFamily = "chromium" | "firefox";
+import { encodingPlan, type BrowserFamily } from "../../../shared/encoding.ts";
+
+export type { BrowserFamily };
 
 /** Screen audio's constraints: stereo, and none of the processing meant for a voice. */
 export interface ScreenAudio {
@@ -41,17 +42,17 @@ export interface ScreenCaptureRequest {
 }
 
 /**
- * One quality of picture, until ticket 17 sets the encoding rules: up to 1080p, at up to
- * 60 fps.
+ * What to ask the browser's picker for when a member shares their screen. The picture is
+ * the encoding plan's: a larger monitor is scaled down to 1080p, and a Chromium capture
+ * is asked for 120 fps so that a full 60 reaches the sender.
  */
-const PICTURE = { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } };
-
-/** What to ask the browser's picker for when a member shares their screen. */
 export function screenCapture(browser: BrowserFamily): ScreenCaptureRequest {
+  const { width, height, frameRate } = encodingPlan(browser, "screen").capture;
+  const video = { width: { max: width }, height: { max: height }, frameRate: { ideal: frameRate, max: frameRate } };
   // Firefox captures no screen audio on any system: its share is video only.
-  if (browser === "firefox") return { video: PICTURE, audio: false };
+  if (browser === "firefox") return { video, audio: false };
   return {
-    video: PICTURE,
+    video,
     audio: {
       channelCount: 2,
       echoCancellation: false,
