@@ -36,6 +36,9 @@ function control(): FakeMediaControl {
       asked: [],
       screenAudio: null,
       endScreen: () => undefined,
+      falter: () => undefined,
+      recover: () => undefined,
+      connections: 0,
       received: "1080p",
       receive: (quality) => {
         made.received = quality;
@@ -83,8 +86,20 @@ export class FakeMediaClient implements MediaClient {
     return screen;
   }
 
-  connect(iceServers: IceServer[]) {
+  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
     void iceServers;
+    const fake = control();
+    fake.connections += 1;
+    fake.falter = () => faltering(true);
+    fake.recover = () => faltering(false);
+  }
+
+  reset() {
+    const fake = control();
+    fake.falter = () => undefined;
+    fake.recover = () => undefined;
+    this.nextMid = 0;
+    this.pulled.clear();
   }
 
   async offer(capture: Capture): Promise<Offer> {

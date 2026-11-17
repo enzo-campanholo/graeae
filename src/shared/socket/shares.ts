@@ -5,6 +5,12 @@
 // Starting and stopping a share are the sharer's tab's requests. The answer to a start
 // that only the sharer's tab needs (the media server's half of the negotiation, or a
 // refusal) comes in the media area; every tab on the room hears `started` and `ended`.
+//
+// A share whose sending tab has lost its signaling connection stays live through the
+// grace period, since its media may still flow. After about 10 seconds of silence from
+// that tab the room hears `reconnecting` for the share, and `reconnected` once the tab is
+// heard again. The mark is the sending tab's, not the member's: another device of theirs
+// that is still heard keeps the mark off their name, but not off this share.
 
 import type { BrowserFamily } from "../encoding.ts";
 import { unknownChange } from "./area.ts";
@@ -27,6 +33,8 @@ export interface LiveShare {
 export interface ListedShare extends LiveShare {
   /** A screen share only: true when it carries screen audio, false when it is video only. */
   audio?: boolean;
+  /** Present only while the tab sending it has not been heard for about 10 seconds. */
+  reconnecting?: true;
   /**
    * Present on a share that goes out at two qualities, 1080p and 720p (a Chromium screen
    * share): a viewer may choose "Auto", "1080p" or "720p". Left out on a share with one.
@@ -43,7 +51,11 @@ export type SharesChange =
   /** A share went live in the room. */
   | { type: "started"; share: ListedShare }
   /** A share ended: its tracks are closed at the media server. */
-  | { type: "ended"; share: LiveShare };
+  | { type: "ended"; share: LiveShare }
+  /** The tab sending a share has not been heard for about 10 seconds. The share is still live. */
+  | { type: "reconnecting"; share: LiveShare }
+  /** The tab sending a share marked "reconnecting" is heard again. */
+  | { type: "reconnected"; share: LiveShare };
 
 export type SharesRequest =
   /**
@@ -68,6 +80,19 @@ export function applyShares(state: SharesState, change: SharesChange): SharesSta
       return { live: [...state.live.filter((share) => !same(share, change.share)), change.share] };
     case "ended":
       return { live: state.live.filter((share) => !same(share, change.share)) };
+    case "reconnecting":
+      return {
+        live: state.live.map((share) => (same(share, change.share) ? { ...share, reconnecting: true } : share)),
+      };
+    case "reconnected":
+      return {
+        live: state.live.map((share) => {
+          if (!same(share, change.share)) return share;
+          const { reconnecting, ...heard } = share;
+          void reconnecting;
+          return heard;
+        }),
+      };
     default:
       return unknownChange(state, change);
   }

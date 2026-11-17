@@ -315,6 +315,10 @@ describe("each case of the cut-off", () => {
       await kept.heartbeat();
     }
 
+    // The share's own mark came first, at 10 seconds: Bia's other tab kept her name unmarked.
+    const marked = { type: "shares", change: { type: "reconnecting", share: biasWebcam } };
+    expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([marked]);
+    expect(await until(kept, (message) => message.type === "shares")).toEqual([marked]);
     expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([
       unwatched(biasWebcam),
       ended(biasWebcam),

@@ -52,6 +52,13 @@ export class Instance extends DurableObject<Env> {
       ctx,
       (address) => this.relist(address),
       () => this.schedule(),
+      // A share's own mark: the tab sending it has fallen silent, or is heard again.
+      (address, tab, silent, exceptTab) => {
+        for (const share of this.shares.liveFrom(tab)) {
+          const change = { type: silent ? ("reconnecting" as const) : ("reconnected" as const), share };
+          this.signaling.toRoom(address, { type: "shares", change }, exceptTab);
+        }
+      },
     );
     this.shares = new Shares(
       ctx.storage.sql,
@@ -108,10 +115,11 @@ export class Instance extends DurableObject<Env> {
 
   /**
    * Sets the instance's one alarm for the earliest moment anything waits for: a grace
-   * period running out, a member falling silent, or a failed close's next try.
+   * period running out, a member falling silent, a failed close's next try, or the end
+   * of a share whose media has faltered for 30 seconds.
    */
   private schedule() {
-    const moments = [this.signaling.nextMoment(), this.shares.nextRetry()].filter(
+    const moments = [this.signaling.nextMoment(), this.shares.nextRetry(), this.shares.nextFaltered()].filter(
       (moment): moment is number => moment !== null,
     );
     if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
@@ -182,7 +190,10 @@ export class Instance extends DurableObject<Env> {
     if (socket) {
       const room = this.people.room(member, socket[1]!);
       if (!room || !upgrade) return refuse();
-      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => this.roomView(member, room, tab));
+      return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => ({
+        state: this.roomView(member, room, tab),
+        media: { connected: this.shares.hasConnection(tab) },
+      }));
     }
     return refuse();
   }
@@ -306,10 +317,21 @@ export class Instance extends DurableObject<Env> {
       }
       return;
     }
+    // Media that falters needs no check: it can only end the tab's own shares.
+    if (message.type === "media" && type === "faltering") {
+      this.shares.faltering(tab.id);
+      return;
+    }
+    if (message.type === "media" && type === "recovered") {
+      this.shares.recovered(tab.id);
+      return;
+    }
     if (message.type === "media" && type === "connect") {
       if (!allowed) return;
       const iceServers = await this.shares.connect(tab);
       if (iceServers === "already") return;
+      // The socket was lost while the connection was being made: the tab may ask again.
+      if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id);
       this.signaling.toTab(
         tab.id,
         iceServers ? { type: "media", change: { type: "connected", iceServers } } : { type: "media", change: { type: "unavailable" } },
@@ -398,11 +420,17 @@ export class Instance extends DurableObject<Env> {
     this.relist(address);
   }
 
-  /** The alarm: grace periods running out, members falling silent, and failed closes tried again. */
+  /**
+   * The alarm: grace periods running out, members falling silent, failed closes tried
+   * again, and shares whose media has faltered for too long.
+   */
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
     const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
+    const faltered = await this.shares.faltered();
+    ended.push(...faltered.ended);
     for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
     this.schedule();
   }
 
@@ -418,7 +446,7 @@ export class Instance extends DurableObject<Env> {
         present: [...this.signaling.present(room.address)],
         reconnecting: this.signaling.reconnecting(room.address),
       },
-      shares: { live: this.shares.live(room.address) },
+      shares: { live: this.shares.live(room.address, this.signaling.silentTabs(room.address)) },
       // A new tab opens with nothing on its stage; one that reconnects in time finds its stage as it was.
       watching: {
         stage: this.shares.stage(tab),

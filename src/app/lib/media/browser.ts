@@ -48,10 +48,23 @@ export class BrowserMediaClient implements MediaClient {
     return { kind: "screen", stream, audio: stream.getAudioTracks().length > 0, ended: endedOf(stream) };
   }
 
-  connect(iceServers: IceServer[]) {
+  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void) {
     // The relay is offered from the start, over UDP, TCP and TLS, in `iceServers`; the
     // browser uses a direct path whenever one works.
-    this.connection = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
+    const connection = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
+    this.connection = connection;
+    // "disconnected" is the browser losing its path and looking for another by itself;
+    // "failed" is it giving up. Either way the instance gives the shares 30 seconds.
+    // No ICE restart is attempted: it would need a renegotiation the media server has not
+    // been proven to take (ticket 22's note for the owner).
+    let was = false;
+    connection.addEventListener("connectionstatechange", () => {
+      if (connection !== this.connection) return;
+      const state = connection.connectionState;
+      const now = state === "disconnected" || state === "failed" ? true : state === "connected" ? false : was;
+      if (now !== was) faltering(now);
+      was = now;
+    });
   }
 
   async offer(capture: Capture): Promise<Offer> {
@@ -146,8 +159,14 @@ export class BrowserMediaClient implements MediaClient {
 
   close() {
     for (const capture of [...this.sending.keys()]) this.stop(capture);
+    this.reset();
+  }
+
+  reset() {
     this.connection?.close();
     this.connection = null;
+    this.sending.clear();
+    this.offered = null;
   }
 
   private transceiver(mid: string): RTCRtpTransceiver | undefined {
