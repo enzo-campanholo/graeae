@@ -54,7 +54,20 @@ export type MediaRequest =
   /** The tab's media connection has recovered from faltering. */
   | { type: "recovered" }
   /** The browser's SDP answer to the media server's offer in `pulled`. The instance replies `answered`. */
-  | { type: "answer"; answer: string };
+  | { type: "answer"; answer: string }
+  /**
+   * Restart the tab's media connection with the fresh credential `renewed` brought: the
+   * browser's SDP `offer` restarts its ICE, keeping every share and watch. A tab on the
+   * relay sends it, after its final usage total. The instance replies `restarted` or
+   * `restart-refused`.
+   */
+  | { type: "restart"; offer: string }
+  /**
+   * The restart failed: let go of the tab's media connection and everything it carries.
+   * Its shares end and its watching is closed; then it hears `dropped`, and makes a new
+   * connection, starting its shares again and watching again what it watched.
+   */
+  | { type: "reconnect" };
 
 export type MediaChange =
   /**
@@ -62,6 +75,12 @@ export type MediaChange =
    * TLS with a credential that lasts 12 hours, minted for this connection alone.
    */
   | { type: "connected"; iceServers: IceServer[] }
+  /**
+   * 11 hours after the tab's relay credential was minted: a fresh one, lasting 12 hours
+   * and minted for this connection alone. A tab on a direct path takes it silently; one
+   * on the relay restarts its connection with it (`restart`).
+   */
+  | { type: "renewed"; iceServers: IceServer[] }
   /** The media connection could not be made. The tab may ask again. */
   | { type: "unavailable" }
   /** This tab's share of `kind` is live: `answer` is the media server's SDP answer to its offer. */
@@ -92,9 +111,13 @@ export type MediaChange =
   | { type: "handed-over"; kind: ShareKind }
   /** The media server has the tab's answer, so the tab may start its next negotiation. */
   | { type: "answered" }
+  /** The media server's SDP answer to the tab's `restart` offer. */
+  | { type: "restarted"; answer: string }
+  /** The restart was refused: the tab has no media connection, or the media server failed it. */
+  | { type: "restart-refused" }
   /**
    * The instance let go of this tab's media connection: its media faltered for 30
-   * seconds, which ended its shares, and it carried nothing else. The tab makes a new
-   * one the next time it shares or watches.
+   * seconds, which ended its shares, and it carried nothing else; or the tab asked it to
+   * (`reconnect`). The tab makes a new one the next time it shares or watches.
    */
   | { type: "dropped" };

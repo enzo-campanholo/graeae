@@ -68,6 +68,22 @@ export interface MediaClient {
    * send them again: the instance has closed everything the old one carried.
    */
   reset(): void;
+  /**
+   * Hands the media connection a fresh relay credential in `iceServers`, for whenever it
+   * next looks for a path. Nothing else changes: what a tab on a direct path does.
+   */
+  renew(iceServers: IceServer[]): void;
+  /**
+   * Restarts the media connection's ICE with a fresh relay credential in `iceServers`,
+   * keeping every share and watch, and makes the offer that restarts it, for the instance
+   * to answer: what a tab on the relay does.
+   */
+  restart(iceServers: IceServer[]): Promise<string>;
+  /**
+   * Applies the media server's answer to the restart offer, and settles once the
+   * connection has its path back. Throws if the restart fails.
+   */
+  restarted(answer: string): Promise<void>;
   /** Adds `capture` to the media connection and makes the offer that sends it. */
   offer(capture: Capture): Promise<Offer>;
   /**
