@@ -151,7 +151,7 @@ pnpm run deploy
 
 Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first: a release that needs a step by hand says so there. You need no secrets file; the Worker keeps its secrets.
 
-Changes to stored data are applied by the instance itself, the first time it starts after the deploy. Members, devices, rooms and settings are kept. **Going back to an older release is not supported** once a newer one has run: an older release cannot read data a newer one has changed.
+Changes to stored data are applied by the instance itself, the first time it starts after the deploy. Members, devices, rooms and settings are kept. **Going back to an older release is not supported** once a newer one has run: changes to stored data only go forward, and an older release is not made to read data a newer one has changed.
 
 ## Looking after an instance
 
