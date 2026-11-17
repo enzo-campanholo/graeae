@@ -1,7 +1,7 @@
 <script lang="ts">
   // A room: the bar of people on the left and the stage filling the rest. Who is here
   // and what is live come over the tab's socket; your own shares sit at the bar's foot.
-  // Watching arrives with ticket 11.
+  // A share's icon on its sharer's row puts it on this tab's stage or takes it off.
   import { sample, SampleScene } from "$sample";
   import BarHeader from "$lib/components/room/BarHeader.svelte";
   import Bar from "$lib/components/room/Bar.svelte";
@@ -15,11 +15,13 @@
   import Stage from "$lib/components/room/Stage.svelte";
   import StageEmpty from "$lib/components/room/StageEmpty.svelte";
   import StageTile from "$lib/components/room/StageTile.svelte";
+  import WatchedPicture from "$lib/components/room/WatchedPicture.svelte";
   import Loading from "$lib/components/Loading.svelte";
   import { isShortcut } from "$lib/keys.js";
   import { RoomClient } from "$lib/room-client.svelte.js";
   import { readStored, writeStored } from "$lib/stored.js";
-  import type { Person, ShareKind } from "../../shared/socket/index.ts";
+  import type { LiveShare, Person, ShareKind } from "../../shared/socket/index.ts";
+  import { sameShare } from "../../shared/socket/watching.ts";
   import type { Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -57,10 +59,14 @@
   });
 
   // Whether a member has a live share of a kind. Each live share is an icon on its
-  // sharer's row; nobody is watching anything until ticket 11.
+  // sharer's row, lit while this tab watches it.
   const isLive = (member: string, kind: ShareKind) =>
     !!view?.shares.live.some((share) => share.member === member && share.kind === kind);
-  const rowShare = (member: string, kind: ShareKind) => (isLive(member, kind) ? { watched: false } : null);
+  const rowShare = (member: string, kind: ShareKind) =>
+    isLive(member, kind) ? { watched: !!client?.watches({ member, kind }) } : null;
+  const toggle = (member: string, kind: ShareKind) => client?.toggle({ member, kind });
+
+  const nameOf = (id: string) => view?.people.members.find((person) => person.id === id)?.name ?? "";
 
   // Your own shares from this tab, at the bar's foot once they are live.
   const mine = $derived((client?.mine ?? []).filter((share) => share.state !== "starting"));
@@ -71,6 +77,27 @@
       ? room.mine.some((share) => share.kind === "webcam")
       : !!view && (isLive(view.people.you.id, "webcam") || mine.some((share) => share.kind === "webcam")),
   );
+
+  // Your own live shares sent from another tab or device, which this tab can watch.
+  const ownRowShare = (kind: ShareKind) =>
+    !!view && !mine.some((share) => share.kind === kind) ? rowShare(view.people.you.id, kind) : null;
+
+  // The stage: the shares this tab watches, while they are live, in the order it began
+  // watching them.
+  const stage = $derived(
+    (view?.watching.stage ?? [])
+      .filter((share) => isLive(share.member, share.kind))
+      .map((share) => ({
+        share,
+        key: `${share.member}:${share.kind}`,
+        name: nameOf(share.member),
+        stream: client?.pictures.find((picture) => sameShare(picture.share, share))?.stream ?? null,
+      })),
+  );
+
+  // The names of the members watching one of your own shares, for its preview.
+  const watchersOf = (share: LiveShare) =>
+    (view?.watching.watchers.find((entry) => sameShare(entry.share, share))?.members ?? []).map(nameOf);
 
   // Whether the bar is folded into the rail is kept on this device.
   const FOLDED_KEY = "graeae:rail";
@@ -146,9 +173,16 @@
                 name={person.name}
                 screen={rowShare(person.id, "screen")}
                 webcam={rowShare(person.id, "webcam")}
+                ontoggle={(kind) => toggle(person.id, kind)}
               />
             {/each}
-            <PersonRow name={people.you} you />
+            <PersonRow
+              name={people.you}
+              you
+              screen={ownRowShare("screen")}
+              webcam={ownRowShare("webcam")}
+              ontoggle={(kind) => view && toggle(view.people.you.id, kind)}
+            />
           </section>
           {#if people.away.length}
             <section class="mt-4" aria-label="Not here">
@@ -191,7 +225,7 @@
           {#each mine as share (share.kind)}
             <OwnShare
               kind={share.kind}
-              watchers={[]}
+              watchers={view ? watchersOf({ member: view.people.you.id, kind: share.kind }) : []}
               stopping={share.state === "stopping"}
               onstop={() => client?.stop(share.kind)}
             >
@@ -206,10 +240,15 @@
       </Bar>
     {/if}
 
-    <Stage count={room?.stage.length ?? 0}>
+    <Stage count={room?.stage.length ?? stage.length}>
       {#each room?.stage ?? [] as share (share.id)}
         <StageTile name={share.name} kind={share.kind}>
           <SampleScene scene={share.scene} />
+        </StageTile>
+      {/each}
+      {#each stage as tile (tile.key)}
+        <StageTile name={tile.name} kind={tile.share.kind} onstop={() => client?.unwatch(tile.share)}>
+          <WatchedPicture name={tile.name} kind={tile.share.kind} stream={tile.stream} />
         </StageTile>
       {/each}
       {#snippet empty()}
