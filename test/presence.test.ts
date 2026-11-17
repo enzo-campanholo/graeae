@@ -29,7 +29,7 @@ describe("a tab on a room", () => {
     const { state } = await openRoom(owner, room);
 
     const you = state.people.you;
-    expect(you).toEqual({ id: expect.any(String), owner: true });
+    expect(you).toEqual({ id: expect.any(String), owner: true, rooms: 1 });
     expect(state).toEqual({
       room: { address: addressOf(room), name: "First room" },
       people: { you, members: [{ id: you.id, name: "Owner" }] },
@@ -54,7 +54,7 @@ describe("presence", () => {
 
     const biaId = state.people.you.id;
     const ownerId = before.people.you.id;
-    expect(state.people.you).toEqual({ id: biaId, owner: false });
+    expect(state.people.you).toEqual({ id: biaId, owner: false, rooms: 1 });
     expect(state.people.members).toEqual(
       expect.arrayContaining([
         { id: ownerId, name: "Owner" },
