@@ -4,7 +4,7 @@
 //
 // It never talks to the instance itself: the room client carries the offers and answers
 // over the tab's socket, so no media server identifier ever reaches the page (ADR 0003).
-// Ticket 12 adds the real implementation, on `getUserMedia` and `RTCPeerConnection`;
+// The real implementation, on `getUserMedia` and `RTCPeerConnection`, is in `browser.ts`;
 // the fake in `fake.ts` captures and connects nothing, for Seam 2.
 
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";

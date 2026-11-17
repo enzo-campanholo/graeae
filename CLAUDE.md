@@ -18,8 +18,8 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 Node and pnpm come from `shell.nix`: run commands as `nix-shell --run '<command>'`.
 
-- `pnpm dev`: the whole app locally (Worker, Durable Object and front end).
-- `pnpm test`: builds the front end, then runs the tests in the Workers runtime. `pnpm exec vitest run <file>` runs one file once a build exists.
+- `pnpm dev`: the whole app locally (Worker, Durable Object and front end), on the real media server, so sharing needs real secrets in `.dev.vars`. `pnpm dev:fake-media` runs it on the fakes instead.
+- `pnpm test`: builds the front end with `--mode fake-media`, then runs the tests in the Workers runtime. `pnpm exec vitest run <file>` runs one file once a build exists. Every test runs on the fakes; nothing automated may call Cloudflare.
 - `pnpm typecheck`, `pnpm lint`.
 - `pnpm run deploy`: see `scripts/deploy.mjs`.
 

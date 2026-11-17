@@ -39,5 +39,7 @@ if (secrets.length > 0) {
   }
 }
 
-run("pnpm", ["exec", "vite", "build"]);
+// Always the production build: the real media server and media client, never the fakes
+// the tests build with (`--mode fake-media`), even if `dist/` holds a test build.
+run("pnpm", ["exec", "vite", "build", "--mode", "production"]);
 run("pnpm", ["exec", "wrangler", "deploy", ...secrets, ...wranglerArgs]);
