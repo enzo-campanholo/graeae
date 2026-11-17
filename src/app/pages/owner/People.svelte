@@ -5,6 +5,11 @@
   //
   // Ticking a room grants it at the press. Unticking one, and "Remove from graeae", ask
   // in the removal confirm first; the tick stays until the owner confirms.
+  //
+  // A removal shows as done at once, while the instance closes what the member was
+  // sending and watching. If those closes are still failing a minute later, the list says
+  // so beneath it, in amber, for as long as the instance keeps trying.
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import Check from "@lucide/svelte/icons/check";
   import Copy from "@lucide/svelte/icons/copy";
   import KeyRound from "@lucide/svelte/icons/key-round";
@@ -32,6 +37,7 @@
 
   const rooms = $derived(known.state === "loaded" ? known.data.rooms : []);
   const people = $derived(known.state === "loaded" ? known.data.people : []);
+  const unconfirmed = $derived(known.state === "loaded" ? known.data.unconfirmed : []);
 
   let picked = $state<string | null>(null);
   const person = $derived(people.find((entry) => entry.id === picked) ?? null);
@@ -315,6 +321,16 @@
           </li>
         {/each}
       </ul>
+      {#if unconfirmed.length > 0}
+        <div class="grid gap-1 pt-2" role="status">
+          {#each unconfirmed as cutOff (cutOff.member)}
+            <p class="text-warn flex items-center gap-2 text-xs">
+              <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />
+              <span>Couldn't confirm that {cutOff.name} was cut off. Still trying.</span>
+            </p>
+          {/each}
+        </div>
+      {/if}
       {#if note}
         <p class="text-muted-foreground py-2 text-xs" role="status">{note}</p>
       {:else if people.length === 1}

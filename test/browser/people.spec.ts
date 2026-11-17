@@ -122,3 +122,28 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(own.getByRole("button", { name: "Remove from graeae" })).toHaveCount(0);
   await expect(own.getByRole("button", { name: "Let back in" })).toHaveCount(0);
 });
+
+test("the owner is warned beneath the list when a cut-off could not be confirmed", async ({ browser, baseURL }) => {
+  const ownerContext = await newBrowser(browser, baseURL);
+  const admin = await ownerContext.newPage();
+  await admin.goto(`/setup#${SETUP_SECRET}`);
+  await expect(admin.getByRole("heading", { name: "Rooms" })).toBeVisible();
+  // The fake media server behind this app cannot be made to fail from here, so the
+  // instance's own answer gains what it says when closes have failed for a minute.
+  await admin.route("**/api/owner/people", async (route) => {
+    const response = await route.fetch();
+    const answer = await response.json();
+    await route.fulfill({ response, json: { ...answer, unconfirmed: [{ member: "jo", name: "Jo" }] } });
+  });
+
+  await admin.goto("/owner/people");
+
+  const warning = admin.getByRole("region", { name: "Members" }).getByRole("status");
+  await expect(warning).toHaveText("Couldn't confirm that Jo was cut off. Still trying.");
+  if (process.env.GRAEAE_SCREENSHOTS) {
+    for (const colorScheme of ["dark", "light"] as const) {
+      await admin.emulateMedia({ colorScheme });
+      await admin.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/unconfirmed-${colorScheme}.png` });
+    }
+  }
+});
