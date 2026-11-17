@@ -20,6 +20,7 @@
   import StageTile from "$lib/components/room/StageTile.svelte";
   import WatchedPicture from "$lib/components/room/WatchedPicture.svelte";
   import Loading from "$lib/components/Loading.svelte";
+  import { Hearing } from "$lib/hearing.js";
   import { isShortcut } from "$lib/keys.js";
   import { RoomClient } from "$lib/room-client.svelte.js";
   import { readStored, writeStored } from "$lib/stored.js";
@@ -128,6 +129,8 @@
     kind: ShareKind;
     /** A screen share with no screen audio. */
     videoOnly?: boolean;
+    /** A screen share with screen audio, which this tab hears. */
+    sound?: boolean;
     /** A share at two qualities: the viewer may choose which they watch it at. */
     twoQualities?: boolean;
     /** It arrives at the lower of its two qualities. */
@@ -150,6 +153,7 @@
               name: nameOf(share.member),
               kind: share.kind,
               videoOnly: listed?.audio === false,
+              sound: listed?.audio === true,
               twoQualities,
               lower: twoQualities && picture?.received === "720p",
               share,
@@ -165,6 +169,23 @@
     // A focused share that leaves the stage is forgotten, so it comes back into the grid.
     if (focusedKey && !focusedTile) focusedKey = null;
   });
+
+  // What this tab hears of the watched shares with screen audio: all of them at once, each
+  // at its member's volume, kept on this device, unless muted for this watch.
+  const hearing = new Hearing();
+  const sounding = $derived(tiles.filter((tile) => tile.sound).map((tile) => tile.key));
+  $effect(() => hearing.keep(tiles.map((tile) => tile.key)));
+  const audioOf = (tile: Tile) =>
+    tile.sound && tile.share
+      ? {
+          volume: hearing.volume(tile.share.member),
+          muted: hearing.isMuted(tile.key),
+          only: sounding.length > 1 ? hearing.isOnly(tile.key, sounding) : null,
+          onvolume: (volume: number) => tile.share && hearing.setVolume(tile.share.member, tile.key, volume),
+          onmute: (muted: boolean) => hearing.setMuted(tile.key, muted),
+          ononly: () => hearing.hearOnly(tile.key, sounding),
+        }
+      : null;
 
   // The names of the members watching one of your own shares, for its preview.
   const watchersOf = (share: LiveShare) =>
@@ -321,6 +342,7 @@
               kind={share.kind}
               watchers={view ? watchersOf({ member: view.people.you.id, kind: share.kind }) : []}
               audio={share.audio}
+              notes={share.notes}
               stopping={share.state === "stopping"}
               onstop={() => client?.stop(share.kind)}
               onaudio={(on) => client?.setScreenAudio(on)}
@@ -383,6 +405,7 @@
     name={tile.name}
     kind={tile.kind}
     videoOnly={tile.videoOnly}
+    audio={audioOf(tile)}
     quality={tile.twoQualities && tile.share && client
       ? { value: client.quality(tile.share), onchoose: (quality) => tile.share && client?.chooseQuality(tile.share, quality) }
       : null}
@@ -395,7 +418,14 @@
     {#if tile.scene}
       <SampleScene scene={tile.scene} />
     {:else}
-      <WatchedPicture name={tile.name} kind={tile.kind} stream={tile.stream ?? null} />
+      <WatchedPicture
+        name={tile.name}
+        kind={tile.kind}
+        stream={tile.stream ?? null}
+        volume={tile.share ? hearing.volume(tile.share.member) : 100}
+        muted={hearing.isMuted(tile.key)}
+        small={place === "strip"}
+      />
     {/if}
   </StageTile>
 {/snippet}

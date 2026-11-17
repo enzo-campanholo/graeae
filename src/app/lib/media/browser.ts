@@ -4,16 +4,20 @@
 //
 // No test reaches this file: Seam 2 runs on the fake. It is kept thin enough to read
 // against the spec's Screen audio, Encoding and quality and Relay sections; what a screen
-// capture asks for, the encoding plan and how the browser's API takes it are pure rules
-// in `capture.ts`, `src/shared/encoding.ts` and `encodings.ts`, which are tested. The
+// capture asks for, the encoding plan, how the browser's API takes it, and what a live
+// share sends on a weak upload with the notes its sharer sees are pure rules in
+// `capture.ts`, `src/shared/encoding.ts`, `encodings.ts` and `sending.ts`, which are
+// tested. The
 // owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
 
 import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
-import { codecPreferences, receivedQuality, sendEncodings, type SendEncoding } from "./encodings.ts";
+import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
+import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
+import { every } from "../ticker.ts";
 
 /** How often a watched share's statistics are read for the quality it arrives at. */
 const RECEIVED_EVERY_MS = 2000;
@@ -23,8 +27,13 @@ export class BrowserMediaClient implements MediaClient {
   private connection: RTCPeerConnection | null = null;
   /** The transceivers sending each capture, so stopping one stops its sending. */
   private readonly sending = new Map<Capture, RTCRtpTransceiver[]>();
-  /** The video transceiver of the last offer and its encodings, set again once it is accepted. */
-  private offered: { transceiver: RTCRtpTransceiver; encodings: SendEncoding[] } | null = null;
+  /** The last offer's capture, its video transceiver, plan and capture height, followed once it is accepted. */
+  private offered: { capture: Capture; transceiver: RTCRtpTransceiver; plan: EncodingPlan; height?: number } | null =
+    null;
+  /** How to stop reading each live share's statistics. */
+  private readonly following = new Map<Capture, () => void>();
+  /** The notes on each live share, for its sharer. */
+  private readonly board = new NotesBoard<Capture>();
 
   async captureWebcam(): Promise<Capture> {
     const { width, height, frameRate } = encodingPlan(this.browser, "webcam").capture;
@@ -45,6 +54,9 @@ export class BrowserMediaClient implements MediaClient {
       if (error instanceof DOMException && error.name === "NotAllowedError") return null;
       throw error;
     }
+    // A game moves: the encoder treats the picture as motion rather than a still document,
+    // and gives up resolution before frame rate.
+    for (const track of stream.getVideoTracks()) track.contentHint = "motion";
     // Any audio the picker gave is sent, whatever the system: it is the member's choice.
     return { kind: "screen", stream, audio: stream.getAudioTracks().length > 0, ended: endedOf(stream) };
   }
@@ -76,13 +88,14 @@ export class BrowserMediaClient implements MediaClient {
     if (!video) throw new Error("The capture has no picture to send");
     const plan = encodingPlan(this.browser, capture.kind);
     // One encoding per quality, each scaled down to its height: a larger monitor to 1080p.
-    const encodings = sendEncodings(plan, video.getSettings().height);
+    const height = video.getSettings().height;
+    const encodings = sendEncodings(plan, height);
     const videoSender = connection.addTransceiver(video, { direction: "sendonly", streams, sendEncodings: encodings });
     preferCodecs(videoSender, plan);
     // A screen share's sound goes with its picture, as one unit.
     const audioSender = audio ? connection.addTransceiver(audio, { direction: "sendonly", streams }) : null;
     this.sending.set(capture, audioSender ? [videoSender, audioSender] : [videoSender]);
-    this.offered = { transceiver: videoSender, encodings };
+    this.offered = { capture, transceiver: videoSender, plan, ...(height === undefined ? {} : { height }) };
     const offer = await connection.createOffer();
     await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
     if (!videoSender.mid || !connection.localDescription) throw new Error("The offer gave the capture no mid");
@@ -97,13 +110,49 @@ export class BrowserMediaClient implements MediaClient {
   async accept(answer: string) {
     // Stereo both ways, whatever the media server's answer says of it.
     await this.peer().setRemoteDescription({ type: "answer", sdp: stereoOpus(answer) });
-    // Set again once negotiated, in case the browser let the limits go in the offer.
     const offered = this.offered;
     this.offered = null;
-    if (!offered) return;
-    const parameters = offered.transceiver.sender.getParameters();
-    parameters.encodings = offered.encodings.map((limits, index) => ({ ...parameters.encodings?.[index], ...limits }));
-    await offered.transceiver.sender.setParameters(parameters).catch(() => undefined);
+    if (offered) this.follow(offered.capture, offered.transceiver.sender, offered.plan, offered.height);
+  }
+
+  notes(capture: Capture, heard: (notes: SharerNotes) => void): () => void {
+    return this.board.listen(capture, heard);
+  }
+
+  /**
+   * Follows the live share of `capture` on `sender`: its limits are set again now that it
+   * is negotiated, in case the browser let them go in the offer, and its statistics are
+   * read every few seconds, from a tick that keeps going while the sharer's tab is hidden
+   * behind their game. A step down or up changes the live share's encodings, with no new
+   * negotiation.
+   */
+  private follow(capture: Capture, sender: RTCRtpSender, plan: EncodingPlan, height: number | undefined) {
+    this.following.get(capture)?.();
+    const read = follow(plan, height, performance.now(), {
+      apply: (encodings, degradation) => {
+        const parameters = sender.getParameters() as RTCRtpSendParameters & {
+          degradationPreference?: Degradation;
+        };
+        parameters.encodings = encodings.map((limits, index) => ({ ...parameters.encodings?.[index], ...limits }));
+        parameters.degradationPreference = degradation;
+        void sender.setParameters(parameters).catch(() => undefined);
+      },
+      notes: (notes) => this.board.tell(capture, notes),
+    });
+    const stop = every(READ_EVERY_MS, () => {
+      void sender
+        .getStats()
+        .then((stats) => read(readingOf(stats.values() as Iterable<StatsEntry>, performance.now())))
+        .catch(() => undefined);
+    });
+    this.following.set(capture, stop);
+  }
+
+  /** Stops reading the statistics of the share of `capture`, which is no longer sent. */
+  private unfollow(capture: Capture) {
+    this.following.get(capture)?.();
+    this.following.delete(capture);
+    this.board.forget(capture);
   }
 
   async pull(offer: string, video: string, audio?: string) {
@@ -153,6 +202,7 @@ export class BrowserMediaClient implements MediaClient {
   }
 
   stop(capture: Capture) {
+    this.unfollow(capture);
     for (const track of capture.stream?.getTracks() ?? []) track.stop();
     for (const transceiver of this.sending.get(capture) ?? []) {
       if (this.connection?.signalingState === "closed") break;
@@ -169,6 +219,7 @@ export class BrowserMediaClient implements MediaClient {
   }
 
   reset() {
+    for (const capture of [...this.following.keys()]) this.unfollow(capture);
     this.connection?.close();
     this.connection = null;
     this.sending.clear();
