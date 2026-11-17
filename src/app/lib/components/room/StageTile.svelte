@@ -103,7 +103,7 @@
   </div>
   <figcaption class="flex h-5 min-w-0 items-baseline gap-1.5 px-0.5">
     <span class="text-soft truncate font-medium">{name}</span>
-    <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true"> · </span>video only{/if}</span>
+    <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{/if}</span>
   </figcaption>
 </figure>
 
