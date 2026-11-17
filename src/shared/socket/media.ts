@@ -40,11 +40,12 @@ export type MediaChange =
   /** This tab's share of `kind` did not start: a check failed, or the media server did. */
   | { type: "refused"; kind: ShareKind }
   /**
-   * `share` is pulled to this tab's media connection, on the transceiver `video`.
-   * `offer` is the media server's SDP offer; the tab answers it with `answer`. The share
-   * goes on the stage with the watching area's `watched`, which comes next.
+   * `share` is pulled to this tab's media connection: its picture on the transceiver
+   * `video`, and its screen audio, when it has any, on `audio`. `offer` is the media
+   * server's SDP offer; the tab answers it with `answer`. The share goes on the stage
+   * with the watching area's `watched`, which comes next.
    */
-  | { type: "pulled"; share: LiveShare; offer: string; video: string }
+  | { type: "pulled"; share: LiveShare; offer: string; video: string; audio?: string }
   /** `share` could not be watched on this tab: a check failed, or the media server did. */
   | { type: "pull-refused"; share: LiveShare }
   /** The media server has the tab's answer, so the tab may start its next negotiation. */

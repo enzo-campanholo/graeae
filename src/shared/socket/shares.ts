@@ -18,14 +18,23 @@ export interface LiveShare {
   kind: ShareKind;
 }
 
+/**
+ * A live share as the room lists it: its name, and for a screen share whether it carries
+ * screen audio. A share is always asked for by its name alone.
+ */
+export interface ListedShare extends LiveShare {
+  /** A screen share only: true when it carries screen audio, false when it is video only. */
+  audio?: boolean;
+}
+
 export interface SharesState {
   /** Every live share in the room, oldest first. */
-  live: LiveShare[];
+  live: ListedShare[];
 }
 
 export type SharesChange =
   /** A share went live in the room. */
-  | { type: "started"; share: LiveShare }
+  | { type: "started"; share: ListedShare }
   /** A share ended: its tracks are closed at the media server. */
   | { type: "ended"; share: LiveShare };
 
@@ -33,9 +42,15 @@ export type SharesRequest =
   /**
    * Start a webcam share from this tab, over the tab's media connection (see the media
    * area: the tab connects first). `offer` is the browser's SDP offer, and `video` the
-   * mid of the transceiver that sends the camera. Ticket 15 adds the screen share.
+   * mid of the transceiver that sends the camera.
    */
   | { type: "start"; kind: "webcam"; offer: string; video: string }
+  /**
+   * Start a screen share from this tab, likewise. `audio` is the mid of the transceiver
+   * that sends its screen audio, left out when the browser's picker gave no sound: the
+   * share is then video only.
+   */
+  | { type: "start"; kind: "screen"; offer: string; video: string; audio?: string }
   /** Stop this tab's share of `kind`. */
   | { type: "stop"; kind: ShareKind };
 
