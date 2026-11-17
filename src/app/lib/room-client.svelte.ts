@@ -8,6 +8,13 @@
 // and answers between the media client and the instance, one negotiation at a time, and
 // keeps this tab's own shares and the pictures of what it watches. The media client
 // never talks to the instance itself.
+//
+// A lost signaling connection does not touch the media connection: what the tab sends
+// and watches keeps flowing while the socket reconnects. A reconnect within the grace
+// period finds the same tab, and lets go of whatever ended meanwhile. A tab that comes
+// back after its grace period ran out has lost its media connection with everything on
+// it: it makes a new one, starts its shares again with the captures it still holds, and
+// watches again what it watched, where those shares are still live.
 
 import {
   applyMessage,
@@ -15,6 +22,7 @@ import {
   type ClientMessage,
   type LiveShare,
   type MediaChange,
+  type MediaState,
   type RoomView,
   type ServerMessage,
   type ShareKind,
@@ -70,10 +78,18 @@ export class RoomClient {
   private readonly media = createMediaClient();
   /** The tab's media connection, once asked for: whether it was made. */
   private connection: Promise<boolean> | null = null;
+  /** Whether the tab's media connection is made: the instance handed it over. */
+  private made = false;
+  /** Whether the media connection falters, as the media client last said. */
+  private faltering = false;
+  /** Captures the browser ended by itself while their share was starting, to stop once it is live. */
+  private readonly over = new WeakSet<Capture>();
   /** Requests waiting for their answer in the media area, oldest first. */
   private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
   /** Shares being asked for that the tab no longer wants: each is stopped once it is watched. */
   private unwanted: LiveShare[] = [];
+  /** Shares on the stage whose pull never reached the tab: each is watched again once its watch is closed. */
+  private rewatch: LiveShare[] = [];
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();
 
@@ -93,6 +109,11 @@ export class RoomClient {
   /** Whether the instance refused this tab the room, so the page shows "nothing here". */
   get refused(): boolean {
     return this.socket.refused;
+  }
+
+  /** Whether the instance has gone unheard for about 3 seconds, while the connection reconnects. */
+  get reconnecting(): boolean {
+    return this.socket.reconnecting;
   }
 
   /** The browser family this tab runs in, which decides what the first-time notice says. */
@@ -122,36 +143,50 @@ export class RoomClient {
   }
 
   /**
-   * Starts a share of `kind` from this tab: capture, the media connection the first
-   * time, the offer, the instance's answer. A capture the browser ends by itself (its
-   * "stop sharing" bar, the shared tab closing) stops the share.
+   * Starts a share of `kind` from this tab: capture, then `publish`. A capture the
+   * browser ends by itself (its "stop sharing" bar, the shared tab closing) stops the
+   * share.
    */
   private async share(kind: ShareKind, captured: () => Promise<Capture | null>) {
     if (this.mine.some((share) => share.kind === kind)) return;
     this.failed = null;
     this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null }];
-    let capture: Capture | null = null;
-    let over = false;
+    let capture: Capture | null;
     try {
       capture = await captured();
-      if (!capture) {
-        this.mine = this.mine.filter((share) => share.kind !== kind);
-        return;
-      }
-      const own = capture;
-      void own.ended.then(() => {
-        over = true;
-        if (this.mine.some((share) => share.capture === own)) this.stop(kind);
-      });
-      this.update(kind, { capture, audio: capture.audio ? "on" : null });
+    } catch {
+      this.mine = this.mine.filter((share) => share.kind !== kind);
+      this.failed = kind;
+      return;
+    }
+    if (!capture) {
+      this.mine = this.mine.filter((share) => share.kind !== kind);
+      return;
+    }
+    const own = capture;
+    void own.ended.then(() => {
+      const share = this.mine.find((candidate) => candidate.capture === own);
+      if (share?.state === "live") this.stop(kind);
+      else if (share) this.over.add(own);
+    });
+    this.update(kind, { capture, audio: capture.audio ? "on" : null });
+    await this.publish(kind, own);
+  }
+
+  /**
+   * Sends `capture` as this tab's share of `kind`, which is starting: the media
+   * connection the first time, the offer, the instance's answer. On a failure the
+   * capture stops and the share is gone, and the page says it didn't start.
+   */
+  private async publish(kind: ShareKind, capture: Capture) {
+    try {
       if (!(await this.connected())) throw new Error("no media connection");
       const live = await this.negotiate(async () => {
-        const offer = await this.media.offer(own);
-        const reply = this.answer(
+        const offer = await this.media.offer(capture);
+        const answer = await this.request(
+          { type: "shares", request: startRequest(kind, offer) },
           (change) => (change.type === "published" || change.type === "refused") && change.kind === kind,
         );
-        this.send({ type: "shares", request: startRequest(kind, offer) });
-        const answer = await reply;
         if (answer.type !== "published") return false;
         await this.media.accept(answer.answer);
         return true;
@@ -159,10 +194,10 @@ export class RoomClient {
       if (!live) throw new Error("the share was refused");
       this.update(kind, { state: "live" });
       // The browser ended it while it was starting: it stops now that it can.
-      if (over) this.stop(kind);
+      if (this.over.has(capture)) this.stop(kind);
     } catch {
-      if (capture) this.media.stop(capture);
-      this.mine = this.mine.filter((share) => share.kind !== kind);
+      this.media.stop(capture);
+      this.mine = this.mine.filter((share) => share.capture !== capture);
       this.failed = kind;
     }
   }
@@ -176,6 +211,7 @@ export class RoomClient {
     if (share?.state !== "live") return;
     if (share.capture) this.media.stop(share.capture);
     this.update(kind, { state: "stopping" });
+    // Sent again on the next socket if this one is lost.
     this.send({ type: "shares", request: { type: "stop", kind } });
   }
 
@@ -229,17 +265,14 @@ export class RoomClient {
     try {
       if (!(await this.connected())) return;
       await this.negotiate(async () => {
-        const reply = this.answer(
+        const pulled = await this.request(
+          { type: "watching", request: { type: "watch", share } },
           (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
         );
-        this.send({ type: "watching", request: { type: "watch", share } });
-        const pulled = await reply;
         if (pulled.type !== "pulled") return;
         const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
         this.pictures = [...this.pictures.filter((picture) => !sameShare(picture.share, share)), { share, video: pulled.video, stream }];
-        const answered = this.answer((change) => change.type === "answered");
-        this.send({ type: "media", request: { type: "answer", answer } });
-        await answered;
+        await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
       });
     } catch {
       // The connection was lost on the way: the stage comes back with the room's state.
@@ -294,7 +327,9 @@ export class RoomClient {
       if (index >= 0) this.waiting.splice(index, 1);
       return;
     }
+    const before = this.view;
     this.view = applyMessage(this.view, message);
+    if (message.type === "state" && before) this.rejoined(before, message.media);
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
     // A share the member followed starts: it joins the stage by itself.
@@ -304,12 +339,70 @@ export class RoomClient {
     if (this.following && !this.view?.presence.present.includes(this.following)) this.following = null;
   }
 
+  /**
+   * A new socket brought the whole room again, after the tab held `before`. The same tab,
+   * back within its grace period, lets go of what ended while it was away. A tab whose
+   * grace period ran out finds its media connection gone with everything on it, and
+   * builds it again: its shares start again with the captures it still holds, unless a
+   * share of that kind of the member's went live meanwhile from elsewhere, and it
+   * watches again what it watched, where those shares are still live. Nobody who watched
+   * its shares before is carried over: for them those shares ended.
+   */
+  private rejoined(before: RoomView, media: MediaState) {
+    const view = this.view!;
+    const you = view.people.you.id;
+    const liveOfYours = (kind: ShareKind) =>
+      view.shares.live.some((share) => share.member === you && share.kind === kind);
+
+    if (media.connected || !this.made) {
+      for (const picture of this.pictures) if (!this.watches(picture.share)) this.unwatched(picture.share);
+      for (const own of this.mine) {
+        if (own.state === "starting") continue;
+        if (!liveOfYours(own.kind)) this.tidy(own);
+        // A stop the lost socket never carried.
+        else if (own.state === "stopping") this.send({ type: "shares", request: { type: "stop", kind: own.kind } });
+      }
+      if (!this.made) return;
+      // A watch whose pull the lost socket never brought is on the stage with no picture: ask again.
+      for (const share of view.watching.stage) {
+        if (this.pictures.some((picture) => sameShare(picture.share, share))) continue;
+        this.rewatch = [...this.rewatch, share];
+        this.send({ type: "watching", request: { type: "unwatch", share } });
+      }
+      // The instance may have missed the media connection faltering or recovering.
+      this.send({ type: "media", request: { type: this.faltering ? "faltering" : "recovered" } });
+      return;
+    }
+
+    this.resetMedia();
+    this.pictures = [];
+    for (const own of this.mine) {
+      // One still starting finds the new connection by itself.
+      if (own.state === "starting") continue;
+      if (own.state === "live" && own.capture && !liveOfYours(own.kind)) {
+        this.update(own.kind, { state: "starting" });
+        void this.publish(own.kind, own.capture);
+      } else {
+        this.tidy(own);
+      }
+    }
+    if (this.following) this.follow(this.following);
+    else
+      for (const share of before.watching.stage)
+        if (view.shares.live.some((live) => sameShare(live, share))) void this.watch(share);
+  }
+
   /** The instance closed this tab's pull of `share`: the tab lets go of its picture. */
   private unwatched(share: LiveShare) {
     const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
-    if (!picture) return;
-    this.media.drop(picture.video);
-    this.pictures = this.pictures.filter((candidate) => candidate !== picture);
+    if (picture) {
+      this.media.drop(picture.video);
+      this.pictures = this.pictures.filter((candidate) => candidate !== picture);
+    }
+    if (this.rewatch.some((candidate) => sameShare(candidate, share))) {
+      this.rewatch = this.rewatch.filter((candidate) => !sameShare(candidate, share));
+      void this.watch(share);
+    }
   }
 
   /** Runs `negotiation` on the media connection once every earlier one is done. */
@@ -324,29 +417,61 @@ export class RoomClient {
     if (share.member !== this.view?.people.you.id) return;
     const own = this.mine.find((candidate) => candidate.kind === share.kind && candidate.state !== "starting");
     if (!own) return;
+    this.tidy(own);
+    // Ended because the media connection faltered too long: the next share needs a new one.
+    if (this.faltering && this.mine.length === 0 && this.pictures.length === 0 && this.asking.length === 0) {
+      this.resetMedia();
+    }
+  }
+
+  /** Stops `own`'s capture and forgets the share. */
+  private tidy(own: OwnShare) {
     if (own.capture) this.media.stop(own.capture);
     this.mine = this.mine.filter((candidate) => candidate !== own);
+  }
+
+  /** Lets go of the media connection, keeping the captures: the next share or watch makes a new one. */
+  private resetMedia() {
+    this.media.reset();
+    this.connection = null;
+    this.made = false;
+    this.faltering = false;
   }
 
   /** The tab's media connection, made the first time it is needed. False if it could not be made. */
   private connected(): Promise<boolean> {
     this.connection ??= (async () => {
-      const reply = this.answer((change) => change.type === "connected" || change.type === "unavailable");
-      this.send({ type: "media", request: { type: "connect" } });
-      const change = await reply;
+      const change = await this.request(
+        { type: "media", request: { type: "connect" } },
+        (change) => change.type === "connected" || change.type === "unavailable",
+      );
       if (change.type !== "connected") {
         this.connection = null;
         return false;
       }
-      this.media.connect(change.iceServers);
+      this.media.connect(change.iceServers, (faltering) => this.falter(faltering));
+      this.made = true;
       return true;
-    })();
+    })().catch(() => {
+      // The socket was lost before the answer came: the next share or watch asks again.
+      this.connection = null;
+      return false;
+    });
     return this.connection;
   }
 
-  /** The next change in the media area that `matches`, which answers a request just sent. */
-  private answer(matches: (change: MediaChange) => boolean): Promise<MediaChange> {
-    return new Promise((resolve, reject) => {
+  /** The media connection falters, or recovers: the instance gives this tab's shares 30 seconds. */
+  private falter(faltering: boolean) {
+    this.faltering = faltering;
+    this.send({ type: "media", request: { type: faltering ? "faltering" : "recovered" } });
+  }
+
+  /**
+   * Sends `message` and gives the next change in the media area that `matches`, which
+   * answers it. Fails at once when the connection is lost and the message could not go.
+   */
+  private request(message: ClientMessage, matches: (change: MediaChange) => boolean): Promise<MediaChange> {
+    const reply = new Promise<MediaChange>((resolve, reject) => {
       this.waiting.push({
         accepts: (change) => {
           if (!matches(change)) return false;
@@ -356,6 +481,8 @@ export class RoomClient {
         lost: () => reject(new Error("the connection was lost")),
       });
     });
+    if (!this.socket.send(message)) this.waiting.pop()?.lost();
+    return reply;
   }
 
   private send(message: ClientMessage) {

@@ -2,6 +2,8 @@
   /** A live share of this member's, and whether you are watching it. */
   export interface RowShare {
     watched: boolean;
+    /** The device sending it has not been heard for about 10 seconds. It is still live. */
+    reconnecting?: boolean;
   }
 </script>
 
@@ -10,6 +12,7 @@
   // share, now and later); each icon watches or stops watching one live share. An icon
   // lights with the eye while you watch that share. Your own row leads to the "You" page,
   // and shows the icons of your shares sent from another tab or device, to watch them here.
+  // A share whose sending device has gone quiet breathes, as a reconnecting avatar does.
   import Monitor from "@lucide/svelte/icons/monitor";
   import Video from "@lucide/svelte/icons/video";
   import type { ShareKind } from "$lib/share.js";
@@ -92,13 +95,31 @@
 
 {#snippet shareIcon(kind: ShareKind, share: RowShare, whose = `${name}'s`)}
   <IconButton
-    label={share.watched ? `Stop watching ${whose} ${kind}` : `Watch ${whose} ${kind}`}
+    label={`${share.watched ? `Stop watching ${whose} ${kind}` : `Watch ${whose} ${kind}`}${share.reconnecting ? ", reconnecting" : ""}`}
     size="icon-xs"
     side="right"
     pressed={share.watched}
-    class={share.watched ? "text-eye hover:text-eye" : "text-faint"}
+    class={[share.watched ? "text-eye hover:text-eye" : "text-faint", share.reconnecting && "share-reconnecting"].filter(Boolean).join(" ")}
     onclick={() => ontoggle?.(kind)}
   >
     {#if kind === "screen"}<Monitor />{:else}<Video />{/if}
   </IconButton>
 {/snippet}
+
+<style>
+  /* The device sending this share has gone quiet: its icon breathes as a reconnecting avatar does. */
+  :global(.share-reconnecting) {
+    animation: share-reconnecting 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes share-reconnecting {
+    to {
+      opacity: 0.4;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.share-reconnecting) {
+      animation: none;
+      opacity: 0.55;
+    }
+  }
+</style>

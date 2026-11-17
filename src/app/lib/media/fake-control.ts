@@ -20,4 +20,10 @@ export interface FakeMediaControl {
   screenAudio: boolean | null;
   /** The browser ends the screen capture by itself: its "stop sharing" bar, or the shared tab closing. */
   endScreen(): void;
+  /** The media connection falters, as when the browser loses its path to the media server. */
+  falter(): void;
+  /** The media connection recovers from faltering. */
+  recover(): void;
+  /** How many media connections the page has made, the current one included. */
+  connections: number;
 }

@@ -52,9 +52,16 @@ export interface MediaClient {
   captureScreen(): Promise<Capture | null>;
   /**
    * Makes the tab's one media connection, offering the relay in `iceServers`. Called
-   * once, the first time the tab shares or watches.
+   * the first time the tab shares or watches, and again after `reset`. `faltering`
+   * hears the connection falter (true) while the browser tries to recover it, and
+   * recover (false).
    */
-  connect(iceServers: IceServer[]): void;
+  connect(iceServers: IceServer[], faltering: (faltering: boolean) => void): void;
+  /**
+   * Closes the media connection but keeps every capture going, so a new connection can
+   * send them again: the instance has closed everything the old one carried.
+   */
+  reset(): void;
   /** Adds `capture` to the media connection and makes the offer that sends it. */
   offer(capture: Capture): Promise<Offer>;
   /** Applies the media server's answer to the last offer: the capture is now being sent. */
