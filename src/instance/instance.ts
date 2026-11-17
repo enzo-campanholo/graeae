@@ -18,7 +18,9 @@ import type {
   RoomSummary,
   SetupAnswer,
 } from "../shared/api.ts";
+import { encodingPlan } from "../shared/encoding.ts";
 import type { ClientMessage, LiveShare, RoomView } from "../shared/socket/index.ts";
+import { isQualityChoice } from "../shared/socket/watching.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { mediaLayer } from "./media/index.ts";
@@ -306,6 +308,13 @@ export class Instance extends DurableObject<Env> {
       }
       // Stopping needs no check: it only ever takes something away.
       if (type === "unwatch") await this.shares.unwatch(tab, share);
+      if (type === "quality") {
+        const { quality } = request as { quality?: unknown };
+        if (!isQualityChoice(quality)) return;
+        // The tab hears the quality it now watches at: the one it chose, or the one it had.
+        const now = allowed ? await this.shares.setQuality(tab, share, quality) : this.shares.quality(tab, share);
+        if (now !== null) this.signaling.toTab(tab.id, { type: "watching", change: { type: "quality", share, quality: now } });
+      }
       return;
     }
     // Media that falters needs no check: it can only end the tab's own shares.
@@ -331,13 +340,23 @@ export class Instance extends DurableObject<Env> {
     }
     if (message.type !== "shares") return;
     if (type === "start") {
-      const { kind, offer, video, audio } = request as { kind?: unknown; offer?: unknown; video?: unknown; audio?: unknown };
+      const { kind, offer, video, audio, browser } = request as {
+        kind?: unknown;
+        offer?: unknown;
+        video?: unknown;
+        audio?: unknown;
+        browser?: unknown;
+      };
       if (kind !== "webcam" && kind !== "screen") return;
       // A screen share's audio is left out when the browser's picker gave no sound.
       const mids = !isMid(video) ? null : audio === undefined ? { video } : isMid(audio) ? { video, audio } : null;
+      // A screen share goes out as its browser's family sends one; a webcam alike from every browser.
+      const family = kind === "webcam" ? "chromium" : browser === "chromium" || browser === "firefox" ? browser : null;
       const started =
-        allowed && isSdp(offer) && mids
-          ? await this.shares.start(tab, tab.member, kind, offer, mids, () => this.signaling.isOpen(tab.id))
+        allowed && isSdp(offer) && mids && family
+          ? await this.shares.start(tab, tab.member, kind, offer, mids, encodingPlan(family, kind), () =>
+              this.signaling.isOpen(tab.id),
+            )
           : { live: false as const };
       if (!started.live) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });
@@ -429,7 +448,11 @@ export class Instance extends DurableObject<Env> {
       },
       shares: { live: this.shares.live(room.address, this.signaling.silentTabs(room.address)) },
       // A new tab opens with nothing on its stage; one that reconnects in time finds its stage as it was.
-      watching: { stage: this.shares.stage(tab), watchers: this.shares.watchers(room.address, member.id) },
+      watching: {
+        stage: this.shares.stage(tab),
+        watchers: this.shares.watchers(room.address, member.id),
+        qualities: this.shares.qualities(tab),
+      },
       usage: {},
     };
   }

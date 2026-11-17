@@ -5,7 +5,7 @@ import { SETUP_SECRET } from "./app.ts";
 
 // Media through dropped connections. A member's socket is routed through the test, which
 // can hold its opening or stop passing anything either way, as on a dropped network. The
-// media on both sides is fake. Members Kim, Kit and Lou are this file's alone.
+// media on both sides is fake. Members Kim, Kit and Ines are this file's alone.
 
 const opened: BrowserContext[] = [];
 
@@ -92,47 +92,54 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   baseURL,
 }) => {
   test.setTimeout(150_000);
-  const { owner, room, member: lou, code } = await ownerAndInvited(browser, baseURL, "Lou");
-  const network = await routed(lou);
-  await lou.goto(`/invite/${code}`);
-  await lou.getByRole("button", { name: "Join as Lou" }).click();
-  await expect(lou).toHaveURL(room);
+  const { owner, room, member: ines, code } = await ownerAndInvited(browser, baseURL, "Ines");
+  const network = await routed(ines);
+  await ines.goto(`/invite/${code}`);
+  await ines.getByRole("button", { name: "Join as Ines" }).click();
+  await expect(ines).toHaveURL(room);
   const ownerHere = owner.getByRole("region", { name: "Here" });
   const ownerStage = owner.getByRole("main", { name: "Stage" });
-  const louStage = lou.getByRole("main", { name: "Stage" });
-  await expect(ownerHere.getByRole("button", { name: "Lou" })).toBeVisible();
+  const inesStage = ines.getByRole("main", { name: "Stage" });
+  await expect(ownerHere.getByRole("button", { name: "Ines" })).toBeVisible();
 
-  // Lou watches the owner's webcam, and shares a webcam and a screen; the owner watches Lou's webcam.
+  // Ines watches the owner's webcam, and shares a webcam and a screen; the owner watches Ines's webcam.
   await owner.getByRole("button", { name: "Share webcam" }).click();
-  await lou.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's webcam" }).click();
-  const ownersPicture = louStage.getByRole("img", { name: "Owner's webcam, with no picture" });
+  await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's webcam" }).click();
+  const ownersPicture = inesStage.getByRole("img", { name: "Owner's webcam, with no picture" });
   await expect(ownersPicture).toBeVisible();
-  await lou.getByRole("button", { name: "Share webcam" }).click();
-  await lou.getByRole("button", { name: "Share screen" }).click();
-  await lou.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(lou.getByRole("button", { name: "Webcam live" })).toBeDisabled();
-  await expect(lou.getByRole("button", { name: "Screen live" })).toBeDisabled();
-  await ownerHere.getByRole("button", { name: "Watch Lou's webcam" }).click();
-  const lousPicture = ownerStage.getByRole("img", { name: "Lou's webcam, with no picture" });
-  await expect(lousPicture).toBeVisible();
-  await expect(lou.getByText("Owner watching")).toBeVisible();
-  expect(await fake(lou)).toMatchObject({ connections: 1, asked: [expect.anything()] });
+  // She also watches the owner's screen, at 720p by choice.
+  await owner.getByRole("button", { name: "Share screen" }).click();
+  await owner.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
+  await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's screen" }).click();
+  const quality = inesStage.getByRole("radiogroup", { name: "Quality of Owner's screen" });
+  await quality.getByRole("radio", { name: "720p" }).click();
+  await expect(quality.getByRole("radio", { name: "720p" })).toBeChecked();
+  await ines.getByRole("button", { name: "Share webcam" }).click();
+  await ines.getByRole("button", { name: "Share screen" }).click();
+  await ines.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
+  await expect(ines.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(ines.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await ownerHere.getByRole("button", { name: "Watch Ines's webcam" }).click();
+  const inesPicture = ownerStage.getByRole("img", { name: "Ines's webcam, with no picture" });
+  await expect(inesPicture).toBeVisible();
+  await expect(ines.getByText("Owner watching")).toBeVisible();
+  expect(await fake(ines)).toMatchObject({ connections: 1, asked: [expect.anything()] });
 
-  // Lou's network drops. Her stage keeps what it shows, and says so within a few seconds.
+  // Ines's network drops. Her stage keeps what it shows, and says so within a few seconds.
   network.online = false;
-  const reconnecting = louStage.getByText("Reconnecting…");
+  const reconnecting = inesStage.getByText("Reconnecting…");
   await expect(reconnecting).toBeVisible({ timeout: 10_000 });
   await expect(ownersPicture).toBeVisible();
 
-  // After about 10 seconds the owner sees the mark on each of Lou's shares, and keeps watching.
-  await expect(ownerHere.getByRole("button", { name: "Stop watching Lou's webcam, reconnecting" })).toBeVisible({
+  // After about 10 seconds the owner sees the mark on each of Ines's shares, and keeps watching.
+  await expect(ownerHere.getByRole("button", { name: "Stop watching Ines's webcam, reconnecting" })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(ownerHere.getByRole("button", { name: "Watch Lou's screen, reconnecting" })).toBeVisible();
-  await expect(lousPicture).toBeVisible();
+  await expect(ownerHere.getByRole("button", { name: "Watch Ines's screen, reconnecting" })).toBeVisible();
+  await expect(inesPicture).toBeVisible();
   if (process.env.GRAEAE_SCREENSHOTS) {
     for (const colorScheme of ["dark", "light"] as const) {
-      for (const [who, page] of [["owner", owner], ["lou", lou]] as const) {
+      for (const [who, page] of [["owner", owner], ["ines", ines]] as const) {
         // The app is dark unless "You" says otherwise, whatever the system prefers.
         await page.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
         await page.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/reconnecting-${who}-${colorScheme}.png` });
@@ -140,27 +147,27 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
     }
   }
 
-  // The grace period runs out: Lou leaves, and her shares end.
-  await expect(ownerHere.getByRole("button", { name: /^Lou/ })).toHaveCount(0, { timeout: 30_000 });
-  await expect(lousPicture).toHaveCount(0);
+  // The grace period runs out: Ines leaves, and her shares end.
+  await expect(ownerHere.getByRole("button", { name: /^Ines/ })).toHaveCount(0, { timeout: 30_000 });
+  await expect(inesPicture).toHaveCount(0);
 
-  // Lou's network is back. Her stage is as it was, and her shares start again with no picker.
+  // Ines's network is back. Her stage is as it was, and her shares start again with no picker.
   network.online = true;
   await expect(reconnecting).toHaveCount(0, { timeout: 15_000 });
   await expect(ownersPicture).toBeVisible();
-  await expect(ownerHere.getByRole("button", { name: "Watch Lou's webcam" })).toBeVisible();
-  await expect(ownerHere.getByRole("button", { name: "Watch Lou's screen" })).toBeVisible();
-  await expect(lou.getByRole("button", { name: "Webcam live" })).toBeDisabled();
-  await expect(lou.getByRole("button", { name: "Screen live" })).toBeDisabled();
-  expect(await fake(lou)).toMatchObject({ connections: 2, asked: [expect.anything()] });
+  await expect(quality.getByRole("radio", { name: "720p" })).toBeChecked();
+  await expect(ownerHere.getByRole("button", { name: "Watch Ines's webcam" })).toBeVisible();
+  await expect(ownerHere.getByRole("button", { name: "Watch Ines's screen" })).toBeVisible();
+  await expect(ines.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(ines.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  expect(await fake(ines)).toMatchObject({ connections: 2, asked: [expect.anything()] });
 
-  // Nobody who watched Lou's webcam before is carried over.
-  await expect(lousPicture).toHaveCount(0);
-  await expect(lou.getByText("Owner watching")).toHaveCount(0);
-  await expect(lou.getByText("No one watching").first()).toBeVisible();
+  // Nobody who watched Ines's webcam before is carried over.
+  await expect(inesPicture).toHaveCount(0);
+  await expect(ines.getByText("Owner watching")).toHaveCount(0);
+  await expect(ines.getByText("No one watching").first()).toBeVisible();
 
-  await lou.close();
-  await owner.getByRole("button", { name: "Stop your webcam" }).click();
+  await ines.close();
   await owner.close();
 });
 

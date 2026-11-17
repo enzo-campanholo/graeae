@@ -16,6 +16,7 @@
 // it: it makes a new one, starts its shares again with the captures it still holds, and
 // watches again what it watched, where those shares are still live.
 
+import type { QualityName } from "../../shared/encoding.ts";
 import {
   applyMessage,
   roomSocketPath,
@@ -23,12 +24,13 @@ import {
   type LiveShare,
   type MediaChange,
   type MediaState,
+  type QualityChoice,
   type RoomView,
   type ServerMessage,
   type ShareKind,
   type SharesRequest,
 } from "../../shared/socket/index.ts";
-import { sameShare } from "../../shared/socket/watching.ts";
+import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
@@ -40,6 +42,8 @@ export interface Picture {
   video: string;
   /** The share's picture; null when there is none to show (the fake media client). */
   stream: MediaStream | null;
+  /** The quality it arrives at, from the frames received; null before the first. */
+  received: QualityName | null;
 }
 
 /** One of this tab's own shares, from the press of its button until it has ended. */
@@ -72,6 +76,8 @@ export class RoomClient {
    * start later joins the stage by itself. Null when it follows nobody.
    */
   following = $state<string | null>(null);
+  /** Qualities this tab has chosen for shares it watches, until the instance answers. */
+  choosing = $state.raw<{ share: LiveShare; quality: QualityChoice }[]>([]);
 
   /** The signaling connection. */
   private readonly socket: Connection<ServerMessage>;
@@ -90,6 +96,11 @@ export class RoomClient {
   private unwanted: LiveShare[] = [];
   /** Shares on the stage whose pull never reached the tab: each is watched again once its watch is closed. */
   private rewatch: LiveShare[] = [];
+  /** The qualities a stage rebuilt after the grace period was watched at: each is chosen again once its share is watched. */
+  private restoring: { share: LiveShare; quality: QualityChoice }[] = [];
+  /** How to stop listening for the quality each watched share arrives at, by its video's mid. Nothing renders from it. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
+  private readonly listening = new Map<string, () => void>();
   /** The negotiation under way on the media connection, which the next one waits for. */
   private negotiating: Promise<unknown> = Promise.resolve();
 
@@ -184,7 +195,8 @@ export class RoomClient {
       const live = await this.negotiate(async () => {
         const offer = await this.media.offer(capture);
         const answer = await this.request(
-          { type: "shares", request: startRequest(kind, offer) },
+          // A share that starts again by itself sends the browser family too, through here.
+          { type: "shares", request: startRequest(kind, offer, this.media.browser) },
           (change) => (change.type === "published" || change.type === "refused") && change.kind === kind,
         );
         if (answer.type !== "published") return false;
@@ -213,6 +225,28 @@ export class RoomClient {
     this.update(kind, { state: "stopping" });
     // Sent again on the next socket if this one is lost.
     this.send({ type: "shares", request: { type: "stop", kind } });
+  }
+
+  /**
+   * The quality this tab watches `share` at: the one it just chose, until the instance
+   * answers, or the one the instance says.
+   */
+  quality(share: LiveShare): QualityChoice {
+    const chosen = this.choosing.find((candidate) => sameShare(candidate.share, share));
+    if (chosen) return chosen.quality;
+    return this.view ? qualityOf(this.view.watching, share) : "auto";
+  }
+
+  /**
+   * Watches `share`, a share this tab watches that goes out at two qualities, at
+   * `quality`: "Auto", "1080p" or "720p". The instance sets it on the media server
+   * mid-watch, and says which quality the tab then watches at.
+   */
+  chooseQuality(share: LiveShare, quality: QualityChoice) {
+    if (!this.watches(share) || this.quality(share) === quality) return;
+    share = { member: share.member, kind: share.kind };
+    this.choosing = [...this.choosing.filter((candidate) => !sameShare(candidate.share, share)), { share, quality }];
+    this.send({ type: "watching", request: { type: "quality", share, quality } });
   }
 
   /** Whether this tab watches `share`: it is on the tab's stage. */
@@ -271,7 +305,11 @@ export class RoomClient {
         );
         if (pulled.type !== "pulled") return;
         const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
-        this.pictures = [...this.pictures.filter((picture) => !sameShare(picture.share, share)), { share, video: pulled.video, stream }];
+        this.pictures = [
+          ...this.pictures.filter((picture) => !sameShare(picture.share, share)),
+          { share, video: pulled.video, stream, received: null },
+        ];
+        this.listen(share, pulled.video);
         await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
       });
     } catch {
@@ -317,6 +355,8 @@ export class RoomClient {
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
   close() {
+    for (const stop of this.listening.values()) stop();
+    this.listening.clear();
     this.media.close();
     this.socket.close();
   }
@@ -337,6 +377,20 @@ export class RoomClient {
     if (message.type === "state" && before) this.rejoined(before, message.media);
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
+    // The instance has answered a choice of quality, or the share left the stage. A whole
+    // new state after a reconnect answers every choice whose answer was lost with the socket.
+    if (message.type === "state") this.choosing = [];
+    if (message.type === "watching" && (message.change.type === "quality" || message.change.type === "unwatched")) {
+      const { share } = message.change;
+      this.choosing = this.choosing.filter((candidate) => !sameShare(candidate.share, share));
+    }
+    // A share of a rebuilt stage is watched again: back to the quality it was watched at.
+    if (message.type === "watching" && message.change.type === "watched") {
+      const { share } = message.change;
+      const restored = this.restoring.find((candidate) => sameShare(candidate.share, share));
+      this.restoring = this.restoring.filter((candidate) => candidate !== restored);
+      if (restored) this.chooseQuality(share, restored.quality);
+    }
     // A share the member followed starts: it joins the stage by itself.
     if (message.type === "shares" && message.change.type === "started" && message.change.share.member === this.following)
       void this.watch(message.change.share);
@@ -381,6 +435,8 @@ export class RoomClient {
 
     this.resetMedia();
     this.pictures = [];
+    // A watch at a chosen quality goes back to it once watched again; a new watch would be at Auto.
+    this.restoring = before.watching.qualities;
     for (const own of this.mine) {
       // One still starting finds the new connection by itself.
       if (own.state === "starting") continue;
@@ -401,6 +457,8 @@ export class RoomClient {
   private unwatched(share: LiveShare) {
     const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
     if (picture) {
+      this.listening.get(picture.video)?.();
+      this.listening.delete(picture.video);
       this.media.drop(picture.video);
       this.pictures = this.pictures.filter((candidate) => candidate !== picture);
     }
@@ -408,6 +466,17 @@ export class RoomClient {
       this.rewatch = this.rewatch.filter((candidate) => !sameShare(candidate, share));
       void this.watch(share);
     }
+  }
+
+  /** Keeps the picture of `share`, arriving on `video`, told of the quality it arrives at. */
+  private listen(share: LiveShare, video: string) {
+    this.listening.get(video)?.();
+    const stop = this.media.received(video, (received) => {
+      this.pictures = this.pictures.map((picture) =>
+        picture.video === video && sameShare(picture.share, share) ? { ...picture, received } : picture,
+      );
+    });
+    this.listening.set(video, stop);
   }
 
   /** Runs `negotiation` on the media connection once every earlier one is done. */
@@ -433,6 +502,8 @@ export class RoomClient {
 
   /** Lets go of the media connection, keeping the captures: the next share or watch makes a new one. */
   private resetMedia() {
+    for (const stop of this.listening.values()) stop();
+    this.listening.clear();
     this.media.reset();
     this.connection = null;
     this.made = false;
@@ -496,7 +567,12 @@ export class RoomClient {
 }
 
 /** What the page sends to start a share of `kind` with `offer`. */
-function startRequest(kind: ShareKind, offer: Offer): SharesRequest {
+/**
+ * What the page sends to start a share of `kind` with `offer`. A screen share says the
+ * browser family sending it, whose encoding plan says how many qualities it goes out at.
+ */
+function startRequest(kind: ShareKind, offer: Offer, browser: BrowserFamily): SharesRequest {
   if (kind === "webcam") return { type: "start", kind, offer: offer.sdp, video: offer.video };
-  return { type: "start", kind, offer: offer.sdp, video: offer.video, ...(offer.audio ? { audio: offer.audio } : {}) };
+  const audio = offer.audio ? { audio: offer.audio } : {};
+  return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio };
 }

@@ -27,8 +27,9 @@
 // every connection on record. There is no timed sweep.
 
 import type { IceServer } from "../shared/socket/media.ts";
+import type { EncodingPlan } from "../shared/encoding.ts";
 import type { ListedShare, LiveShare, ShareKind } from "../shared/socket/shares.ts";
-import { sameShare } from "../shared/socket/watching.ts";
+import { sameShare, type ChosenQuality, type QualityChoice } from "../shared/socket/watching.ts";
 import type { MediaLayer, Pulled, Track } from "./media/index.ts";
 import type { Tab } from "./signaling.ts";
 
@@ -47,6 +48,10 @@ interface ShareRecord {
   audio: Track | null;
   /** Whether the media server registered it, so the room was told it is live. */
   live: boolean;
+  /** How many qualities it goes out at: 2 for a viewer to choose between, or 1. */
+  qualities: 1 | 2;
+  /** The most one viewer can receive of it, in bits per second: the usage count's figure for a gap. */
+  maxBitrate: number;
 }
 
 /** A track pulled for a watch: the share's track name, on the mid the media server gave it, null until then. */
@@ -72,6 +77,8 @@ interface WatchRecord {
   audio: PulledTrack | null;
   /** Whether the pull returned and the share went on the viewer's stage. */
   watching: boolean;
+  /** The quality the viewer chose; always "auto" for a share with one quality. */
+  quality: QualityChoice;
 }
 
 /**
@@ -185,6 +192,7 @@ interface WatchRow extends Record<string, SqlStorageValue> {
   video_mid: string | null;
   audio_track: string | null;
   audio_mid: string | null;
+  quality: string;
 }
 
 interface ShareRow extends Record<string, SqlStorageValue> {
@@ -198,6 +206,8 @@ interface ShareRow extends Record<string, SqlStorageValue> {
   audio_track: string | null;
   audio_mid: string | null;
   live_at: number | null;
+  qualities: number;
+  max_bitrate: number;
 }
 
 export class Shares {
@@ -251,6 +261,14 @@ export class Shares {
     return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL ORDER BY watching_at, rowid", tab).map(
       (watch) => watch.share,
     );
+  }
+
+  /** The shares on the tab `tab`'s stage it watches at a quality other than "Auto", in the order it began watching them. */
+  qualities(tab: string): ChosenQuality[] {
+    return this.watches(
+      "WHERE tab_id = ? AND watching_at IS NOT NULL AND quality != 'auto' ORDER BY watching_at, rowid",
+      tab,
+    ).map((watch) => ({ share: watch.share, quality: watch.quality as ChosenQuality["quality"] }));
   }
 
   /** Who watches each of `member`'s live shares in the room at `address`. A share nobody watches is left out. */
@@ -331,8 +349,9 @@ export class Shares {
    * its audio on `mids.audio`. The two are one unit: recorded, published and closed
    * together. Refused unless the tab's media connection is made and the member has no
    * other share of that kind anywhere in the instance, live or starting. A webcam share
-   * is video only. `stillOpen` says whether the tab is still there once the media server
-   * has answered.
+   * is video only. `plan` is how the browser sends it, which says how many qualities a
+   * viewer can choose between and its maximum bitrate for the usage count. `stillOpen`
+   * says whether the tab is still there once the media server has answered.
    */
   async start(
     tab: Tab,
@@ -340,6 +359,7 @@ export class Shares {
     kind: ShareKind,
     offer: string,
     mids: { video: string; audio?: string },
+    plan: EncodingPlan,
     stillOpen: () => boolean,
   ): Promise<Started> {
     const mediaId = this.connectionRow(tab.id)?.media_id;
@@ -356,10 +376,13 @@ export class Shares {
       video: { name: `${kind}-${crypto.randomUUID()}`, mid: mids.video },
       audio: mids.audio === undefined ? null : { name: `${kind}-audio-${crypto.randomUUID()}`, mid: mids.audio },
       live: false,
+      qualities: plan.qualities.length > 1 ? 2 : 1,
+      maxBitrate: plan.maxBitrate,
     };
     this.sql.exec(
-      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid,
+         qualities, max_bitrate, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       share.id,
       member,
       tab.device,
@@ -370,6 +393,8 @@ export class Shares {
       share.video.mid,
       share.audio?.name ?? null,
       share.audio?.mid ?? null,
+      share.qualities,
+      share.maxBitrate,
       Date.now(),
     );
 
@@ -428,6 +453,7 @@ export class Shares {
       video: { name: watched.video.name, mid: null },
       audio: watched.audio ? { name: watched.audio.name, mid: null } : null,
       watching: false,
+      quality: "auto",
     };
     this.sql.exec(
       `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, audio_track, created_at)
@@ -449,8 +475,14 @@ export class Shares {
     try {
       let pulled: Pulled;
       try {
-        // A screen share's video and audio are pulled together, as one unit.
-        pulled = await this.media.pull(viewerMediaId, sharerMediaId, pulledTracksOf(record).map((track) => track.name));
+        // A screen share's video and audio are pulled together, as one unit. A picture
+        // sent at two qualities is watched at "Auto" to begin with.
+        pulled = await this.media.pull(
+          viewerMediaId,
+          sharerMediaId,
+          pulledTracksOf(record).map((track) => track.name),
+          ...(watched.qualities === 2 ? [{ name: record.video.name, quality: record.quality }] : []),
+        );
       } catch {
         // The media server gave no mid to close by, so the record goes. A pulled track it
         // made all the same is for the sweep, which closes what no record names.
@@ -483,6 +515,45 @@ export class Shares {
     } finally {
       this.inFlight.delete(record.id);
     }
+  }
+
+  /**
+   * The quality `tab` watches `share` at, or null when it does not watch it (or is still
+   * starting to).
+   */
+  quality(tab: Tab, share: LiveShare): QualityChoice | null {
+    return this.watching(tab, share)?.quality ?? null;
+  }
+
+  /**
+   * Has `tab` watch `share`, which it watches, at `quality`: the media server is told
+   * mid-watch, and the choice is recorded once it has returned. Returns the quality the
+   * tab now watches at: `quality`, or the one it had when the media server failed or the
+   * share has one quality. Null when the tab does not watch the share, or stopped while
+   * the media server was answering.
+   */
+  async setQuality(tab: Tab, share: LiveShare, quality: QualityChoice): Promise<QualityChoice | null> {
+    const watch = this.watching(tab, share);
+    if (!watch?.video.mid || this.closing.has(watch.id)) return watch?.quality ?? null;
+    const watched = this.records("WHERE id = ?", watch.shareId)[0];
+    if (!watched || watched.qualities !== 2 || this.ending.has(watched.id) || quality === watch.quality) return watch.quality;
+    const viewerMediaId = this.connectionRow(tab.id)?.media_id;
+    const sharerMediaId = this.connectionRow(watched.tab)?.media_id;
+    if (typeof viewerMediaId !== "string" || typeof sharerMediaId !== "string") return watch.quality;
+    try {
+      await this.media.setQuality(viewerMediaId, sharerMediaId, { name: watch.video.name, mid: watch.video.mid }, quality);
+    } catch {
+      return watch.quality;
+    }
+    // The pull may have been closed while the media server was answering.
+    if (this.watches("WHERE id = ?", watch.id).length === 0) return null;
+    this.sql.exec("UPDATE watch SET quality = ? WHERE id = ?", quality, watch.id);
+    return quality;
+  }
+
+  /** `tab`'s watch of `share`, once it is on the tab's stage. */
+  private watching(tab: Tab, share: LiveShare): WatchRecord | undefined {
+    return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL", tab.id).find((watch) => sameShare(watch.share, share));
   }
 
   /**
@@ -923,7 +994,8 @@ export class Shares {
   private records(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
     return this.sql
       .exec<ShareRow>(
-        `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at
+        `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at,
+           qualities, max_bitrate
          FROM share ${where}`,
         ...bindings,
       )
@@ -937,6 +1009,8 @@ export class Shares {
         video: { name: row.video_track, mid: row.video_mid },
         audio: row.audio_track !== null && row.audio_mid !== null ? { name: row.audio_track, mid: row.audio_mid } : null,
         live: row.live_at !== null,
+        qualities: row.qualities === 2 ? 2 : 1,
+        maxBitrate: row.max_bitrate,
       }));
   }
 
@@ -944,7 +1018,7 @@ export class Shares {
     return this.sql
       .exec<WatchRow>(
         `SELECT id, tab_id, member_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track, audio_mid,
-           watching_at
+           watching_at, quality
          FROM watch ${where}`,
         ...bindings,
       )
@@ -959,6 +1033,7 @@ export class Shares {
         video: { name: row.video_track, mid: row.video_mid },
         audio: row.audio_track !== null ? { name: row.audio_track, mid: row.audio_mid } : null,
         watching: row.watching_at !== null,
+        quality: row.quality as QualityChoice,
       }));
   }
 }
@@ -967,9 +1042,16 @@ function toLiveShare(share: ShareRecord): LiveShare {
   return { member: share.member, kind: share.kind };
 }
 
-/** A share as the room lists it: a screen share says whether it carries screen audio. */
+/**
+ * A share as the room lists it: a screen share says whether it carries screen audio, and
+ * a share at two qualities says so.
+ */
 function toListedShare(share: ShareRecord): ListedShare {
-  return share.kind === "screen" ? { ...toLiveShare(share), audio: share.audio !== null } : toLiveShare(share);
+  return {
+    ...toLiveShare(share),
+    ...(share.kind === "screen" ? { audio: share.audio !== null } : {}),
+    ...(share.qualities === 2 ? { twoQualities: true as const } : {}),
+  };
 }
 
 /** A share's own tracks, which are recorded, published and closed together. */
