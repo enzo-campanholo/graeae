@@ -114,6 +114,12 @@ export class RoomClient {
   private negotiating: Promise<unknown> = Promise.resolve();
   /** Stops the usage reports, once the media connection is made. */
   private stopReporting: (() => void) | null = null;
+  /**
+   * Whether this socket has brought the room's state. Until it has, the tab may be a new
+   * one on the instance, its grace period run out, and a report of the old media
+   * connection's total would be charged to it in full again.
+   */
+  private synced = false;
   /** The usage reports read but not yet sent, which the next one waits for. */
   private reporting: Promise<void> = Promise.resolve();
 
@@ -125,6 +131,7 @@ export class RoomClient {
       refused: async () => (await getJson(`/api/rooms/${encodeURIComponent(address)}`)) === null,
       // An answer the lost socket never got will not come on the next one.
       lost: () => {
+        this.synced = false;
         for (const request of this.waiting.splice(0)) request.lost();
       },
     });
@@ -390,6 +397,7 @@ export class RoomClient {
     const before = this.view;
     this.view = applyMessage(this.view, message);
     if (message.type === "state" && before) this.rejoined(before, message.media);
+    if (message.type === "state") this.synced = true;
     if (message.type === "shares" && message.change.type === "ended") this.ended(message.change.share);
     if (message.type === "watching" && message.change.type === "unwatched") this.unwatched(message.change.share);
     // The instance has answered a choice of quality, or the share left the stage. A whole
@@ -554,14 +562,15 @@ export class RoomClient {
    * Reports what the media connection has received since it opened, for the usage count:
    * `final` before it is let go of, and the next connection counts from zero. The totals
    * are read at once, so a final one is the connection's own even if it is let go of
-   * straight after; reports go out in the order they were read. One sent while the
-   * socket is lost is dropped, and the next makes up for it.
+   * straight after; reports go out in the order they were read. One due while the socket
+   * is lost, or before a new socket has brought the room, is dropped, and the next makes
+   * up for it.
    */
   private report({ final = false } = {}) {
     const read = this.media.transport();
     this.reporting = this.reporting.then(async () => {
       const totals = await read.catch(() => null);
-      if (!totals) return;
+      if (!totals || !this.synced) return;
       const bytes = Math.max(0, Math.round(totals.received));
       const request: UsageRequest = { type: "received", bytes, relayed: totals.relayed };
       this.send({ type: "usage", request: final ? { ...request, final: true } : request });
