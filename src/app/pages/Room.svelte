@@ -1,6 +1,7 @@
 <script lang="ts">
   // A room: the bar of people on the left and the stage filling the rest. Who is here
-  // comes live over the tab's socket; watching and sharing arrive with their own tickets.
+  // and what is live come over the tab's socket; your own shares sit at the bar's foot.
+  // Watching arrives with ticket 11.
   import { sample, SampleScene } from "$sample";
   import BarHeader from "$lib/components/room/BarHeader.svelte";
   import Bar from "$lib/components/room/Bar.svelte";
@@ -8,6 +9,7 @@
   import PeopleHeading from "$lib/components/room/PeopleHeading.svelte";
   import PersonRow from "$lib/components/room/PersonRow.svelte";
   import Rail from "$lib/components/room/Rail.svelte";
+  import SharePreview from "$lib/components/room/SharePreview.svelte";
   import ShareButtons from "$lib/components/room/ShareButtons.svelte";
   import Shortcuts from "$lib/components/room/Shortcuts.svelte";
   import Stage from "$lib/components/room/Stage.svelte";
@@ -17,7 +19,7 @@
   import { isShortcut } from "$lib/keys.js";
   import { RoomClient } from "$lib/room-client.svelte.js";
   import { readStored, writeStored } from "$lib/stored.js";
-  import type { Person } from "../../shared/socket/index.ts";
+  import type { Person, ShareKind } from "../../shared/socket/index.ts";
   import type { Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -54,6 +56,22 @@
     };
   });
 
+  // Whether a member has a live share of a kind. Each live share is an icon on its
+  // sharer's row; nobody is watching anything until ticket 11.
+  const isLive = (member: string, kind: ShareKind) =>
+    !!view?.shares.live.some((share) => share.member === member && share.kind === kind);
+  const rowShare = (member: string, kind: ShareKind) => (isLive(member, kind) ? { watched: false } : null);
+
+  // Your own shares from this tab, at the bar's foot once they are live.
+  const mine = $derived((client?.mine ?? []).filter((share) => share.state !== "starting"));
+  const webcamStarting = $derived(!!client?.mine.some((share) => share.kind === "webcam" && share.state === "starting"));
+  // A webcam of yours live from any tab or device: one webcam share per member at a time.
+  const webcamLive = $derived(
+    room
+      ? room.mine.some((share) => share.kind === "webcam")
+      : !!view && (isLive(view.people.you.id, "webcam") || mine.some((share) => share.kind === "webcam")),
+  );
+
   // Whether the bar is folded into the rail is kept on this device.
   const FOLDED_KEY = "graeae:rail";
   let folded = $state(readStored(FOLDED_KEY) === "1");
@@ -70,10 +88,12 @@
     }
   }
 
+  // Shares others have live, which you could watch.
   const live = $derived(
-    room ? room.people.reduce((n, person) => n + Number(!!person.screen) + Number(!!person.webcam), 0) : 0,
+    room
+      ? room.people.reduce((n, person) => n + Number(!!person.screen) + Number(!!person.webcam), 0)
+      : (view?.shares.live.filter((share) => share.member !== view.people.you.id).length ?? 0),
   );
-  const webcamLive = $derived(!!room?.mine.some((share) => share.kind === "webcam"));
 </script>
 
 <svelte:head>
@@ -95,11 +115,16 @@
               followed: person.followed,
               sharing: !!(person.screen || person.webcam),
             }))
-          : (people?.here ?? []).map(({ id, name }) => ({ id, name, followed: false, sharing: false }))}
+          : (people?.here ?? []).map(({ id, name }) => ({
+              id,
+              name,
+              followed: false,
+              sharing: isLive(id, "screen") || isLive(id, "webcam"),
+            }))}
         onexpand={() => fold(false)}
       >
         {#snippet foot()}
-          <ShareButtons compact {webcamLive} />
+          <ShareButtons compact {webcamLive} {webcamStarting} onwebcam={() => client?.shareWebcam()} />
         {/snippet}
       </Rail>
     {:else}
@@ -117,7 +142,11 @@
           <section aria-label="Here">
             <PeopleHeading label="Here" count={people.here.length + 1} />
             {#each people.here as person (person.id)}
-              <PersonRow name={person.name} />
+              <PersonRow
+                name={person.name}
+                screen={rowShare(person.id, "screen")}
+                webcam={rowShare(person.id, "webcam")}
+              />
             {/each}
             <PersonRow name={people.you} you />
           </section>
@@ -159,7 +188,20 @@
               <SampleScene scene={share.scene} />
             </OwnShare>
           {/each}
-          <ShareButtons {webcamLive} />
+          {#each mine as share (share.kind)}
+            <OwnShare
+              kind={share.kind}
+              watchers={[]}
+              stopping={share.state === "stopping"}
+              onstop={() => client?.stop(share.kind)}
+            >
+              <SharePreview kind={share.kind} stream={share.capture?.stream ?? null} />
+            </OwnShare>
+          {/each}
+          {#if client?.failed === "webcam"}
+            <p class="text-muted-foreground px-0.5 pb-2 text-xs" role="status">Your webcam didn't start. Try again.</p>
+          {/if}
+          <ShareButtons {webcamLive} {webcamStarting} onwebcam={() => client?.shareWebcam()} />
         {/snippet}
       </Bar>
     {/if}

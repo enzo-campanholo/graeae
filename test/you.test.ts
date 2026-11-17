@@ -347,7 +347,7 @@ describe("the display name in the list of rooms", () => {
 
     expect(await list.next()).toEqual({
       type: "rooms",
-      change: { type: "listed", room: { address: first, name: "First room", present: ["Bia S."] } },
+      change: { type: "listed", room: { address: first, name: "First room", present: ["Bia S."], live: 0 } },
     });
     await expect(list.next()).rejects.toThrow(/no message/);
   });

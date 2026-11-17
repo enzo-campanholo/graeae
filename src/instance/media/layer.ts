@@ -1,0 +1,44 @@
+// The media layer: the one seam between the instance and the media server. Only the
+// instance talks to the media server, and only through this (ADR 0003). The instance
+// picks every track name and writes its record before it calls any of these, so a call
+// that fails or never returns leaves a record with nothing behind it, never a track with
+// no record.
+//
+// This holds only the operations the instance uses so far. Ticket 11 adds pulling a
+// share's tracks for a viewer, ticket 17 changing a viewer's quality, and ticket 21
+// listing the tracks a media connection really has. Ticket 12 adds the Cloudflare
+// implementation; the in-memory fake in `fake.ts` stands in for it in tests.
+
+import type { IceServer } from "../../shared/socket/media.ts";
+
+/** The media server's own identifier for one media connection. It never reaches a browser. */
+export type MediaConnectionId = string;
+
+/** One track on a media connection, as the instance recorded it. */
+export interface Track {
+  /** The track's name, which the instance picks. It never reaches a browser. */
+  name: string;
+  /** The mid of the browser's transceiver that carries it. */
+  mid: string;
+}
+
+export interface MediaLayer {
+  /** Makes a new media connection, with no tracks yet. */
+  connect(): Promise<MediaConnectionId>;
+
+  /**
+   * Publishes `tracks`, which the browser's SDP `offer` sends over the media connection
+   * `connection`. Returns the media server's SDP answer, for the browser. The tracks are
+   * live once this returns.
+   */
+  publish(connection: MediaConnectionId, offer: string, tracks: readonly Track[]): Promise<string>;
+
+  /**
+   * Force-closes `tracks` on `connection`: the media stops at once, with nothing needed
+   * from the browser. Closing a track that is not there is no error.
+   */
+  close(connection: MediaConnectionId, tracks: readonly Track[]): Promise<void>;
+
+  /** Mints a relay credential lasting `ttlSeconds`. The instance keeps no record of it. */
+  relayCredential(ttlSeconds: number): Promise<IceServer[]>;
+}

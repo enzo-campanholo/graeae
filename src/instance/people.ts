@@ -269,6 +269,23 @@ export class People {
   }
 
   /**
+   * The member whose device `deviceId` is, while the instance still remembers it; null
+   * once it is forgotten. An open socket checks its device with this on every request.
+   */
+  deviceMember(deviceId: string): Member | null {
+    const row = this.sql
+      .exec<{ id: string; display_name: string; is_owner: number }>(
+        `SELECT member.id, member.display_name, member.is_owner
+         FROM device JOIN member ON member.id = device.member_id
+         WHERE device.id = ? AND device.last_used_at > ?`,
+        deviceId,
+        Date.now() - DEVICE_LIFE_MS,
+      )
+      .toArray()[0];
+    return row ? { id: row.id, name: row.display_name, owner: row.is_owner === 1 } : null;
+  }
+
+  /**
    * Changes `member`'s display name to `name`, trimmed. Null, and nothing changed, when
    * `name` is not a display name.
    */
