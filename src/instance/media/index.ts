@@ -1,13 +1,14 @@
-// Which media layer the instance uses. Only the fake exists so far: ticket 12 adds the
-// Cloudflare implementation, makes it the default, and adds the switch that selects the
-// fake for tests, which no request to a deployed instance can reach.
+// Which media layer the instance uses: Cloudflare's media server and relay, or the fake
+// media server in a build made for tests. The switch is fixed when the code is built
+// (`src/shared/fake-media.d.ts`), so no request to a deployed instance can select the
+// fake, and a build for deploying does not contain it.
 
+import { CloudflareMediaServer } from "./cloudflare.ts";
 import { fakeMediaServer } from "./fake.ts";
 import type { MediaLayer } from "./layer.ts";
 
 export type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
 
 export function mediaLayer(env: Env): MediaLayer {
-  void env;
-  return fakeMediaServer;
+  return __GRAEAE_FAKE_MEDIA__ ? fakeMediaServer : new CloudflareMediaServer(env);
 }
