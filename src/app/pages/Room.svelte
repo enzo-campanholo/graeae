@@ -3,6 +3,7 @@
   // and what is live come over the tab's socket; your own shares sit at the bar's foot.
   // A share's icon on its sharer's row puts it on this tab's stage or takes it off.
   import { sample, SampleScene } from "$sample";
+  import type { Scene } from "../sample/types.ts";
   import BarHeader from "$lib/components/room/BarHeader.svelte";
   import Bar from "$lib/components/room/Bar.svelte";
   import OwnShare from "$lib/components/room/OwnShare.svelte";
@@ -88,16 +89,36 @@
 
   // The stage: the shares this tab watches, while they are live, in the order it began
   // watching them.
-  const stage = $derived(
-    (view?.watching.stage ?? [])
-      .filter((share) => isLive(share.member, share.kind))
-      .map((share) => ({
-        share,
-        key: `${share.member}:${share.kind}`,
-        name: nameOf(share.member),
-        stream: client?.pictures.find((picture) => sameShare(picture.share, share))?.stream ?? null,
-      })),
+  // The sample's made-up shares stand in for them under `?sample`.
+  interface Tile {
+    key: string;
+    name: string;
+    kind: ShareKind;
+    share?: LiveShare;
+    stream?: MediaStream | null;
+    scene?: Scene;
+  }
+  const tiles: Tile[] = $derived(
+    room
+      ? room.stage.map((share) => ({ key: share.id, name: share.name, kind: share.kind, scene: share.scene }))
+      : (view?.watching.stage ?? [])
+          .filter((share) => isLive(share.member, share.kind))
+          .map((share) => ({
+            key: `${share.member}:${share.kind}`,
+            name: nameOf(share.member),
+            kind: share.kind,
+            share,
+            stream: client?.pictures.find((picture) => sameShare(picture.share, share))?.stream ?? null,
+          })),
   );
+
+  // The focused share, large above a strip of the others, while it is on the stage.
+  let focusedKey = $state<string | null>(null);
+  const focusedTile = $derived(tiles.find((tile) => tile.key === focusedKey) ?? null);
+  $effect(() => {
+    // A focused share that leaves the stage is forgotten, so it comes back into the grid.
+    if (focusedKey && !focusedTile) focusedKey = null;
+  });
 
   // The names of the members watching one of your own shares, for its preview.
   const watchersOf = (share: LiveShare) =>
@@ -256,21 +277,44 @@
       </Bar>
     {/if}
 
-    <Stage count={room?.stage.length ?? stage.length}>
-      {#each room?.stage ?? [] as share (share.id)}
-        <StageTile name={share.name} kind={share.kind}>
-          <SampleScene scene={share.scene} />
-        </StageTile>
-      {/each}
-      {#each stage as tile (tile.key)}
-        <StageTile name={tile.name} kind={tile.share.kind} onstop={() => client?.unwatch(tile.share)}>
-          <WatchedPicture name={tile.name} kind={tile.share.kind} stream={tile.stream} />
-        </StageTile>
+    <Stage count={tiles.length} focused={focusedTile ? focusedShare : undefined} {strip}>
+      {#each tiles as tile (tile.key)}
+        {@render stageTile(tile, "grid")}
       {/each}
       {#snippet empty()}
         <!-- Until the room is known, the stage says only that it is loading. -->
-        {#if room || view}<StageEmpty {live} oneverything={() => client?.pick("everything")} />{:else}<Loading />{/if}
+        {#if room || view}<StageEmpty
+            {live}
+            following={client?.following ? nameOf(client.following) : null}
+            oneverything={() => client?.pick("everything")} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>
 {/if}
+
+{#snippet focusedShare()}
+  {#if focusedTile}{@render stageTile(focusedTile, "focused")}{/if}
+{/snippet}
+
+{#snippet strip()}
+  {#each tiles.filter((tile) => tile !== focusedTile) as tile (tile.key)}
+    <li>{@render stageTile(tile, "strip")}</li>
+  {/each}
+{/snippet}
+
+{#snippet stageTile(tile: Tile, place: "grid" | "focused" | "strip")}
+  <StageTile
+    name={tile.name}
+    kind={tile.kind}
+    {place}
+    onstop={tile.share ? () => tile.share && client?.unwatch(tile.share) : undefined}
+    onfocus={() => (focusedKey = tile.key)}
+    onunfocus={() => (focusedKey = null)}
+  >
+    {#if tile.scene}
+      <SampleScene scene={tile.scene} />
+    {:else}
+      <WatchedPicture name={tile.name} kind={tile.kind} stream={tile.stream ?? null} />
+    {/if}
+  </StageTile>
+{/snippet}

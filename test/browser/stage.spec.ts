@@ -87,6 +87,7 @@ test("a name watches everything that member shares, and keeps following them unt
   // Following: a share Rui starts later joins the stage by itself.
   await stopWebcam(rui);
   await expect(ruis).toHaveCount(0);
+  await expect(stage.getByText("Rui isn't sharing anything right now.")).toBeVisible();
   await shareWebcam(rui);
   await expect(ruis).toBeVisible();
 
@@ -191,3 +192,94 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
   await owner.getByRole("button", { name: "Show the bar" }).click();
   await expect(here.getByRole("button", { name: "Tom", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("watched shares fill an even grid, one can be focused over a strip of the rest, and any can go fullscreen", async ({
+  browser,
+  baseURL,
+}) => {
+  // A maximised browser on a 1080p monitor.
+  const { owner, join } = await ownerInRoom(browser, baseURL, { width: 1920, height: 953 });
+  const names = ["Vera", "Wil", "Xia", "Yan", "Zoe", "Lia", "Noa"];
+  for (const name of names) await join(name);
+
+  const stage = owner.getByRole("main", { name: "Stage" });
+  const here = owner.getByRole("region", { name: "Here" });
+  const picture = (name: string) => stage.getByRole("img", { name: `${name}'s webcam, with no picture` });
+  const watch = async (...who: string[]) => {
+    for (const name of who) await here.getByRole("button", { name: `Watch ${name}'s webcam` }).click();
+    for (const name of who) await expect(picture(name)).toBeVisible();
+  };
+
+  /** How many shares sit side by side in the stage's top row. */
+  async function columns(): Promise<number> {
+    const boxes = await Promise.all((await stage.getByRole("figure").all()).map((tile) => tile.boundingBox()));
+    const top = Math.min(...boxes.map((box) => box!.y));
+    return boxes.filter((box) => Math.abs(box!.y - top) < 2).length;
+  }
+
+  // One share: one column, as large as the stage's height allows, and not limited by the bar.
+  await watch("Vera");
+  expect(await columns()).toBe(1);
+  await settled(owner);
+  const area = (await stage.boundingBox())!;
+  const one = (await picture("Vera").boundingBox())!;
+  expect(one.width, "the share is limited by the stage's width").toBeLessThan(area.width - 24 - 4);
+  expect(one.height, "the share does not fill the stage's height").toBeGreaterThan(area.height - 24 - 26 - 4);
+
+  // Two columns up to four shares, three up to six, four beyond.
+  await watch("Wil", "Xia");
+  await expect.poll(columns).toBe(2);
+  await watch("Yan", "Zoe");
+  await expect.poll(columns).toBe(3);
+  await watch("Lia", "Noa");
+  await expect.poll(columns).toBe(4);
+  await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Nothing" }).click();
+  await expect(stage.getByRole("figure")).toHaveCount(0);
+
+  // Focus makes one share large, with the others in a strip beneath it.
+  await watch("Vera", "Wil", "Xia");
+  await picture("Vera").hover();
+  await stage.getByRole("button", { name: "Focus Vera's webcam" }).click();
+  const strip = stage.getByRole("list", { name: "Other shares" });
+  await expect(strip.getByRole("button", { name: "Focus Wil's webcam" })).toBeVisible();
+  await expect(strip.getByRole("button", { name: "Focus Xia's webcam" })).toBeVisible();
+  await expect(strip.getByRole("button", { name: "Focus Vera's webcam" })).toHaveCount(0);
+  await settled(owner);
+  const focused = (await picture("Vera").boundingBox())!;
+  const small = (await picture("Wil").boundingBox())!;
+  expect(focused.height).toBeGreaterThan(small.height * 3);
+  expect(small.y).toBeGreaterThan(focused.y + focused.height);
+
+  // A share in the strip is focused in one click, and the focused one goes back to the grid.
+  await strip.getByRole("button", { name: "Focus Wil's webcam" }).click();
+  await expect(strip.getByRole("button", { name: "Focus Vera's webcam" })).toBeVisible();
+  await expect(strip.getByRole("button", { name: "Focus Wil's webcam" })).toHaveCount(0);
+  await picture("Wil").hover();
+  await stage.getByRole("button", { name: "Back to the grid" }).click();
+  await expect(strip).toHaveCount(0);
+  await expect.poll(columns).toBe(2);
+
+  // Every watched share goes fullscreen from its button or a double-click, and back.
+  /** Whether the share's picture fills the whole screen. */
+  const fills = async (name: string) => {
+    const box = await picture(name).boundingBox();
+    return !!box && box.width === 1920 && box.height === 953;
+  };
+  await picture("Xia").hover();
+  await stage.getByRole("button", { name: "Show Xia's webcam fullscreen" }).click();
+  await expect.poll(() => fills("Xia")).toBe(true);
+  await picture("Xia").hover();
+  await expect(stage.getByRole("button", { name: "Leave fullscreen" })).toBeVisible();
+  await picture("Xia").dblclick();
+  await expect.poll(() => fills("Xia")).toBe(false);
+  await picture("Wil").dblclick();
+  await expect.poll(() => fills("Wil")).toBe(true);
+  await picture("Wil").hover();
+  await stage.getByRole("button", { name: "Leave fullscreen" }).click();
+  await expect.poll(() => fills("Wil")).toBe(false);
+});
+
+/** Waits for the page's animations, such as a tile's arrival, to finish, so what is measured holds still. */
+async function settled(page: Page) {
+  await page.evaluate("Promise.all(document.getAnimations().map((animation) => animation.finished))");
+}

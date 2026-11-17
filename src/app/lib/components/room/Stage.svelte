@@ -2,10 +2,26 @@
   // The stage: an inset panel filling the rest of the room, holding the shares you
   // watch in a grid of 1 column for one share, 2 for up to four, 3 for up to six and
   // 4 beyond. The tiles are sized from the whole stage and packed together in its
-  // middle. With nothing to show it shows `empty`.
+  // middle. With a share focused, that one takes the stage and the others drop to a
+  // strip beneath it. With nothing to show it shows `empty`.
   import type { Snippet } from "svelte";
 
-  let { count, children, empty }: { count: number; children?: Snippet; empty?: Snippet } = $props();
+  let {
+    count,
+    children,
+    focused,
+    strip,
+    empty,
+  }: {
+    count: number;
+    /** The grid's tiles. */
+    children?: Snippet;
+    /** The focused share, which replaces the grid. */
+    focused?: Snippet;
+    /** The other watched shares, beneath the focused one. Each is an item of a list. */
+    strip?: Snippet;
+    empty?: Snippet;
+  } = $props();
 
   const columns = $derived(count <= 1 ? 1 : count <= 4 ? 2 : count <= 6 ? 3 : 4);
   const rows = $derived(Math.ceil(count / columns));
@@ -14,6 +30,17 @@
 <main class="bg-stage min-w-0 flex-1 rounded-xl p-3" aria-label="Stage">
   {#if count === 0}
     <div class="grid h-full place-items-center">{@render empty?.()}</div>
+  {:else if focused}
+    <div class="flex h-full flex-col gap-3">
+      <div class="area min-h-0 flex-1" style:--cols={1} style:--rows={1}>
+        <div class="grid h-full place-content-center">{@render focused()}</div>
+      </div>
+      {#if strip && count > 1}
+        <ul class="flex shrink-0 justify-center-safe gap-3 overflow-x-auto" aria-label="Other shares">
+          {@render strip()}
+        </ul>
+      {/if}
+    </div>
   {:else}
     <div class="area h-full" style:--cols={columns} style:--rows={rows}>
       <div class="grid h-full place-content-center gap-3" style:grid-template-columns="repeat({columns}, auto)">
