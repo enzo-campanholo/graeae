@@ -28,6 +28,7 @@ import { applyPresence, type PresenceChange, type PresenceRequest, type Presence
 import { applyRoom, type RoomChange, type RoomState } from "./room.ts";
 import { applyShares, type SharesChange, type SharesRequest, type SharesState } from "./shares.ts";
 import { applyUsage, type UsageChange, type UsageRequest, type UsageState } from "./usage.ts";
+import { applyWatching, type WatchingChange, type WatchingRequest, type WatchingState } from "./watching.ts";
 
 export type * from "./media.ts";
 export type * from "./people.ts";
@@ -35,6 +36,7 @@ export type * from "./presence.ts";
 export type * from "./room.ts";
 export type * from "./shares.ts";
 export type * from "./usage.ts";
+export type * from "./watching.ts";
 
 /** Where a tab showing the room at `/r/<address>` opens its socket. */
 export function roomSocketPath(address: string): string {
@@ -47,6 +49,7 @@ export interface RoomView {
   people: PeopleState;
   presence: PresenceState;
   shares: SharesState;
+  watching: WatchingState;
   usage: UsageState;
 }
 
@@ -59,6 +62,7 @@ export type ServerMessage =
   | { type: "people"; change: PeopleChange }
   | { type: "presence"; change: PresenceChange }
   | { type: "shares"; change: SharesChange }
+  | { type: "watching"; change: WatchingChange }
   | { type: "usage"; change: UsageChange }
   | { type: "media"; change: MediaChange };
 
@@ -66,6 +70,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "presence"; request: PresenceRequest }
   | { type: "shares"; request: SharesRequest }
+  | { type: "watching"; request: WatchingRequest }
   | { type: "usage"; request: UsageRequest }
   | { type: "media"; request: MediaRequest };
 
@@ -82,6 +87,8 @@ export function applyMessage(view: RoomView | null, message: ServerMessage): Roo
       return { ...view, presence: applyPresence(view.presence, message.change) };
     case "shares":
       return { ...view, shares: applyShares(view.shares, message.change) };
+    case "watching":
+      return { ...view, watching: applyWatching(view.watching, message.change) };
     case "usage":
       return { ...view, usage: applyUsage(view.usage, message.change) };
     case "media":

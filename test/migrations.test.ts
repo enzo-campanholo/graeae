@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
 import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
-import { addMember, invite, pressJoin, setUpOwner, shareWebcam } from "./steps.ts";
+import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareWebcam, watch } from "./steps.ts";
 import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
@@ -130,5 +130,29 @@ describe("the media-connections-and-shares migration", () => {
       type: "shares",
       change: { type: "started", share: { member: biaState.people.you.id, kind: "webcam" } },
     });
+  });
+});
+
+describe("the watches migration", () => {
+  const added = migrations.find((migration) => migration.name === "watches")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance whose webcam share went live before it, which can then be watched", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await shareWebcam(biaTab);
+
+    await instance.restart({ migrations });
+
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
+    const { tab: ownerTab, state } = await openRoom(owner, room);
+    expect(state.shares.live).toEqual([biasWebcam]);
+    expect(state.watching).toEqual({ stage: [], watchers: [] });
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasWebcam);
+    expect(instance.media.connections()[1]).toHaveLength(1);
   });
 });

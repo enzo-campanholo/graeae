@@ -4,9 +4,8 @@
 // that fails or never returns leaves a record with nothing behind it, never a track with
 // no record.
 //
-// This holds only the operations the instance uses so far. Ticket 11 adds pulling a
-// share's tracks for a viewer, ticket 17 changing a viewer's quality, and ticket 21
-// listing the tracks a media connection really has. Ticket 12 adds the Cloudflare
+// This holds only the operations the instance uses so far. Ticket 17 adds changing a
+// viewer's quality, and ticket 21 listing the tracks a media connection really has. Ticket 12 adds the Cloudflare
 // implementation; the in-memory fake in `fake.ts` stands in for it in tests.
 
 import type { IceServer } from "../../shared/socket/media.ts";
@@ -14,12 +13,21 @@ import type { IceServer } from "../../shared/socket/media.ts";
 /** The media server's own identifier for one media connection. It never reaches a browser. */
 export type MediaConnectionId = string;
 
-/** One track on a media connection, as the instance recorded it. */
+/**
+ * One track on a media connection, as the instance recorded it. A pulled track keeps the
+ * name of the track it was pulled from.
+ */
 export interface Track {
   /** The track's name, which the instance picks. It never reaches a browser. */
   name: string;
-  /** The mid of the browser's transceiver that carries it. */
+  /** The mid of the browser's transceiver that carries it: the browser's for a track it sends, the media server's for one it pulls. */
   mid: string;
+}
+
+/** What a pull gives: the media server's offer, and the tracks it pulled. */
+export interface Pulled {
+  offer: string;
+  tracks: Track[];
 }
 
 export interface MediaLayer {
@@ -32,6 +40,17 @@ export interface MediaLayer {
    * live once this returns.
    */
   publish(connection: MediaConnectionId, offer: string, tracks: readonly Track[]): Promise<string>;
+
+  /**
+   * Pulls the tracks named `names`, which `from` publishes, to the media connection
+   * `connection`, for a viewer. Returns the media server's SDP offer, which the browser
+   * answers through `renegotiate`, and the pulled tracks with the mids the media server
+   * gave them. Fails if `from` has no such track.
+   */
+  pull(connection: MediaConnectionId, from: MediaConnectionId, names: readonly string[]): Promise<Pulled>;
+
+  /** Hands the media server the browser's SDP `answer` to the offer of its last pull. */
+  renegotiate(connection: MediaConnectionId, answer: string): Promise<void>;
 
   /**
    * Force-closes `tracks` on `connection`: the media stops at once, with nothing needed

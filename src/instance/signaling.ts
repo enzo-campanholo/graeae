@@ -184,6 +184,14 @@ export class Signaling {
     }
   }
 
+  /** Sends `message` to every open tab of `member` on the room at `address`. */
+  toMemberIn(address: string, member: string, message: ServerMessage) {
+    for (const socket of this.ctx.getWebSockets(memberTag(member))) {
+      const tab = tabOf(socket);
+      if (tab && isRoomTab(tab) && tab.room === address) send(socket, message);
+    }
+  }
+
   /** Sends `message` to every open tab of `member` that is showing a room, whichever room. */
   toMember(member: string, message: ServerMessage) {
     for (const socket of this.ctx.getWebSockets(memberTag(member))) {
