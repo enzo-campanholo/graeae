@@ -178,7 +178,7 @@ A neutral grey scale from near-black to near-white, with one cyan eye and two re
 
 ### Secondary
 - **Stop Red** (`stop`): ending or removing only. Destructive actions rest grey and turn red on hover (Stop, Forget), at 14% tint behind red text, 22% when pressed. The usage meter turns red at 95%.
-- **Warning Amber** (`warn`): warnings only. The usage meter turns amber at 80%.
+- **Warning Amber** (`warn`): warnings only. The usage meter turns amber at 80%, and the People list names in amber, with a circled "!", a cut-off the instance could not yet confirm.
 
 ### Neutral
 - **Ground** (`ground`): the page itself, the bar, the rail and the owner navigation.

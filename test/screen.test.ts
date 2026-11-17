@@ -2,7 +2,7 @@
 // published, pulled and closed together. Tabs are driven only through their sockets and
 // the instance's HTTP routes; the fake media server shows which tracks are really open.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { startInstance } from "./harness.ts";
 import {
   addMember,
@@ -267,5 +267,34 @@ describe("watching a screen share", () => {
     expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share } });
     expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "ended", share } });
     expect(instance.media.connections()).toEqual([[], []]);
+  });
+});
+
+describe("the sweep after a restart", () => {
+  it("leaves a live screen share's audio alone, as its record accounts for it", async () => {
+    const { instance, owner, room, biaTab, biaId } = await twoPresent();
+    await shareScreen(biaTab);
+
+    await instance.restart();
+    const { tab: back, state } = await openRoom(owner, room);
+    await back.heartbeat(); // the sweep has had its turn
+
+    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true }]);
+    expect(instance.media.connections().flat()).toHaveLength(2);
+  });
+
+  it("closes both tracks of a screen share the media server made just as the instance stopped", async () => {
+    const { instance, bia, room, biaTab } = await twoPresent();
+    await connectMedia(biaTab);
+    const publish = instance.media.hold("publish", { done: true });
+    startScreen(biaTab);
+    await publish.reached;
+    expect(instance.media.connections().flat()).toHaveLength(2);
+
+    await instance.restart();
+    const { state } = await openRoom(bia, room);
+
+    expect(state.shares.live).toEqual([]);
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
   });
 });

@@ -46,15 +46,74 @@ export class Instance extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.people = new People(ctx.storage.sql);
-    this.signaling = new Signaling(ctx, (address) => this.relist(address));
-    this.shares = new Shares(ctx.storage.sql, mediaLayer(env), {
-      unwatched: (tab, share) => this.signaling.toTab(tab, { type: "watching", change: { type: "unwatched", share } }),
+    this.signaling = new Signaling(
+      ctx,
+      (address) => this.relist(address),
+      () => this.schedule(),
+    );
+    this.shares = new Shares(
+      ctx.storage.sql,
+      ctx.storage.kv,
+      mediaLayer(env),
+      {
+        unwatched: (tab, share) => this.signaling.toTab(tab, { type: "watching", change: { type: "unwatched", share } }),
       // Only the sharer learns who is watching.
-      watchers: (address, share, members) =>
-        this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
+        watchers: (address, share, members) =>
+          this.signaling.toMemberIn(address, share.member, { type: "watching", change: { type: "watchers", share, members } }),
+      },
+      () => this.schedule(),
+    );
+    // Nothing reaches the instance until its storage is on this code's schema, and until
+    // whoever a restart dropped is in their grace period.
+    void ctx.blockConcurrencyWhile(async () => {
+      applyMigrations(ctx.storage, Instance.migrations);
+      try {
+        this.restored();
+      } catch (error) {
+        // A failure here would leave the instance refusing every request. Better it
+        // starts: the tabs simply come back as new ones. (An instance started on an older
+        // schema than this code's, as the migration tests do, has no records to restore.)
+        console.error("The instance could not restore the tabs a restart dropped", error);
+      }
     });
-    // Nothing reaches the instance until its storage is on this code's schema.
-    void ctx.blockConcurrencyWhile(async () => applyMigrations(ctx.storage, Instance.migrations));
+  }
+
+  /**
+   * As the instance starts: the tabs a restart dropped become lost tabs, in their grace
+   * period, so their shares and watching carry on while their browsers reconnect.
+   */
+  private restored() {
+    // An instance that wakes from sleep still holds its sockets. One that holds none has
+    // started afresh, after a restart or a long rest, and its records are swept.
+    const woke = this.ctx.getWebSockets().length > 0;
+    const recorded = this.shares.recordedTabs().flatMap((tab) => {
+      const member = tab.member ?? this.people.deviceMember(tab.device)?.id;
+      return member ? [{ ...tab, member }] : [];
+    });
+    const dropped = this.signaling.restore(recorded);
+    if (!woke || dropped.length > 0) this.ctx.waitUntil(this.afterRestart());
+  }
+
+  /**
+   * The sweep after a restart: every media connection on record is checked against the
+   * media server, and anything the records do not account for is closed. Shares whose
+   * tracks turn out to be gone end.
+   */
+  private async afterRestart() {
+    const ended = await this.shares.sweep().catch(() => []);
+    for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+  }
+
+  /**
+   * Sets the instance's one alarm for the earliest moment anything waits for: a grace
+   * period running out, a member falling silent, or a failed close's next try.
+   */
+  private schedule() {
+    const moments = [this.signaling.nextMoment(), this.shares.nextRetry()].filter(
+      (moment): moment is number => moment !== null,
+    );
+    if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
+    else void this.ctx.storage.deleteAlarm();
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -167,8 +226,9 @@ export class Instance extends DurableObject<Env> {
    */
   private async forget(member: Member, id: string, visitor: Visitor): Promise<Response | null> {
     // Storage first, so the forgotten browser is refused from this instant, then its tabs.
+    // The answer does not wait for the media server.
     if (!this.people.forgetDevice(member, id)) return null;
-    await this.cutOff({ device: id }, this.signaling.cutDevice(id));
+    this.inBackground(this.cutOff({ device: id }, this.signaling.cutDevice(id), member));
     return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
   }
 
@@ -288,15 +348,29 @@ export class Instance extends DurableObject<Env> {
    * request from what is covered is refused from that instant; `cut` holds the tabs it
    * cut off. This force-closes the covered shares' tracks, then everyone else's pulls of
    * them, then the covered pulls; the room and the lists hear which shares ended; and
-   * last, the cut-off tabs are told they are gone and closed.
+   * last, the cut-off tabs are told they are gone and closed. `subject` is the member
+   * the owner hears about if a close is still failing after a minute: the one removed, or
+   * whose device was forgotten.
    */
-  private async cutOff(covered: Covered, cut?: Cut) {
+  private async cutOff(covered: Covered, cut?: Cut, subject?: Member) {
     try {
-      const ended = await this.shares.cutOff(covered, cut?.tabs.map((tab) => tab.id));
+      const ended = await this.shares.cutOff(
+        covered,
+        cut?.tabs.map((tab) => tab.id),
+        subject && { member: subject.id, name: subject.name, at: Date.now() },
+      );
       for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
     } finally {
       cut?.tell();
     }
+  }
+
+  /**
+   * Lets `work` carry on after the answer has gone, as a cut-off's closes do once the
+   * owner has their answer. A failure there is already kept as a record to try again.
+   */
+  private inBackground(work: Promise<void>) {
+    this.ctx.waitUntil(work.catch(() => {}));
   }
 
   /** Tells the room and the lists of rooms that a share started or ended. */
@@ -305,9 +379,12 @@ export class Instance extends DurableObject<Env> {
     this.relist(address);
   }
 
-  /** The grace periods' moments are the only thing the alarm wakes the instance for yet. */
+  /** The alarm: grace periods running out, members falling silent, and failed closes tried again. */
   override async alarm() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
+    const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
+    for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    this.schedule();
   }
 
   /** The whole room as `member`'s tab sees it: what a tab gets on connecting. */
@@ -423,7 +500,11 @@ export class Instance extends DurableObject<Env> {
     if (pathname === "/api/owner/people") {
       if (method !== "GET") return refuse();
       const entries = this.people.everyone().map((member) => this.memberEntry(member, visitor.deviceId));
-      return json({ rooms: this.people.allRooms(), people: entries } satisfies PeopleAnswer);
+      return json({
+        rooms: this.people.allRooms(),
+        people: entries,
+        unconfirmed: this.shares.unconfirmed(),
+      } satisfies PeopleAnswer);
     }
     const access = /^\/api\/owner\/people\/([^/]+)\/rooms\/([^/]+)$/.exec(pathname);
     if (access) {
@@ -440,7 +521,7 @@ export class Instance extends DurableObject<Env> {
         // Storage first: from this instant every request of theirs for the room is refused.
         const revoked = this.people.revoke(member, address);
         if (revoked === null) return refuse();
-        if (revoked) await this.accessRemoved(member, address);
+        if (revoked) this.accessRemoved(member, address);
         return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
       }
       return refuse();
@@ -466,7 +547,8 @@ export class Instance extends DurableObject<Env> {
       for (const address of rooms) {
         this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
       }
-      await this.cutOff({ member: member.id }, cut);
+      // The owner's page shows the removal as done at once; the closes carry on.
+      this.inBackground(this.cutOff({ member: member.id }, cut, member));
       return done();
     }
     return refuse();
@@ -476,9 +558,9 @@ export class Instance extends DurableObject<Env> {
    * `member` has just lost access to the room at `address`, in storage. Their tabs there
    * are cut off, on every device, and the room hears they left and no longer belong to
    * it. Then what they were sending and watching there is cut off, and last their tabs
-   * there are told they are gone and closed.
+   * there are told they are gone and closed. The owner's answer does not wait for that.
    */
-  private async accessRemoved(member: Member, address: string) {
+  private accessRemoved(member: Member, address: string) {
     const cut = this.signaling.cutMember(member.id, address);
     this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
     this.signaling.toMember(member.id, {
@@ -486,7 +568,7 @@ export class Instance extends DurableObject<Env> {
       change: { type: "access", rooms: this.people.rooms(member).length },
     });
     this.signaling.toLists(new Set([member.id]), { type: "rooms", change: { type: "unlisted", address } });
-    await this.cutOff({ member: member.id, room: address }, cut);
+    this.inBackground(this.cutOff({ member: member.id, room: address }, cut, member));
   }
 
   /** `member` has just been given access to the room at `address`: every tab that shows it hears so. */
@@ -534,7 +616,7 @@ export class Instance extends DurableObject<Env> {
     const joined = await this.people.join(request, visitor, code);
     if (!joined) return nothingHere(this.env.ASSETS, request);
     // "Let back in" forgot the member's other devices: their tabs close as on forgetting one.
-    for (const device of joined.forgotten) await this.cutOff({ device }, this.signaling.cutDevice(device));
+    for (const device of joined.forgotten) await this.cutOff({ device }, this.signaling.cutDevice(device), joined.member);
     const { id, name } = joined.member;
     for (const room of this.people.rooms(joined.member)) {
       this.signaling.toRoom(room.address, { type: "people", change: { type: "added", person: { id, name } } });

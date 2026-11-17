@@ -17,6 +17,7 @@
 // | pull           | POST sessions/{id}/tracks/new, remote tracks; gives the server's offer |
 // | renegotiate    | PUT sessions/{id}/renegotiate, the browser's answer                   |
 // | close          | PUT sessions/{id}/tracks/close, force: true                           |
+// | tracks         | GET sessions/{id}                                                     |
 //
 // and the relay credential is POST https://rtc.live.cloudflare.com/v1/turn/keys/
 // {TURN_KEY_ID}/credentials/generate-ice-servers.
@@ -121,7 +122,7 @@ export class CloudflareMediaServer implements MediaLayer {
     if (failed.length === 0) return;
     // A track that is not there may report an error too. Each one counts as closed only
     // if the session itself no longer has it open.
-    const open = await this.openMids(connection);
+    const open = new Set((await this.tracks(connection)).map((track) => track.mid));
     const stillOpen = failed.filter((track) => track.mid !== undefined && open.has(track.mid));
     if (stillOpen.length > 0) throw new Error(`The media server did not close ${describe(stillOpen)}`);
   }
@@ -143,10 +144,19 @@ export class CloudflareMediaServer implements MediaLayer {
       .filter((server) => server.urls.length > 0);
   }
 
-  /** The mids the media server still has open on `connection`. */
-  private async openMids(connection: MediaConnectionId): Promise<Set<string>> {
-    const { tracks = [] } = await this.sfu("GET", `/sessions/${connection}`);
-    return new Set(tracks.filter((track) => track.status !== "inactive" && track.mid).map((track) => track.mid!));
+  async tracks(connection: MediaConnectionId): Promise<Track[]> {
+    let answer: Answer;
+    try {
+      answer = await this.sfu("GET", `/sessions/${connection}`);
+    } catch (error) {
+      // 410: the browser's side is gone, so the session carries nothing any more.
+      if (error instanceof MediaServerError && error.status === 410) return [];
+      throw error;
+    }
+    // A closed track stays listed as inactive; any other status is a track still open.
+    return (answer.tracks ?? [])
+      .filter((track) => track.status !== "inactive" && track.mid)
+      .map((track) => ({ name: track.trackName ?? "", mid: track.mid! }));
   }
 
   /** One call to the media server, with the application's secret. */

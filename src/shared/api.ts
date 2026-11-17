@@ -141,6 +141,18 @@ export interface MemberEntry {
 export interface PeopleAnswer {
   rooms: RoomSummary[];
   people: MemberEntry[];
+  /**
+   * The members whose cut-off (a removal, or a forgotten device) has had a forced close
+   * failing for a minute or more, which the instance is still trying. A member removed
+   * from graeae is named here though gone from `people`.
+   */
+  unconfirmed: UnconfirmedCutOff[];
+}
+
+/** A member the owner hears could not yet be confirmed cut off. */
+export interface UnconfirmedCutOff {
+  member: string;
+  name: string;
 }
 
 /**
