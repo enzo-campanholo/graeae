@@ -8,18 +8,32 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The media layer seam and its fake gain "pull a share's tracks"
-- [ ] The browser asks for "this member's webcam"; the backend finds the sharer's media connection and tracks in its own records and builds the pull
-- [ ] To watch, the backend checks: a remembered device, access to the room, this tab present in the room the share is live in, and that the share is live
-- [ ] The watch record is written before the media layer is called and dropped only after its forced close returns
-- [ ] Nothing is watched on arrival; the stage says so
-- [ ] A share's icon adds that share to the stage or takes it off, leaving other watched shares alone
-- [ ] A share that is not watched shows no live picture anywhere
-- [ ] Watching belongs to a device: two devices of one member have separate stages
-- [ ] Only the sharer sees who is watching; a watching member is named once however many devices they watch on
-- [ ] A member can watch their own share from another device and is not listed
-- [ ] When a share ends, every watch of it is force-closed and leaves each viewer's stage
-- [ ] A viewer's clean leave force-closes their watching
-- [ ] Seam 1 tests; a Seam 2 journey: 1 click to watch
+- [x] The media layer seam and its fake gain "pull a share's tracks"
+- [x] The browser asks for "this member's webcam"; the backend finds the sharer's media connection and tracks in its own records and builds the pull
+- [x] To watch, the backend checks: a remembered device, access to the room, this tab present in the room the share is live in, and that the share is live
+- [x] The watch record is written before the media layer is called and dropped only after its forced close returns
+- [x] Nothing is watched on arrival; the stage says so
+- [x] A share's icon adds that share to the stage or takes it off, leaving other watched shares alone
+- [x] A share that is not watched shows no live picture anywhere
+- [x] Watching belongs to a device: two devices of one member have separate stages
+- [x] Only the sharer sees who is watching; a watching member is named once however many devices they watch on
+- [x] A member can watch their own share from another device and is not listed
+- [x] When a share ends, every watch of it is force-closed and leaves each viewer's stage
+- [x] A viewer's clean leave force-closes their watching
+- [x] Seam 1 tests; a Seam 2 journey: 1 click to watch
+
+## Comments
+
+**Done** on `ticket/11-watch-a-share`. `pnpm test` (Seam 1, then Seam 2), `pnpm typecheck` and `pnpm lint` pass. Migration `0005-watches.sql` (after ticket 10's 0004), tested on an instance set up on 0001 to 0004 (`test/migrations.test.ts`). The owner was away, so the impeccable skill's direction questions were not asked; the UI follows `DESIGN.md` as it stands.
+
+- **The media layer** gains `pull(connection, from, names)`, which gives `{ offer, tracks }`: the media server's SDP offer and the pulled tracks, each keeping the share's track name, on a mid the media server picks. It also gains `renegotiate(connection, answer)`, which hands over the browser's answer. That is Cloudflare's shape (`tracks/new` with remote tracks, then `renegotiate`), for **ticket 12**. A pulled track is closed by the existing `close`.
+- **The fake** does both. A pull fails when the source connection has no such track, as Cloudflare's does. It picks the lowest mid the viewer's connection has never used, and a publish on a mid that is open now is refused. New in `fakeMediaControl`: `answers()` (the answers each connection was given) and `hold(op, { done: true })`, where the media server does the call at once and only its answer waits. The in-flight tests need it. Ticket 10's tests now run through one `call()` per operation.
+- **Protocol.** A new watching area (`src/shared/socket/watching.ts`): `WatchingState { stage, watchers }`, changes `watched` and `unwatched` (to that tab only) and `watchers { share, members }` (to the sharer's tabs on the room only, member ids, each once, never the sharer), and requests `watch { share }` and `unwatch { share }`. A share is named by `{ member, kind }`. The media area gains `pulled { share, offer, video }`, `pull-refused { share }`, the request `answer { answer }` and its reply `answered`. A tab runs one negotiation at a time, shares included (`RoomClient.negotiate`), so the media server never gets a new pull before the last answer. `sameShare` lives in the watching area.
+- **Records.** `watch` holds the viewer's tab (its media connection), member, device, room, the share's id, and its sharer and kind, so a watch whose close failed still says what it was once the share's record is gone. It also holds the pulled video track's name and the mid, null until the pull returns, plus `watching_at`, null until then too. It has no foreign key to `share`. The media connection is forgotten only when it carries neither shares nor watches. All of it is in `src/instance/shares.ts`: one module for every record of what was asked of the media server.
+- **Checks on a watch:** the device is remembered and still the tab's member, the member has access to the tab's room, and the tab's media connection is made. The share must be live in the tab's room (presence: the socket is open there), not ending, and not sent from this same tab. A second watch of the same share from a tab that has, is starting or is closing one gets no answer, as a second `connect` does. **The access check is untested**, as in ticket 10: **ticket 09** should test that a member removed from a room is refused a watch from a tab still open there, and that removal closes their watching there. **Ticket 24** adds the usage budget check.
+- **Order.** A share's end closes its own track, drops its record, then closes every pull of it, and each viewer hears `unwatched` before the room hears `ended`. A tab's leave ends its shares that way, then closes its own pulls. Forgetting a device and a grace period running out (ticket 06) both go through that leave, so they close watching too. A pull that returns after its tab left or its share ended is closed at once, never shown. **Decisions for ticket 21:** a failed pull drops its record, since there is no mid to close by; a pulled track the media server made all the same is for the sweep. A failed close of a pull keeps the record, and the share stays on the stage. A failed close of a share keeps the share live, and every watch of it stays.
+- **Watching belongs to a device** and is kept per tab, since each tab has its own media connection and stage. Two devices, or two tabs, of one member watch separately, and the sharer sees the member once. A member may watch their own share from another tab or device, and is never listed. **After merging ticket 06:** a tab that reconnects within its grace period keeps its tab id, so the full state brings back its stage (`Signaling.open` hands `view` the tab's id). **Ticket 22** keeps the media flowing through it.
+- **The page.** A share's icon on a member's row puts it on this tab's stage or takes it off: one click, lit with the eye while watched. Your own row now shows your shares sent from another tab or device, to watch them here ("Watch your webcam"). The stage shows the watched shares that are live, in the order watched. Each tile's picture is `WatchedPicture` (the video muted until **tickets 15 and 16** bring audio, or the faint kind icon when there is no picture), with a "Stop watching" icon in its top corner. The icon shows while the pointer is on the tile or the keyboard is on it. **Ticket 14** adds focus, fullscreen and the rest of the hover controls beside it. The sharer's preview names the watchers ("Owner and Kai watching"). The empty stage reads "You're not watching anything yet. Click the icon beside a name to watch what they share." when something is live; "Watch everything" stays hidden until ticket 14 gives it a handler. The media client gained `pull(offer, video)` (gives `{ answer, stream }`) and `drop(video)`. The fake never offers on a mid it was given for a pull.
+- **Tests.** `test/watching.test.ts` (32 tests) covers every check, the record before the call and until the close, the sharer's list, separate stages, each way a watch ends, both in-flight cases, a restart, and a viewer's lost connection. `test/presence.test.ts`'s whole-state check gained the watching area. **Seam 2:** `test/browser/watching.spec.ts` (member Jade): one click to watch, the lit icon, "Owner watching" on Jade's side, the icon again, "Stop watching" on the tile, and Jade's stop taking it off the stage. `shares.spec.ts` now reads the new empty-stage line.
