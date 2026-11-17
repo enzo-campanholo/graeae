@@ -52,7 +52,17 @@ interface ShareRecord {
   qualities: 1 | 2;
   /** The most one viewer can receive of it, in bits per second: the usage count's figure for a gap. */
   maxBitrate: number;
+  /** The id of the share of the member's this one was started to replace, by a hand-over; null for none. */
+  replaces: string | null;
 }
+
+/**
+ * Hand-overs under way: each new share's id, with the id of the share it replaces. Kept
+ * in the instance's key-value storage beside the share records, like retries: there are
+ * few, and briefly, and they outlast a restart. A mark goes once either share's record
+ * is dropped.
+ */
+const HAND_OVERS_KEY = "shares:hand-overs";
 
 /** A track pulled for a watch: the share's track name, on the mid the media server gave it, null until then. */
 interface PulledTrack {
@@ -65,8 +75,9 @@ interface WatchRecord {
   id: string;
   /** The viewer's tab, whose media connection the share is pulled to. */
   tab: string;
-  /** The viewer. */
+  /** The viewer, and the device the tab is on. */
   member: string;
+  device: string;
   room: string;
   /** The share's id, and the share as the room knows it. */
   shareId: string;
@@ -144,6 +155,23 @@ export type Covered =
 export interface Ended {
   room: string;
   share: LiveShare;
+  /** The tab that sent it. */
+  tab: string;
+  /**
+   * Set when a hand-over replaced it with a share that is live: the room that one is live
+   * in. Within one room the share carries on under the same name, so the room is not told
+   * it ended; the tab that sent it is told it was handed over.
+   */
+  replacedIn?: string;
+}
+
+/** What a watch that a hand-over moves is moved to: the new pull, for the viewer's tab. */
+export interface Moved {
+  offer: string;
+  video: string;
+  audio: string | null;
+  /** The quality the viewer now watches at, when it is not the one they chose: the new share has one quality. */
+  quality: QualityChoice | null;
 }
 
 /** A condition on the `share` and `watch` tables, which both name a member, device, room and tab. */
@@ -170,6 +198,8 @@ export interface WatchingListener {
   began(watch: string, tab: string, maxBitrate: number): void;
   /** The watch `watch` of the tab `tab`, which was on its stage, is recorded as ended. */
   ended(watch: string, tab: string): void;
+  /** A hand-over moved the tab `tab`'s watch of `share` to the new share, pulled as `moved` says. */
+  moved(tab: string, share: LiveShare, moved: Moved): void;
 }
 
 /** What became of a request to watch a share. */
@@ -181,8 +211,11 @@ export type Watched =
 
 /** What became of a request to start a share. */
 export type Started =
-  /** It is live: `answer` goes to the sharer's tab. */
-  | { live: true; share: ListedShare; answer: string }
+  /**
+   * It is live: `answer` goes to the sharer's tab. `id` is its record's; `handOver` says
+   * it replaces another share of the member's, which `handOver` (the method) then ends.
+   */
+  | { live: true; share: ListedShare; answer: string; id: string; handOver: boolean }
   /** It was refused, or the media server failed it. */
   | { live: false };
 
@@ -191,6 +224,7 @@ interface WatchRow extends Record<string, SqlStorageValue> {
   watching_at: number | null;
   tab_id: string;
   member_id: string;
+  device_id: string;
   room_address: string;
   share_id: string;
   sharer_id: string;
@@ -246,19 +280,19 @@ export class Shares {
    * `silentTabs` are marked "reconnecting".
    */
   live(address: string, silentTabs: readonly string[] = []): ListedShare[] {
-    return this.records("WHERE room_address = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address).map(
+    return this.current(`WHERE room_address = ? AND live_at IS NOT NULL ORDER BY live_at, rowid`, address).map(
       (share) => (silentTabs.includes(share.tab) ? { ...toListedShare(share), reconnecting: true } : toListedShare(share)),
     );
   }
 
   /** The live shares the tab `tab` sends. */
   liveFrom(tab: string): LiveShare[] {
-    return this.records("WHERE tab_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", tab).map(toLiveShare);
+    return this.current(`WHERE tab_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid`, tab).map(toLiveShare);
   }
 
   /** Every live share of `member`, wherever it is live, oldest first. */
   sharedBy(member: string): { room: string; kind: ShareKind }[] {
-    return this.records("WHERE member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", member).map(
+    return this.current(`WHERE member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid`, member).map(
       (share) => ({ room: share.room, kind: share.kind }),
     );
   }
@@ -280,7 +314,11 @@ export class Shares {
 
   /** Who watches each of `member`'s live shares in the room at `address`. A share nobody watches is left out. */
   watchers(address: string, member: string): { share: LiveShare; members: string[] }[] {
-    return this.records("WHERE room_address = ? AND member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address, member)
+    return this.records(
+      "WHERE room_address = ? AND member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid",
+      address,
+      member,
+    )
       .map((share) => ({ share: toLiveShare(share), members: this.watcherIds(share.id, share.member) }))
       .filter((entry) => entry.members.length > 0);
   }
@@ -359,6 +397,12 @@ export class Shares {
    * is video only. `plan` is how the browser sends it, which says how many qualities a
    * viewer can choose between and its maximum bitrate for the usage count. `stillOpen`
    * says whether the tab is still there once the media server has answered.
+   *
+   * With `handOver`, a member whose share of that kind is live from another tab may start
+   * one here all the same: the new share is recorded as replacing the old one, and
+   * registered first. The old one carries on untouched until the new one is live, and
+   * for good if it fails; `handOver` (the method) then ends it. Refused while the old
+   * one is starting or ending, or another hand-over of it is under way.
    */
   async start(
     tab: Tab,
@@ -368,11 +412,18 @@ export class Shares {
     mids: { video: string; audio?: string },
     plan: EncodingPlan,
     stillOpen: () => boolean,
+    { handOver = false } = {},
   ): Promise<Started> {
     const mediaId = this.connectionRow(tab.id)?.media_id;
     if (typeof mediaId !== "string") return { live: false };
     if (mids.audio !== undefined && (kind === "webcam" || mids.audio === mids.video)) return { live: false };
-    if (this.records("WHERE member_id = ? AND kind = ?", member, kind).length > 0) return { live: false };
+    // A replaced share whose close is still being tried no longer counts.
+    const existing = this.current("WHERE member_id = ? AND kind = ?", member, kind);
+    const replaced = existing[0];
+    if (replaced) {
+      const replaceable = handOver && existing.length === 1 && replaced.live && replaced.tab !== tab.id;
+      if (!replaceable || this.ending.has(replaced.id)) return { live: false };
+    }
 
     const share: ShareRecord = {
       id: crypto.randomUUID(),
@@ -385,6 +436,7 @@ export class Shares {
       live: false,
       qualities: plan.qualities.length > 1 ? 2 : 1,
       maxBitrate: plan.maxBitrate,
+      replaces: replaced?.id ?? null,
     };
     this.sql.exec(
       `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid,
@@ -404,6 +456,8 @@ export class Shares {
       share.maxBitrate,
       Date.now(),
     );
+    // Marked as replacing the old one before the media server is called.
+    if (share.replaces) this.saveHandOvers({ ...this.handOvers(), [share.id]: share.replaces });
 
     this.inFlight.add(share.id);
     try {
@@ -423,7 +477,7 @@ export class Shares {
         return { live: false };
       }
       this.sql.exec("UPDATE share SET live_at = ? WHERE id = ?", Date.now(), share.id);
-      return { live: true, share: toListedShare(share), answer };
+      return { live: true, share: toListedShare(share), answer, id: share.id, handOver: share.replaces !== null };
     } finally {
       this.inFlight.delete(share.id);
     }
@@ -439,7 +493,8 @@ export class Shares {
   async watch(tab: Tab, share: LiveShare, stillOpen: () => boolean): Promise<Watched | null> {
     const viewerMediaId = this.connectionRow(tab.id)?.media_id;
     if (typeof viewerMediaId !== "string") return { watching: false };
-    const watched = this.records(
+    // During a hand-over within the room, the share by this name is the new one.
+    const watched = this.current(
       "WHERE member_id = ? AND kind = ? AND room_address = ? AND live_at IS NOT NULL",
       share.member,
       share.kind,
@@ -450,65 +505,13 @@ export class Shares {
     if (typeof sharerMediaId !== "string") return { watching: false };
     if (this.watches("WHERE tab_id = ? AND share_id = ?", tab.id, watched.id).length > 0) return null;
 
-    const record: WatchRecord = {
-      id: crypto.randomUUID(),
-      tab: tab.id,
-      member: tab.member,
-      room: tab.room,
-      shareId: watched.id,
-      share: toLiveShare(watched),
-      video: { name: watched.video.name, mid: null },
-      audio: watched.audio ? { name: watched.audio.name, mid: null } : null,
-      watching: false,
-      quality: "auto",
-    };
-    this.sql.exec(
-      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, audio_track, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      record.id,
-      tab.id,
-      tab.member,
-      tab.device,
-      tab.room,
-      watched.id,
-      watched.member,
-      watched.kind,
-      record.video.name,
-      record.audio?.name ?? null,
-      Date.now(),
-    );
-
+    const record = newWatch({ tab: tab.id, member: tab.member, device: tab.device, room: tab.room }, watched, "auto");
     this.inFlight.add(record.id);
     try {
-      let pulled: Pulled;
-      try {
-        // A screen share's video and audio are pulled together, as one unit. A picture
-        // sent at two qualities is watched at "Auto" to begin with.
-        pulled = await this.media.pull(
-          viewerMediaId,
-          sharerMediaId,
-          pulledTracksOf(record).map((track) => track.name),
-          ...(watched.qualities === 2 ? [{ name: record.video.name, quality: record.quality }] : []),
-        );
-      } catch {
-        // The media server gave no mid to close by, so the record goes. A pulled track it
-        // made all the same is for the sweep, which closes what no record names.
-        this.sql.exec("DELETE FROM watch WHERE id = ?", record.id);
-        return { watching: false };
-      }
-      const midOf = (name: string) => pulled.tracks.find((track) => track.name === name)?.mid ?? null;
-      record.video.mid = midOf(record.video.name) ?? pulled.tracks[0]?.mid ?? "";
-      if (record.audio) record.audio.mid = midOf(record.audio.name);
-      this.sql.exec(
-        "UPDATE watch SET video_mid = ?, audio_mid = ? WHERE id = ?",
-        record.video.mid,
-        record.audio?.mid ?? null,
-        record.id,
-      );
+      const pulled = await this.pull(record, viewerMediaId, sharerMediaId, watched);
+      if (!pulled) return { watching: false };
 
-      // A share being ended gains no viewer, even if its own close then fails.
-      const shareGone = this.ending.has(watched.id) || this.records("WHERE id = ?", watched.id).length === 0;
-      if (!stillOpen() || shareGone) {
+      if (!stillOpen() || this.gone(watched)) {
         // The tab left, or the share ended, while the media server was answering, and
         // neither could close a pull that had no mid yet.
         await this.closeWatch(record);
@@ -519,10 +522,152 @@ export class Shares {
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
       );
       this.listener.began(record.id, tab.id, watched.maxBitrate);
-      return { watching: true, offer: pulled.offer, video: record.video.mid, audio: record.audio?.mid ?? null };
+      return { watching: true, offer: pulled.offer, video: record.video.mid!, audio: record.audio?.mid ?? null };
     } finally {
       this.inFlight.delete(record.id);
     }
+  }
+
+  /** Whether `share` is being ended, or has ended: it gains no viewer, even if its own close then fails. */
+  private gone(share: ShareRecord): boolean {
+    return this.ending.has(share.id) || this.records("WHERE id = ?", share.id).length === 0;
+  }
+
+  /**
+   * Writes the watch `record` of `watched`, then pulls its tracks from the sharer's media
+   * connection to the viewer's, and records the mids the media server gave them. A
+   * screen share's video and audio are pulled together, as one unit, and a picture sent
+   * at two qualities at the quality the record holds. Null when the media server failed:
+   * it gave no mid to close by, so the record goes, and a pulled track it made all the
+   * same is for the sweep, which closes what no record names.
+   */
+  private async pull(record: WatchRecord, viewerMediaId: string, sharerMediaId: string, watched: ShareRecord) {
+    this.sql.exec(
+      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, audio_track,
+         quality, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      record.id,
+      record.tab,
+      record.member,
+      record.device,
+      record.room,
+      watched.id,
+      watched.member,
+      watched.kind,
+      record.video.name,
+      record.audio?.name ?? null,
+      record.quality,
+      Date.now(),
+    );
+    let pulled: Pulled;
+    try {
+      pulled = await this.media.pull(
+        viewerMediaId,
+        sharerMediaId,
+        pulledTracksOf(record).map((track) => track.name),
+        ...(watched.qualities === 2 ? [{ name: record.video.name, quality: record.quality }] : []),
+      );
+    } catch {
+      this.sql.exec("DELETE FROM watch WHERE id = ?", record.id);
+      return null;
+    }
+    const midOf = (name: string) => pulled.tracks.find((track) => track.name === name)?.mid ?? null;
+    record.video.mid = midOf(record.video.name) ?? pulled.tracks[0]?.mid ?? "";
+    if (record.audio) record.audio.mid = midOf(record.audio.name);
+    this.sql.exec("UPDATE watch SET video_mid = ?, audio_mid = ? WHERE id = ?", record.video.mid, record.audio?.mid ?? null, record.id);
+    return pulled;
+  }
+
+  /**
+   * The rest of a hand-over, once the share `id` that replaces another is live: the old
+   * share's tracks are force-closed, and each of its viewers in the same room is moved to
+   * the new share (the old pull closed, the new one made). A viewer whose tab is not
+   * connected now, or is the one sending the new share, is not moved: its pull is closed.
+   * A hand-over into another room carries nobody: every pull of the old share is closed.
+   * Returns the old share once it has ended. If its close fails it carries on, with its
+   * viewers, until a try succeeds; it is no longer listed, since the new one is.
+   * `connected` says whether a tab's signaling connection is open.
+   */
+  async handOver(id: string, connected: (tab: string) => boolean): Promise<Ended[]> {
+    const to = this.records("WHERE id = ? AND live_at IS NOT NULL", id)[0];
+    if (!to?.replaces) return [];
+    const from = this.records("WHERE id = ? AND live_at IS NOT NULL", to.replaces)[0];
+    if (!from || this.ending.has(from.id)) return [];
+
+    this.ending.add(from.id);
+    let closed: boolean;
+    try {
+      closed = await this.closeTracks(from);
+    } finally {
+      this.ending.delete(from.id);
+    }
+    if (!closed) return [];
+
+    const sameRoom = from.room === to.room;
+    const pulls = this.watches("WHERE share_id = ? AND watching_at IS NOT NULL", from.id);
+    for (const watch of pulls) {
+      if (sameRoom && watch.tab !== to.tab && connected(watch.tab)) await this.move(watch, to, connected);
+      else await this.closeWatch(watch);
+    }
+    // The sharer's tabs on the room hear who watches the share under its one name, once.
+    if (sameRoom && pulls.length > 0) this.listener.watchers(to.room, toLiveShare(to), this.watcherIds(to.id, to.member));
+    return [{ room: from.room, share: toLiveShare(from), tab: from.tab, replacedIn: to.room }];
+  }
+
+  /**
+   * Moves `watch`, of a share a hand-over within its room has just closed, to the share
+   * `to` that replaced it: its old pull is closed, then the new share is pulled to the same
+   * tab, at the quality the viewer chose if `to` has two. The viewer's stage keeps the
+   * share, and the tab hears `moved`. If the old pull's close fails, the viewer stays on
+   * the old share until a try succeeds, and is not moved. If the new pull fails, or the tab
+   * leaves or the new share ends meanwhile, the share leaves the stage.
+   */
+  private async move(watch: WatchRecord, to: ShareRecord, connected: (tab: string) => boolean) {
+    if (!(await this.closeWatch(watch, { moving: true }))) return;
+    const record = newWatch(watch, to, to.qualities === 2 ? watch.quality : "auto");
+    const viewerMediaId = this.connectionRow(watch.tab)?.media_id;
+    const sharerMediaId = this.connectionRow(to.tab)?.media_id;
+    if (typeof viewerMediaId !== "string" || typeof sharerMediaId !== "string") {
+      this.listener.unwatched(watch.tab, watch.share);
+      return;
+    }
+    this.inFlight.add(record.id);
+    try {
+      const pulled = await this.pull(record, viewerMediaId, sharerMediaId, to);
+      if (!pulled) {
+        this.listener.unwatched(watch.tab, watch.share);
+        return;
+      }
+      if (!connected(watch.tab) || this.gone(to)) {
+        await this.closeWatch(record);
+        this.forgetConnectionIfEmpty(watch.tab);
+        this.listener.unwatched(watch.tab, watch.share);
+        return;
+      }
+      this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id);
+      this.listener.began(record.id, watch.tab, to.maxBitrate);
+      this.listener.moved(watch.tab, record.share, {
+        offer: pulled.offer,
+        video: record.video.mid!,
+        audio: record.audio?.mid ?? null,
+        quality: record.quality === watch.quality ? null : record.quality,
+      });
+    } finally {
+      this.inFlight.delete(record.id);
+    }
+  }
+
+  /**
+   * After a restart: a hand-over whose new share went live before the restart, but whose
+   * old share was not closed, is finished by ending the old share. Its viewers are not
+   * carried over: their tabs, like everyone's, were cut off by the restart.
+   */
+  async finishHandOvers(): Promise<Ended[]> {
+    const replaced = this.replaced();
+    const stuck = this.records("WHERE live_at IS NOT NULL").filter(
+      (share) => replaced.has(share.id) && !this.ending.has(share.id) && !this.inFlight.has(share.id),
+    );
+    return this.end(stuck, null);
   }
 
   /**
@@ -593,11 +738,11 @@ export class Shares {
    * share once it has ended, or null when the tab has no such share, it is already
    * ending, or the close failed, in which case its record stays.
    */
-  async stop(tab: Tab, kind: ShareKind): Promise<LiveShare | null> {
+  async stop(tab: Tab, kind: ShareKind): Promise<Ended | null> {
     const share = this.records("WHERE tab_id = ? AND kind = ? AND live_at IS NOT NULL", tab.id, kind)[0];
     if (!share) return null;
     const [ended] = await this.end([share], null);
-    return ended?.share ?? null;
+    return ended ?? null;
   }
 
   /**
@@ -647,9 +792,15 @@ export class Shares {
     for (const share of ours) this.ending.add(share.id);
 
     const closed: ShareRecord[] = [];
+    const ended: Ended[] = [];
     for (const share of ours) {
+      // A share a hand-over replaced, whose close comes late: the replacement says where it went.
+      const replacedIn = this.replacementRoom(share.id);
       try {
-        if (await this.closeTracks(share, { subject, gone })) closed.push(share);
+        if (await this.closeTracks(share, { subject, gone })) {
+          closed.push(share);
+          ended.push({ room: share.room, share: toLiveShare(share), tab: share.tab, ...(replacedIn ? { replacedIn } : {}) });
+        }
       } finally {
         this.ending.delete(share.id);
       }
@@ -671,7 +822,13 @@ export class Shares {
         await this.closeWatch(watch, { subject });
       }
     }
-    return closed.map((share) => ({ room: share.room, share: toLiveShare(share) }));
+    return ended;
+  }
+
+  /** The room of the live share that replaced the share `id` by a hand-over, or null when none did. */
+  private replacementRoom(id: string): string | null {
+    const by = Object.entries(this.handOvers()).find(([, old]) => old === id)?.[0];
+    return by === undefined ? null : (this.records("WHERE id = ? AND live_at IS NOT NULL", by)[0]?.room ?? null);
   }
 
   /**
@@ -689,6 +846,8 @@ export class Shares {
       return false;
     }
     this.sql.exec("DELETE FROM share WHERE id = ?", share.id);
+    // A hand-over it was part of is over: done when it is the old share, failed when it is the new.
+    this.forgetHandOvers(share.id);
     this.confirmed(share.id);
     return true;
   }
@@ -696,12 +855,17 @@ export class Shares {
   /**
    * Force-closes a watch's pull and drops its record once the close returns, or at once
    * when a sweep has shown it `gone`. If the share was on the viewer's stage, tells the
-   * viewer's tab, and the sharer if who watches has changed. A failed close keeps the
-   * record, the share stays on the viewer's stage, and the close is tried again later.
+   * viewer's tab, and the sharer if who watches has changed; except while a hand-over is
+   * `moving` the watch to the new share, which tells them itself. A failed close keeps
+   * the record, the share stays on the viewer's stage, and the close is tried again
+   * later. True once the pull is closed by this call.
    */
-  private async closeWatch(watch: WatchRecord, { subject, gone = false }: { subject?: Subject; gone?: boolean } = {}) {
+  private async closeWatch(
+    watch: WatchRecord,
+    { subject, gone = false, moving = false }: { subject?: Subject; gone?: boolean; moving?: boolean } = {},
+  ): Promise<boolean> {
     // Already closed by another way out while this one waited its turn.
-    if (this.closing.has(watch.id) || this.watches("WHERE id = ?", watch.id).length === 0) return;
+    if (this.closing.has(watch.id) || this.watches("WHERE id = ?", watch.id).length === 0) return false;
     const mediaId = this.connectionRow(watch.tab)?.media_id;
     this.closing.add(watch.id);
     try {
@@ -709,18 +873,21 @@ export class Shares {
       if (typeof mediaId === "string" && pulled.length > 0 && !gone) await this.media.close(mediaId, pulled);
     } catch {
       this.failed({ kind: "watch", id: watch.id }, subject);
-      return;
+      return false;
     } finally {
       this.closing.delete(watch.id);
     }
     this.confirmed(watch.id);
+    const drop = () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
     if (!watch.watching) {
-      this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
-      return;
+      drop();
+      return true;
     }
-    this.changeWatchers(watch, () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id));
+    if (moving) drop();
+    else this.changeWatchers(watch, drop);
     this.listener.ended(watch.id, watch.tab);
-    this.listener.unwatched(watch.tab, watch.share);
+    if (!moving) this.listener.unwatched(watch.tab, watch.share);
+    return true;
   }
 
   /**
@@ -1004,7 +1171,51 @@ export class Shares {
       .toArray()[0];
   }
 
+  /**
+   * The share records `where` picks, leaving out any share a hand-over has replaced with a
+   * live share: the member's current shares. A replaced share may still have a record
+   * while its close is under way or tried again, but it is no longer listed, watched, or
+   * counted against the member's one share of its kind.
+   */
+  private current(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
+    const replaced = this.replaced();
+    return this.records(where, ...bindings).filter((share) => !replaced.has(share.id));
+  }
+
+  /** The ids of the shares a hand-over has replaced with a share that is live. */
+  private replaced(): Set<string> {
+    const handOvers = Object.entries(this.handOvers());
+    if (handOvers.length === 0) return new Set();
+    const live = new Set(
+      this.sql
+        .exec<{ id: string }>(
+          `SELECT id FROM share WHERE live_at IS NOT NULL AND id IN (${handOvers.map(() => "?").join(", ")})`,
+          ...handOvers.map(([id]) => id),
+        )
+        .toArray()
+        .map((row) => row.id),
+    );
+    return new Set(handOvers.filter(([id]) => live.has(id)).map(([, old]) => old));
+  }
+
+  private handOvers(): Record<string, string> {
+    return this.kv.get<Record<string, string>>(HAND_OVERS_KEY) ?? {};
+  }
+
+  private saveHandOvers(handOvers: Record<string, string>) {
+    if (Object.keys(handOvers).length > 0) this.kv.put(HAND_OVERS_KEY, handOvers);
+    else this.kv.delete(HAND_OVERS_KEY);
+  }
+
+  /** Forgets every hand-over the share `id` is part of, as the new share or the old. */
+  private forgetHandOvers(id: string) {
+    const handOvers = this.handOvers();
+    const left = Object.entries(handOvers).filter(([by, old]) => by !== id && old !== id);
+    if (left.length !== Object.keys(handOvers).length) this.saveHandOvers(Object.fromEntries(left));
+  }
+
   private records(where: string, ...bindings: SqlStorageValue[]): ShareRecord[] {
+    const handOvers = this.handOvers();
     return this.sql
       .exec<ShareRow>(
         `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at,
@@ -1024,13 +1235,15 @@ export class Shares {
         live: row.live_at !== null,
         qualities: row.qualities === 2 ? 2 : 1,
         maxBitrate: row.max_bitrate,
+        replaces: handOvers[row.id] ?? null,
       }));
   }
 
   private watches(where: string, ...bindings: SqlStorageValue[]): WatchRecord[] {
     return this.sql
       .exec<WatchRow>(
-        `SELECT id, tab_id, member_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track, audio_mid,
+        `SELECT id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track,
+           audio_mid,
            watching_at, quality
          FROM watch ${where}`,
         ...bindings,
@@ -1040,6 +1253,7 @@ export class Shares {
         id: row.id,
         tab: row.tab_id,
         member: row.member_id,
+        device: row.device_id,
         room: row.room_address,
         shareId: row.share_id,
         share: { member: row.sharer_id, kind: row.kind as ShareKind },
@@ -1075,4 +1289,25 @@ function tracksOf(share: ShareRecord): Track[] {
 /** A watch's pulled tracks: the share's video and, when it has any, its screen audio. */
 function pulledTracksOf(watch: WatchRecord): PulledTrack[] {
   return watch.audio ? [watch.video, watch.audio] : [watch.video];
+}
+
+/** A new watch of the share `watched` by the viewer's tab `viewer.tab`, at `quality`, before anything is pulled. */
+function newWatch(
+  viewer: Pick<WatchRecord, "tab" | "member" | "device" | "room">,
+  watched: ShareRecord,
+  quality: QualityChoice,
+): WatchRecord {
+  return {
+    id: crypto.randomUUID(),
+    tab: viewer.tab,
+    member: viewer.member,
+    device: viewer.device,
+    room: viewer.room,
+    shareId: watched.id,
+    share: toLiveShare(watched),
+    video: { name: watched.video.name, mid: null },
+    audio: watched.audio ? { name: watched.audio.name, mid: null } : null,
+    watching: false,
+    quality,
+  };
 }

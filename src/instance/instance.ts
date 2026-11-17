@@ -28,7 +28,7 @@ import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
-import { Shares, type Covered } from "./shares.ts";
+import { Shares, type Covered, type Ended } from "./shares.ts";
 import { Signaling, type Cut, type Tab } from "./signaling.ts";
 import { Usage } from "./usage.ts";
 
@@ -82,6 +82,12 @@ export class Instance extends DurableObject<Env> {
           this.usage.watchEnded(watch, this.signaling.holds(tab));
           this.checkBudget();
         },
+        // A hand-over carried this tab's watching over to the new share: it answers the new pull.
+        moved: (tab, share, { offer, video, audio, quality }) => {
+          const change = { type: "moved" as const, share, offer, video, ...(audio === null ? {} : { audio }) };
+          this.signaling.toTab(tab, { type: "media", change });
+          if (quality !== null) this.signaling.toTab(tab, { type: "watching", change: { type: "quality", share, quality } });
+        },
       },
       () => this.schedule(),
     );
@@ -124,8 +130,10 @@ export class Instance extends DurableObject<Env> {
    * tracks turn out to be gone end.
    */
   private async afterRestart() {
-    const ended = await this.shares.sweep().catch(() => []);
-    for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    const ended: Ended[] = await this.shares.sweep().catch(() => []);
+    // A hand-over the restart cut short after its new share went live ends its old one.
+    ended.push(...(await this.shares.finishHandOvers().catch(() => [])));
+    this.sharesEnded(ended);
   }
 
   /**
@@ -209,7 +217,7 @@ export class Instance extends DurableObject<Env> {
       if (!room || !upgrade) return refuse();
       return this.signaling.open(member.id, visitor.deviceId, room.address, (tab) => ({
         state: this.roomView(member, room, tab),
-        media: { connected: this.shares.hasConnection(tab) },
+        media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
       }));
     }
     return refuse();
@@ -368,12 +376,13 @@ export class Instance extends DurableObject<Env> {
     }
     if (message.type !== "shares") return;
     if (type === "start") {
-      const { kind, offer, video, audio, browser } = request as {
+      const { kind, offer, video, audio, browser, handOver } = request as {
         kind?: unknown;
         offer?: unknown;
         video?: unknown;
         audio?: unknown;
         browser?: unknown;
+        handOver?: unknown;
       };
       if (kind !== "webcam" && kind !== "screen") return;
       // A screen share's audio is left out when the browser's picker gave no sound.
@@ -382,8 +391,15 @@ export class Instance extends DurableObject<Env> {
       const family = kind === "webcam" ? "chromium" : browser === "chromium" || browser === "firefox" ? browser : null;
       const started =
         allowed && isSdp(offer) && mids && family
-          ? await this.shares.start(tab, tab.member, kind, offer, mids, encodingPlan(family, kind), () =>
-              this.signaling.isOpen(tab.id),
+          ? await this.shares.start(
+              tab,
+              tab.member,
+              kind,
+              offer,
+              mids,
+              encodingPlan(family, kind),
+              () => this.signaling.isOpen(tab.id),
+              { handOver: handOver === true },
             )
           : { live: false as const };
       if (!started.live) {
@@ -392,6 +408,12 @@ export class Instance extends DurableObject<Env> {
       }
       this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
       this.shareChanged(tab.room, { type: "started", share: started.share });
+      // A hand-over: the new share is live, so the old one ends and its viewers here move to this one,
+      // unless the usage budget is used up: a move is a new watch, and is refused like one.
+      if (started.handOver) {
+        const movable = (other: string) => this.signaling.isOpen(other) && this.usage.level() !== "used up";
+        this.sharesEnded(await this.shares.handOver(started.id, movable));
+      }
       return;
     }
     if (type === "stop") {
@@ -399,7 +421,20 @@ export class Instance extends DurableObject<Env> {
       if (kind !== "webcam" && kind !== "screen") return;
       // Stopping needs no check: it only ever takes something away.
       const ended = await this.shares.stop(tab, kind);
-      if (ended) this.shareChanged(tab.room, { type: "ended", share: ended });
+      if (ended) this.sharesEnded([ended]);
+    }
+  }
+
+  /**
+   * Tells the rooms and the lists of rooms which shares ended. A share a hand-over
+   * replaced is told to the tab that sent it as handed over; its room hears it ended only
+   * when the new share is live in another room, since within one room it carries on
+   * under the same name.
+   */
+  private sharesEnded(ended: readonly Ended[]) {
+    for (const { room, share, tab, replacedIn } of ended) {
+      if (replacedIn !== undefined) this.signaling.toTab(tab, { type: "media", change: { type: "handed-over", kind: share.kind } });
+      if (replacedIn !== room) this.shareChanged(room, { type: "ended", share });
     }
   }
 
@@ -428,7 +463,7 @@ export class Instance extends DurableObject<Env> {
         cut?.tabs.map((tab) => tab.id),
         subject && { member: subject.id, name: subject.name, at: Date.now() },
       );
-      for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+      this.sharesEnded(ended);
     } finally {
       // The tabs cut off report no more: what they watched since their last report is charged.
       if ("tab" in covered) this.usage.tabGone(covered.tab);
@@ -510,7 +545,7 @@ export class Instance extends DurableObject<Env> {
     const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
     const faltered = await this.shares.faltered();
     ended.push(...faltered.ended);
-    for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    this.sharesEnded(ended);
     for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
     // The month may have reset.
     this.checkBudget();

@@ -30,6 +30,12 @@ export interface IceServer {
 export interface MediaState {
   /** Whether the instance holds a media connection for this tab. */
   connected: boolean;
+  /**
+   * The kinds of share this tab sends that are live. A share of the member's that the
+   * room lists but this tab does not send was ended here, or handed over to another tab
+   * or device, while the tab was away.
+   */
+  sending: ShareKind[];
 }
 
 export type MediaRequest =
@@ -71,6 +77,19 @@ export type MediaChange =
   | { type: "pulled"; share: LiveShare; offer: string; video: string; audio?: string }
   /** `share` could not be watched on this tab: a check failed, or the media server did. */
   | { type: "pull-refused"; share: LiveShare }
+  /**
+   * The share `share` this tab watches was handed over to another tab or device of its
+   * sharer in this room: its old pull is closed, and the new share is pulled in its place.
+   * It stays on the stage. `offer`, `video` and `audio` are as in `pulled`, and the tab
+   * answers with `answer`, in turn with its other negotiations.
+   */
+  | { type: "moved"; share: LiveShare; offer: string; video: string; audio?: string }
+  /**
+   * This tab's share of `kind` is now sent from another tab or device of the member's,
+   * which started it with `handOver`: its tracks here are closed, and the tab lets go of
+   * its capture. It may come with the room's `ended`, when the new share is in another room.
+   */
+  | { type: "handed-over"; kind: ShareKind }
   /** The media server has the tab's answer, so the tab may start its next negotiation. */
   | { type: "answered" }
   /**

@@ -12,7 +12,9 @@
   import PersonRow from "$lib/components/room/PersonRow.svelte";
   import Rail from "$lib/components/room/Rail.svelte";
   import SharePreview from "$lib/components/room/SharePreview.svelte";
+  import HandOverOffer from "$lib/components/room/HandOverOffer.svelte";
   import ScreenNotice from "$lib/components/room/ScreenNotice.svelte";
+  import SharerNote from "$lib/components/room/SharerNote.svelte";
   import ShareButtons from "$lib/components/room/ShareButtons.svelte";
   import Shortcuts from "$lib/components/room/Shortcuts.svelte";
   import Stage from "$lib/components/room/Stage.svelte";
@@ -87,33 +89,67 @@
   const mine = $derived((client?.mine ?? []).filter((share) => share.state !== "starting"));
   const starting = (kind: ShareKind) =>
     !!client?.mine.some((share) => share.kind === kind && share.state === "starting");
-  // A share of yours live from any tab or device: one of each kind per member at a time.
-  const liveAnywhere = (kind: ShareKind) =>
-    room
-      ? room.mine.some((share) => share.kind === kind)
-      : !!view && (isLive(view.people.you.id, kind) || mine.some((share) => share.kind === kind));
+  // A share of yours sent from this tab. One of each kind per member at a time: a share
+  // of that kind live from another tab or device can be handed over to this one.
+  const liveHere = (kind: ShareKind) =>
+    room ? room.mine.some((share) => share.kind === kind) : mine.some((share) => share.kind === kind);
+  const liveElsewhere = (kind: ShareKind) => !!view && !liveHere(kind) && isLive(view.people.you.id, kind);
   const shareButtons = $derived({
-    screenLive: liveAnywhere("screen"),
+    screenLive: liveHere("screen"),
     screenStarting: starting("screen"),
-    webcamLive: liveAnywhere("webcam"),
+    webcamLive: liveHere("webcam"),
     webcamStarting: starting("webcam"),
+  });
+
+  // Pressing a share button while that kind of yours is live elsewhere offers to stop it
+  // there and share from here. The offer goes once that share ends by itself.
+  let offer = $state<ShareKind | null>(null);
+  $effect(() => {
+    if (offer && !liveElsewhere(offer)) offer = null;
   });
 
   // "Share screen" goes straight to the browser's picker. The first time on this device a
   // short notice comes first, once; going on from it is the click that opens the picker.
   const NOTICE_KEY = "graeae:screen-notice";
   let notice = $state(false);
+  /** Whether the screen share the notice leads to hands over one live elsewhere. */
+  let handingOver = false;
 
   function shareScreen() {
     if (!client || shareButtons.screenLive || shareButtons.screenStarting) return;
-    if (readStored(NOTICE_KEY) === "seen") void client.shareScreen();
-    else notice = true;
+    if (liveElsewhere("screen")) {
+      notice = false;
+      offer = "screen";
+    } else pickScreen(false);
+  }
+
+  function shareWebcam() {
+    if (!client || shareButtons.webcamLive || shareButtons.webcamStarting) return;
+    if (liveElsewhere("webcam")) {
+      notice = false;
+      offer = "webcam";
+    } else void client.shareWebcam();
+  }
+
+  function pickScreen(handOver: boolean) {
+    if (readStored(NOTICE_KEY) === "seen") void client?.shareScreen({ handOver });
+    else {
+      handingOver = handOver;
+      notice = true;
+    }
   }
 
   function noticeRead() {
     notice = false;
     writeStored(NOTICE_KEY, "seen");
-    void client?.shareScreen();
+    void client?.shareScreen({ handOver: handingOver });
+  }
+
+  function handOver() {
+    const kind = offer;
+    offer = null;
+    if (kind === "screen") pickScreen(true);
+    else if (kind === "webcam") void client?.shareWebcam({ handOver: true });
   }
 
   // Your own live shares sent from another tab or device, which this tab can watch.
@@ -256,8 +292,10 @@
         {#snippet foot()}
           {#if notice && client}
             <ScreenNotice floating browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
+          {:else if offer}
+            <HandOverOffer floating kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
           {/if}
-          <ShareButtons compact {...shareButtons} onscreen={shareScreen} onwebcam={() => client?.shareWebcam()} />
+          <ShareButtons compact {...shareButtons} onscreen={shareScreen} onwebcam={shareWebcam} />
         {/snippet}
       </Rail>
     {:else}
@@ -350,6 +388,11 @@
               <SharePreview kind={share.kind} stream={share.capture?.stream ?? null} />
             </OwnShare>
           {/each}
+          {#if client?.handedOver.length}
+            <div aria-live="polite">
+              <SharerNote label="Dismiss" ondismiss={() => client?.dismissHandedOver()}>Now sharing from your other device.</SharerNote>
+            </div>
+          {/if}
           {#if client?.failed}
             <p class="text-muted-foreground px-0.5 pb-2 text-xs" role="status">
               Your {client.failed === "screen" ? "screen share" : "webcam"} didn't start. Try again.
@@ -357,8 +400,10 @@
           {/if}
           {#if notice && client}
             <ScreenNotice browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
+          {:else if offer}
+            <HandOverOffer kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
           {/if}
-          <ShareButtons {...shareButtons} onscreen={shareScreen} onwebcam={() => client?.shareWebcam()} />
+          <ShareButtons {...shareButtons} onscreen={shareScreen} onwebcam={shareWebcam} />
         {/snippet}
       </Bar>
     {/if}

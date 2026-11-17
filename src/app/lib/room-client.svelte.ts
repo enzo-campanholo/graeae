@@ -79,6 +79,11 @@ export class RoomClient {
   mine = $state.raw<OwnShare[]>([]);
   /** The kind of share that last failed to start, until the next attempt. */
   failed = $state<ShareKind | null>(null);
+  /**
+   * The kinds of share this tab sent until the member started them from another tab or
+   * device instead, until dismissed or shared from here again: the page says so.
+   */
+  handedOver = $state.raw<ShareKind[]>([]);
   /** The pictures of the shares this tab watches. Whether a share is on the stage is `view`'s to say. */
   pictures = $state.raw<Picture[]>([]);
   /** Shares this tab has asked to watch, until the instance has answered. */
@@ -155,17 +160,26 @@ export class RoomClient {
     return this.media.browser;
   }
 
-  /** Starts a webcam share from this tab. One click, and no dialog of graeae's own. */
-  shareWebcam() {
-    return this.share("webcam", () => this.media.captureWebcam());
+  /**
+   * Starts a webcam share from this tab. One click, and no dialog of graeae's own. With
+   * `handOver`, a webcam of the member's live from another tab or device stops there and
+   * this one replaces it.
+   */
+  shareWebcam({ handOver = false } = {}) {
+    return this.share("webcam", () => this.media.captureWebcam(), handOver);
   }
 
   /**
    * Starts a screen share from this tab: straight to the browser's picker, and live once
    * the member has picked. Closing the picker shares nothing and says nothing.
    */
-  shareScreen() {
-    return this.share("screen", () => this.media.captureScreen());
+  shareScreen({ handOver = false } = {}) {
+    return this.share("screen", () => this.media.captureScreen(), handOver);
+  }
+
+  /** The page has said that this tab's shares were handed over: it says so no more. */
+  dismissHandedOver() {
+    this.handedOver = [];
   }
 
   /** Turns the sound of this tab's live screen share on or off, without stopping it. */
@@ -181,9 +195,10 @@ export class RoomClient {
    * browser ends by itself (its "stop sharing" bar, the shared tab closing) stops the
    * share.
    */
-  private async share(kind: ShareKind, captured: () => Promise<Capture | null>) {
+  private async share(kind: ShareKind, captured: () => Promise<Capture | null>, handOver: boolean) {
     if (this.mine.some((share) => share.kind === kind)) return;
     this.failed = null;
+    this.handedOver = this.handedOver.filter((handed) => handed !== kind);
     this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null, notes: null }];
     let capture: Capture | null;
     try {
@@ -204,22 +219,23 @@ export class RoomClient {
       else if (share) this.over.add(own);
     });
     this.update(kind, { capture, audio: capture.audio ? "on" : null });
-    await this.publish(kind, own);
+    await this.publish(kind, own, handOver);
   }
 
   /**
    * Sends `capture` as this tab's share of `kind`, which is starting: the media
    * connection the first time, the offer, the instance's answer. On a failure the
-   * capture stops and the share is gone, and the page says it didn't start.
+   * capture stops and the share is gone, and the page says it didn't start. With
+   * `handOver`, the member's share of that kind live elsewhere is replaced by this one.
    */
-  private async publish(kind: ShareKind, capture: Capture) {
+  private async publish(kind: ShareKind, capture: Capture, handOver = false) {
     try {
       if (!(await this.connected())) throw new Error("no media connection");
       const live = await this.negotiate(async () => {
         const offer = await this.media.offer(capture);
         const answer = await this.request(
           // A share that starts again by itself sends the browser family too, through here.
-          { type: "shares", request: startRequest(kind, offer, this.media.browser) },
+          { type: "shares", request: startRequest(kind, offer, this.media.browser, handOver) },
           (change) => (change.type === "published" || change.type === "refused") && change.kind === kind,
         );
         if (answer.type !== "published") return false;
@@ -396,6 +412,14 @@ export class RoomClient {
         this.resetMedia();
         return;
       }
+      if (message.change.type === "handed-over") {
+        this.handedOverFrom(message.change.kind);
+        return;
+      }
+      if (message.change.type === "moved") {
+        this.moved(message.change);
+        return;
+      }
       const index = this.waiting.findIndex((request) => request.accepts(message.change));
       if (index >= 0) this.waiting.splice(index, 1);
       return;
@@ -450,7 +474,9 @@ export class RoomClient {
       for (const picture of this.pictures) if (!this.watches(picture.share)) this.unwatched(picture.share);
       for (const own of this.mine) {
         if (own.state === "starting") continue;
-        if (!liveOfYours(own.kind)) this.tidy(own);
+        // Started from another tab or device while this one was away.
+        if (!media.sending.includes(own.kind) && liveOfYours(own.kind)) this.handedOverFrom(own.kind);
+        else if (!media.sending.includes(own.kind)) this.tidy(own);
         // A stop the lost socket never carried.
         else if (own.state === "stopping") this.send({ type: "shares", request: { type: "stop", kind: own.kind } });
       }
@@ -476,6 +502,9 @@ export class RoomClient {
       if (own.state === "live" && own.capture && !liveOfYours(own.kind)) {
         this.update(own.kind, { state: "starting" });
         void this.publish(own.kind, own.capture);
+      } else if (own.state === "live" && liveOfYours(own.kind)) {
+        // Started from another tab or device meanwhile.
+        this.handedOverFrom(own.kind);
       } else {
         this.tidy(own);
       }
@@ -488,17 +517,52 @@ export class RoomClient {
 
   /** The instance closed this tab's pull of `share`: the tab lets go of its picture. */
   private unwatched(share: LiveShare) {
-    const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
-    if (picture) {
-      this.listening.get(picture.video)?.();
-      this.listening.delete(picture.video);
-      this.media.drop(picture.video);
-      this.pictures = this.pictures.filter((candidate) => candidate !== picture);
-    }
+    this.dropPicture(share);
     if (this.rewatch.some((candidate) => sameShare(candidate, share))) {
       this.rewatch = this.rewatch.filter((candidate) => !sameShare(candidate, share));
       void this.watch(share);
     }
+  }
+
+  /** Lets go of the picture of `share`, if the tab has one. */
+  private dropPicture(share: LiveShare) {
+    const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
+    if (!picture) return;
+    this.listening.get(picture.video)?.();
+    this.listening.delete(picture.video);
+    this.media.drop(picture.video);
+    this.pictures = this.pictures.filter((candidate) => candidate !== picture);
+  }
+
+  /**
+   * A share this tab watches was handed over to another tab or device of its sharer in
+   * this room: the instance closed the old pull and pulled the new share in its place. It
+   * stays on the stage; its picture is the new one once the tab has answered, in turn
+   * with its other negotiations.
+   */
+  private moved({ share, offer, video, audio }: Extract<MediaChange, { type: "moved" }>) {
+    void this.negotiate(async () => {
+      this.dropPicture(share);
+      const pulled = await this.media.pull(offer, video, audio);
+      this.pictures = [
+        ...this.pictures.filter((picture) => !sameShare(picture.share, share)),
+        { share, video, stream: pulled.stream, received: null },
+      ];
+      this.listen(share, video);
+      await this.request({ type: "media", request: { type: "answer", answer: pulled.answer } }, (change) => change.type === "answered");
+    }).catch(() => {
+      // The connection was lost on the way: the stage comes back with the room's state.
+    });
+  }
+
+  /**
+   * The member started this tab's share of `kind` from another tab or device instead: the
+   * instance has closed it here. The tab lets go of its capture, and the page says why.
+   */
+  private handedOverFrom(kind: ShareKind) {
+    const own = this.mine.find((candidate) => candidate.kind === kind && candidate.state !== "starting");
+    if (own) this.tidy(own);
+    if (!this.handedOver.includes(kind)) this.handedOver = [...this.handedOver, kind];
   }
 
   /** Keeps the picture of `share`, arriving on `video`, told of the quality it arrives at. */
@@ -621,13 +685,14 @@ export class RoomClient {
   }
 }
 
-/** What the page sends to start a share of `kind` with `offer`. */
 /**
  * What the page sends to start a share of `kind` with `offer`. A screen share says the
  * browser family sending it, whose encoding plan says how many qualities it goes out at.
+ * A hand-over says so.
  */
-function startRequest(kind: ShareKind, offer: Offer, browser: BrowserFamily): SharesRequest {
-  if (kind === "webcam") return { type: "start", kind, offer: offer.sdp, video: offer.video };
+function startRequest(kind: ShareKind, offer: Offer, browser: BrowserFamily, handOver: boolean): SharesRequest {
+  const replacing = handOver ? { handOver: true as const } : {};
+  if (kind === "webcam") return { type: "start", kind, offer: offer.sdp, video: offer.video, ...replacing };
   const audio = offer.audio ? { audio: offer.audio } : {};
-  return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio };
+  return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio, ...replacing };
 }
