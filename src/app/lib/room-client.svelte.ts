@@ -417,6 +417,10 @@ export class RoomClient {
     // A share the member followed starts: it joins the stage by itself.
     if (message.type === "shares" && message.change.type === "started" && message.change.share.member === this.following)
       void this.watch(message.change.share);
+    // Watching is allowed again after the usage budget stop: a tab following a member
+    // watches what they share once more, as it would a share they started.
+    if (message.type === "usage" && before?.usage.budget === "used up" && message.change.budget !== "used up" && this.following)
+      this.follow(this.following);
     // The member followed has left the room: the tab follows nobody.
     if (this.following && !this.view?.presence.present.includes(this.following)) this.following = null;
   }

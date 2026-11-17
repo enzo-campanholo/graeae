@@ -39,6 +39,11 @@ export type UsageRequest =
 export const USAGE_REPORT_EVERY_MS = 5_000;
 
 export function applyUsage(state: UsageState, change: UsageChange): UsageState {
-  if (change.type === "budget") return change.budget === null ? {} : { budget: change.budget };
-  return unknownChange(state, change);
+  switch (change.type) {
+    case "budget":
+      return change.budget === null ? {} : { budget: change.budget };
+    default:
+      // A union of one kind does not narrow to `never`, but its `type` does.
+      return unknownChange(state, change.type);
+  }
 }

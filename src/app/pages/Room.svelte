@@ -5,6 +5,7 @@
   import { sample, SampleScene } from "$sample";
   import type { Scene } from "../sample/types.ts";
   import BarHeader from "$lib/components/room/BarHeader.svelte";
+  import BudgetStrip from "$lib/components/room/BudgetStrip.svelte";
   import Bar from "$lib/components/room/Bar.svelte";
   import OwnShare from "$lib/components/room/OwnShare.svelte";
   import PeopleHeading from "$lib/components/room/PeopleHeading.svelte";
@@ -188,6 +189,11 @@
     }
   }
 
+  // How far the month has gone into the usage budget, as you are told it: the owner from
+  // 80%, everyone from 95%. A warning runs across the stage's top; once it is used up
+  // the empty stage says so.
+  const budget = $derived(view?.usage.budget ?? null);
+
   // Shares others have live, which you could watch.
   const live = $derived(
     room
@@ -339,6 +345,7 @@
       count={tiles.length}
       focused={focusedTile ? focusedShare : undefined}
       {strip}
+      warning={budget === "80%" || budget === "95%" ? budgetWarning : undefined}
       reconnecting={client?.reconnecting ?? false}
     >
       {#each tiles as tile (tile.key)}
@@ -349,11 +356,17 @@
         {#if room || view}<StageEmpty
             {live}
             following={client?.following ? nameOf(client.following) : null}
+            usedUp={budget === "used up"}
+            owner={view?.people.you.owner ?? false}
             oneverything={() => client?.pick("everything")} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>
 {/if}
+
+{#snippet budgetWarning()}
+  {#if budget === "80%" || budget === "95%"}<BudgetStrip level={budget} owner={view?.people.you.owner ?? false} />{/if}
+{/snippet}
 
 {#snippet focusedShare()}
   {#if focusedTile}{@render stageTile(focusedTile, "focused")}{/if}

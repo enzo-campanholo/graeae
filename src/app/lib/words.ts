@@ -83,3 +83,8 @@ export function deviceLabel(browser: string, os: string): string {
   if (known(os)) return `A browser on ${os}`;
   return "A browser";
 }
+
+/** Dollars as the owner reads a cost, to the cent: "$0.00", "$50.00", "$1,250.50". */
+export function dollars(value: number): string {
+  return value.toLocaleString("en", { style: "currency", currency: "USD" });
+}

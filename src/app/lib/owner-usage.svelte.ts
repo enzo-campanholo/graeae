@@ -58,4 +58,28 @@ export class OwnerUsage {
     this.current = answer;
     return true;
   }
+
+  /**
+   * Sets the usage budget to `gigabytes` GB a month. Raising it allows watching again at
+   * once; setting it below what is used stops watching at once. False if the instance
+   * refused it, or did not answer.
+   */
+  async setBudget(gigabytes: number): Promise<boolean> {
+    const answer = await putJson<UsageAnswer>("/api/owner/usage/budget", { gigabytes }).catch(() => null);
+    if (!answer) return false;
+    this.current = answer;
+    return true;
+  }
+}
+
+/** The usage Cloudflare includes each month, in GB. */
+export const INCLUDED_GIGABYTES = 1_000;
+
+/** What Cloudflare charges per GB past what it includes, in dollars. */
+export const DOLLARS_PER_GIGABYTE = 0.05;
+
+/** The most a usage budget of `gigabytes` GB can cost in a month, in dollars: $0.05 per GB past 1,000. */
+export function budgetCost(gigabytes: number): number {
+  // Counted in whole cents, so $0.05 times a number of GB stays exact.
+  return Math.round(Math.max(0, gigabytes - INCLUDED_GIGABYTES) * DOLLARS_PER_GIGABYTE * 100) / 100;
 }
