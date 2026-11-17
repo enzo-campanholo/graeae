@@ -219,8 +219,9 @@ export class Instance extends DurableObject<Env> {
    */
   private async forget(member: Member, id: string, visitor: Visitor): Promise<Response | null> {
     // Storage first, so the forgotten browser is refused from this instant, then its tabs.
+    // The answer does not wait for the media server.
     if (!this.people.forgetDevice(member, id)) return null;
-    await this.cutOff({ device: id }, this.signaling.cutDevice(id), member);
+    this.inBackground(this.cutOff({ device: id }, this.signaling.cutDevice(id), member));
     return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
   }
 
@@ -347,6 +348,14 @@ export class Instance extends DurableObject<Env> {
     } finally {
       cut?.tell();
     }
+  }
+
+  /**
+   * Lets `work` carry on after the answer has gone, as a cut-off's closes do once the
+   * owner has their answer. A failure there is already kept as a record to try again.
+   */
+  private inBackground(work: Promise<void>) {
+    this.ctx.waitUntil(work.catch(() => {}));
   }
 
   /** Tells the room and the lists of rooms that a share started or ended. */
@@ -476,7 +485,11 @@ export class Instance extends DurableObject<Env> {
     if (pathname === "/api/owner/people") {
       if (method !== "GET") return refuse();
       const entries = this.people.everyone().map((member) => this.memberEntry(member, visitor.deviceId));
-      return json({ rooms: this.people.allRooms(), people: entries } satisfies PeopleAnswer);
+      return json({
+        rooms: this.people.allRooms(),
+        people: entries,
+        unconfirmed: this.shares.unconfirmed(),
+      } satisfies PeopleAnswer);
     }
     const access = /^\/api\/owner\/people\/([^/]+)\/rooms\/([^/]+)$/.exec(pathname);
     if (access) {
@@ -493,7 +506,7 @@ export class Instance extends DurableObject<Env> {
         // Storage first: from this instant every request of theirs for the room is refused.
         const revoked = this.people.revoke(member, address);
         if (revoked === null) return refuse();
-        if (revoked) await this.accessRemoved(member, address);
+        if (revoked) this.accessRemoved(member, address);
         return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
       }
       return refuse();
@@ -519,7 +532,8 @@ export class Instance extends DurableObject<Env> {
       for (const address of rooms) {
         this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
       }
-      await this.cutOff({ member: member.id }, cut, member);
+      // The owner's page shows the removal as done at once; the closes carry on.
+      this.inBackground(this.cutOff({ member: member.id }, cut, member));
       return done();
     }
     return refuse();
@@ -529,9 +543,9 @@ export class Instance extends DurableObject<Env> {
    * `member` has just lost access to the room at `address`, in storage. Their tabs there
    * are cut off, on every device, and the room hears they left and no longer belong to
    * it. Then what they were sending and watching there is cut off, and last their tabs
-   * there are told they are gone and closed.
+   * there are told they are gone and closed. The owner's answer does not wait for that.
    */
-  private async accessRemoved(member: Member, address: string) {
+  private accessRemoved(member: Member, address: string) {
     const cut = this.signaling.cutMember(member.id, address);
     this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
     this.signaling.toMember(member.id, {
@@ -539,7 +553,7 @@ export class Instance extends DurableObject<Env> {
       change: { type: "access", rooms: this.people.rooms(member).length },
     });
     this.signaling.toLists(new Set([member.id]), { type: "rooms", change: { type: "unlisted", address } });
-    await this.cutOff({ member: member.id, room: address }, cut, member);
+    this.inBackground(this.cutOff({ member: member.id, room: address }, cut, member));
   }
 
   /** `member` has just been given access to the room at `address`: every tab that shows it hears so. */

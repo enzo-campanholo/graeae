@@ -179,3 +179,35 @@ describe("the sweep at a cut-off", () => {
     await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));
   });
 });
+
+describe("an empty media connection", () => {
+  it("is left alone when its browser is cut off, and its record dropped", async () => {
+    const { instance, owner, biaTab, biasWebcam } = await ownerAndBia();
+
+    const removed = await owner.fetch(`/api/owner/people/${biasWebcam.member}`, { method: "DELETE" });
+    expect(removed.status).toBe(204);
+    expect(await biaTab.next()).toEqual({ type: "gone" });
+    // The cut-off swept it, found nothing to close, and left the connection open.
+    expect(instance.media.calls("tracks")).toBe(1);
+    expect(instance.media.connections()).toEqual([[], []]);
+
+    // No record of it is left: the sweep after a restart asks only about the owner's.
+    await instance.restart();
+    expect((await owner.fetch("/api/me")).status).toBe(200);
+    await vi.waitFor(() => expect(instance.media.calls("tracks")).toBe(2));
+    await owner.fetch("/api/me");
+    expect(instance.media.calls("tracks")).toBe(2);
+  });
+});
+
+describe("the sweep", () => {
+  it("never runs by the clock alone", async () => {
+    const { instance, ownerTab, biaTab, biasWebcam } = await ownerAndBia();
+    await goLive(biaTab, ownerTab);
+    await watch(ownerTab, biasWebcam);
+
+    await pass(instance, 10 * 60 * SECOND, [ownerTab, biaTab]);
+
+    expect(instance.media.calls("tracks")).toBe(0);
+  });
+});
