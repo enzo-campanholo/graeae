@@ -81,3 +81,16 @@ export interface JoinAnswer {
 export interface CreateRoomAnswer {
   room: RoomSummary;
 }
+
+/** A member's "Add a device" invite: one browser, once, within 10 minutes. */
+export interface DeviceInvite {
+  /** The invite's address is `/invite/<code>`, the same page as an owner's invite. */
+  code: string;
+  /** When it stops working, in milliseconds since the epoch. */
+  expiresAt: number;
+}
+
+/** `POST /api/me/devices`: the press of "Add a device". */
+export interface DeviceInviteAnswer {
+  invite: DeviceInvite;
+}

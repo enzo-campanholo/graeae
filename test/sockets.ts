@@ -13,6 +13,8 @@ export interface Tab {
   next(): Promise<ServerMessage>;
   /** Closes the socket cleanly, as a tab that is closed, reloaded or navigated away does. */
   close(): Promise<void>;
+  /** Resolves once the socket has closed, whoever closed it; fails if it stays open. */
+  closed(): Promise<void>;
 }
 
 /** The room at `/r/<address>` as `room` names it, or its bare address. */
@@ -62,6 +64,15 @@ function listen(socket: WebSocket): Tab {
     async close() {
       socket.close(1000, "left");
       await closed;
+    },
+    closed() {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`still open after ${WAIT_MS}ms`)), WAIT_MS);
+        void closed.then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     },
   };
 }

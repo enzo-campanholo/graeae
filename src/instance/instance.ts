@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type {
   CreateInviteAnswer,
   CreateRoomAnswer,
+  DeviceInviteAnswer,
   InviteAnswer,
   InvitesAnswer,
   JoinAnswer,
@@ -15,7 +16,7 @@ import type {
 import type { RoomView } from "../shared/socket/index.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
-import { People, type Member, type Visitor } from "./people.ts";
+import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
 import { Signaling } from "./signaling.ts";
 
@@ -60,14 +61,14 @@ export class Instance extends DurableObject<Env> {
     // fetching its address as a link preview does, uses nothing up: only the press does.
     const invitePage = /^\/invite\/([^/]+)$/.exec(pathname);
     if (invitePage) {
-      const pending = method === "GET" && this.people.pendingInvite(invitePage[1]!);
+      const pending = method === "GET" && this.people.openInvite(invitePage[1]!);
       return pending ? page(this.env.ASSETS, request) : refuse();
     }
     const inviteData = /^\/api\/invites\/([^/]+)$/.exec(pathname);
     if (inviteData) {
       const code = inviteData[1]!;
       if (method === "POST") return this.join(request, visitor, code);
-      const pending = method === "GET" && this.people.pendingInvite(code);
+      const pending = method === "GET" && this.people.openInvite(code);
       return pending ? json({ name: pending.name } satisfies InviteAnswer) : refuse();
     }
 
@@ -76,7 +77,9 @@ export class Instance extends DurableObject<Env> {
     if (pathname === "/owner" || pathname.startsWith("/owner/") || pathname.startsWith("/api/owner/")) {
       return member.owner ? this.ownerAnswer(request, pathname) : refuse();
     }
+    if (pathname === "/api/me" || pathname.startsWith("/api/me/")) return this.youAnswer(request, pathname, visitor);
     if (method !== "GET") return refuse();
+    if (pathname === "/you") return page(this.env.ASSETS, request);
 
     if (pathname === "/") {
       const rooms = this.people.rooms(member);
@@ -102,12 +105,44 @@ export class Instance extends DurableObject<Env> {
       if (!room || !upgrade) return refuse();
       return this.signaling.open(member.id, visitor.deviceId, room.address, () => this.roomView(member, room));
     }
-    if (pathname === "/api/me") {
+    return refuse();
+  }
+
+  /** The "You" page's data and actions, the same for every member and the owner. */
+  private async youAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
+    const { method } = request;
+    const { member } = visitor;
+    const refuse = () => nothingHere(this.env.ASSETS, request);
+
+    if (pathname === "/api/me" && method === "GET") {
       const devices = this.people.devices(member).map((device) => ({
         ...device,
         current: device.id === visitor.deviceId,
       }));
-      return json({ ...me, devices } satisfies MeAnswer);
+      return json({ name: member.name, owner: member.owner, devices } satisfies MeAnswer);
+    }
+    if (pathname === "/api/me/name" && method === "POST") {
+      const body = await request.json<{ name?: unknown }>().catch(() => null);
+      const renamed = body && this.people.rename(member, body.name);
+      if (!renamed) return refuse();
+      for (const room of this.people.rooms(renamed)) {
+        this.signaling.toRoom(room.address, {
+          type: "people",
+          change: { type: "renamed", member: renamed.id, name: renamed.name },
+        });
+      }
+      return json({ name: renamed.name, owner: renamed.owner } satisfies Me);
+    }
+    if (pathname === "/api/me/devices" && method === "POST") {
+      return json({ invite: this.people.createDeviceInvite(member) } satisfies DeviceInviteAnswer);
+    }
+    const device = /^\/api\/me\/devices\/([^/]+)$/.exec(pathname);
+    if (device && method === "DELETE") {
+      const id = device[1]!;
+      // Storage first, so the forgotten browser is refused from this instant, then its tabs.
+      if (!this.people.forgetDevice(member, id)) return refuse();
+      this.signaling.closeDevice(id);
+      return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
     }
     return refuse();
   }

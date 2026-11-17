@@ -14,10 +14,18 @@ export interface Tab {
   device: string;
   /** The address of the room the tab is showing. */
   room: string;
+  /** Set when the instance closed the socket itself and has already told the room. */
+  cutOff?: true;
 }
 
-// Tags let the instance find sockets without waking every one of them. A member's and a
-// device's tags are there for cutting them off (tickets 07 and 09).
+/**
+ * The close code of a socket whose device the instance no longer remembers. The page
+ * learns nothing more from it than from any refusal: it becomes "nothing here".
+ */
+export const GONE_CLOSE_CODE = 4404;
+
+// Tags let the instance find sockets without waking every one of them. A device's tag
+// finds the tabs to close when it is forgotten; a member's is there for removal (ticket 09).
 const roomTag = (address: string) => `room:${address}`;
 const memberTag = (id: string) => `member:${id}`;
 const deviceTag = (id: string) => `device:${id}`;
@@ -57,7 +65,29 @@ export class Signaling {
       // Already closed.
     }
     const tab = attachment(socket);
-    if (!tab) return;
+    if (tab && !tab.cutOff) this.left(tab);
+  }
+
+  /**
+   * Closes every tab of the device `id`, which has just been forgotten. Each room hears
+   * that the member left where that was their last tab there.
+   */
+  closeDevice(id: string) {
+    for (const socket of this.ctx.getWebSockets(deviceTag(id))) {
+      const tab = tabOf(socket);
+      if (!tab) continue;
+      socket.serializeAttachment({ ...tab, cutOff: true } satisfies Tab);
+      try {
+        socket.close(GONE_CLOSE_CODE, "");
+      } catch {
+        // Already closed.
+      }
+      this.left(tab);
+    }
+  }
+
+  /** `tab` is gone: the room hears that its member left if it was their last tab there. */
+  private left(tab: Tab) {
     const others = this.tabs(tab.room).filter((other) => other.id !== tab.id);
     if (!others.some((other) => other.member === tab.member)) {
       this.toRoom(tab.room, { type: "presence", change: { type: "left", member: tab.member } }, tab.id);
