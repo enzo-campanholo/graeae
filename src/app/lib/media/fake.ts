@@ -6,14 +6,16 @@
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
 // browser family, what the browser's picker returns, the browser ending a screen share
-// by itself, and the quality the shares it watches arrive at. It is in a build for
-// Seam 2 only.
+// by itself, the quality the shares it watches arrive at, and the statistics of the
+// shares it sends, which go through the same rule as the real client's. It is in a build
+// for Seam 2 only.
 
-import type { QualityName } from "../../../shared/encoding.ts";
+import { encodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, Offer } from "./client.ts";
 import type { FakeMediaControl } from "./fake-control.ts";
+import { follow, NotesBoard, readingOf, type SharerNotes } from "./sending.ts";
 
 export type { FakeMediaControl, FakePick } from "./fake-control.ts";
 
@@ -25,6 +27,9 @@ declare global {
 
 /** Whoever listens for the quality the watched shares arrive at. */
 const listeners = new Set<(quality: QualityName) => void>();
+
+/** Where a journey's statistics of each live share go. */
+const reading = new Map<Capture["kind"], ReturnType<typeof follow>>();
 
 /** The control, made on first use from whatever a journey set before the page loaded. */
 function control(): FakeMediaControl {
@@ -44,6 +49,9 @@ function control(): FakeMediaControl {
         made.received = quality;
         for (const heard of listeners) heard(quality);
       },
+      stats: (kind, entries, at) => reading.get(kind)?.(readingOf(entries, at)),
+      sent: {},
+      offers: 0,
       ...preset,
     };
     window.graeaeFakeMedia = made;
@@ -58,6 +66,10 @@ interface FakeCapture extends Capture {
 
 export class FakeMediaClient implements MediaClient {
   private nextMid = 0;
+  /** The capture of the last offer, followed once it is accepted. */
+  private offered: Capture | null = null;
+  /** The notes on each live share, for its sharer. */
+  private readonly board = new NotesBoard<Capture>();
   /** Mids the media server gave the shares this tab watches, which an offer of ours never takes. */
   private readonly pulled = new Set<string>();
 
@@ -100,9 +112,13 @@ export class FakeMediaClient implements MediaClient {
     fake.recover = () => undefined;
     this.nextMid = 0;
     this.pulled.clear();
+    for (const kind of [...reading.keys()]) this.unfollow(kind);
+    this.offered = null;
   }
 
   async offer(capture: Capture): Promise<Offer> {
+    control().offers += 1;
+    this.offered = capture;
     const video = this.mid();
     const audio = capture.audio ? this.mid() : undefined;
     return { sdp: `v=0 a stand-in offer for a ${capture.kind}`, video, ...(audio === undefined ? {} : { audio }) };
@@ -110,6 +126,29 @@ export class FakeMediaClient implements MediaClient {
 
   async accept(answer: string) {
     void answer;
+    const capture = this.offered;
+    this.offered = null;
+    if (!capture) return;
+    // Its statistics come from the journey, at times counted from the share's start.
+    const sending = follow(encodingPlan(this.browser, capture.kind), undefined, 0, {
+      apply: (encodings, degradation) => {
+        control().sent = { ...control().sent, [capture.kind]: { encodings, degradation } };
+      },
+      notes: (notes) => this.board.tell(capture, notes),
+    });
+    reading.set(capture.kind, sending);
+  }
+
+  notes(capture: Capture, heard: (notes: SharerNotes) => void): () => void {
+    return this.board.listen(capture, heard);
+  }
+
+  /** The live share of `kind` is no longer sent. */
+  private unfollow(kind: Capture["kind"]) {
+    reading.delete(kind);
+    const { [kind]: gone, ...sent } = control().sent;
+    void gone;
+    control().sent = sent;
   }
 
   async pull(offer: string, video: string, audio?: string) {
@@ -136,9 +175,13 @@ export class FakeMediaClient implements MediaClient {
 
   stop(capture: Capture) {
     if (capture.kind === "screen") control().screenAudio = null;
+    this.unfollow(capture.kind);
+    this.board.forget(capture);
   }
 
-  close() {}
+  close() {
+    for (const kind of [...reading.keys()]) this.unfollow(kind);
+  }
 
   /** The lowest mid this tab's offers have not used, and not given to a pull. */
   private mid(): string {

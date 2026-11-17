@@ -8,11 +8,13 @@
 // is in `browser.ts`; the fake in `fake.ts` captures and connects nothing, for Seam 2.
 // What a screen capture asks the browser for is one pure rule, in `capture.ts`; how a
 // share is sent is the encoding plan (`src/shared/encoding.ts`), as `encodings.ts` hands
-// it to the browser.
+// it to the browser. What a live share sends on a weak upload, and the notes its sharer
+// sees, are one pure rule too, in `sending.ts`.
 
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
 import type { QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily } from "./capture.ts";
+import type { SharerNotes } from "./sending.ts";
 
 /**
  * Something captured on this device, ready to be sent as a share. A screen share is one
@@ -67,8 +69,18 @@ export interface MediaClient {
   reset(): void;
   /** Adds `capture` to the media connection and makes the offer that sends it. */
   offer(capture: Capture): Promise<Offer>;
-  /** Applies the media server's answer to the last offer: the capture is now being sent. */
+  /**
+   * Applies the media server's answer to the last offer: the capture is now being sent.
+   * From then on its statistics are read every few seconds, and the share steps down by
+   * itself on a weak upload and back up when it recovers, without a new negotiation.
+   */
   accept(answer: string): Promise<void>;
+  /**
+   * Tells `heard` the notes on the live share of `capture` that only its sharer sees,
+   * now and whenever they change, from the share's statistics. Returns the way to stop
+   * listening.
+   */
+  notes(capture: Capture, heard: (notes: SharerNotes) => void): () => void;
   /**
    * Applies the media server's `offer` to receive a watched share on the transceiver
    * `video`, and its screen audio on `audio` when it has any, and makes the answer to

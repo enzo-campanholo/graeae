@@ -2,7 +2,9 @@
 // `window.graeaeFakeMedia`. Types only, so the journeys can import them too.
 
 import type { QualityName } from "../../../shared/encoding.ts";
+import type { ShareKind } from "../../../shared/socket/index.ts";
 import type { BrowserFamily, ScreenCaptureRequest } from "./capture.ts";
+import type { Degradation, StatsEntry, StepEncoding } from "./sending.ts";
 
 /**
  * What the browser's picker returns: the surface picked, and whether its audio checkbox
@@ -34,4 +36,14 @@ export interface FakeMediaControl {
   received: QualityName;
   /** Every watched share arrives at `quality` from now on, as when the media server steps a weak link down. */
   receive(quality: QualityName): void;
+  /**
+   * The browser's statistics of this tab's live share of `kind`, read `at` milliseconds
+   * after it started sending, as `RTCRtpSender.getStats()` gives them. A real browser
+   * reads them every 2 seconds by itself.
+   */
+  stats(kind: ShareKind, entries: StatsEntry[], at: number): void;
+  /** What each of this tab's live shares sends now: its encodings and what it gives up first. */
+  sent: Partial<Record<ShareKind, { encodings: StepEncoding[]; degradation: Degradation }>>;
+  /** How many offers the page has made: a share's step down or up makes none. */
+  offers: number;
 }

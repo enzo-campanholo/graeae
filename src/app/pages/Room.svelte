@@ -315,6 +315,7 @@
               kind={share.kind}
               watchers={view ? watchersOf({ member: view.people.you.id, kind: share.kind }) : []}
               audio={share.audio}
+              notes={share.notes}
               stopping={share.state === "stopping"}
               onstop={() => client?.stop(share.kind)}
               onaudio={(on) => client?.setScreenAudio(on)}

@@ -34,6 +34,7 @@ import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
 import { createMediaClient, type BrowserFamily, type Capture, type Offer } from "./media/index.ts";
+import type { SharerNotes } from "./media/sending.ts";
 
 /** What this tab receives of a share it watches. */
 export interface Picture {
@@ -58,6 +59,8 @@ export interface OwnShare {
    * has no sound: a webcam, or a screen share that ended up video only.
    */
   audio: "on" | "off" | null;
+  /** What only the sharer is told of it, from its statistics, once it is live. */
+  notes: SharerNotes | null;
 }
 
 export class RoomClient {
@@ -161,7 +164,7 @@ export class RoomClient {
   private async share(kind: ShareKind, captured: () => Promise<Capture | null>) {
     if (this.mine.some((share) => share.kind === kind)) return;
     this.failed = null;
-    this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null }];
+    this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null, notes: null }];
     let capture: Capture | null;
     try {
       capture = await captured();
@@ -205,6 +208,9 @@ export class RoomClient {
       });
       if (!live) throw new Error("the share was refused");
       this.update(kind, { state: "live" });
+      this.media.notes(capture, (notes) => {
+        this.mine = this.mine.map((share) => (share.capture === capture ? { ...share, notes } : share));
+      });
       // The browser ended it while it was starting: it stops now that it can.
       if (this.over.has(capture)) this.stop(kind);
     } catch {
