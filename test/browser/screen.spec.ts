@@ -146,10 +146,14 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   await expect(stage.getByRole("img", { name: "Mia's screen, with no picture" })).toBeVisible();
   await expect(stage.getByText("video only")).toBeVisible();
 
-  // One screen share per member: another tab of Mia's cannot start a second.
+  // One screen share per member: another tab of Mia's cannot start a second, only offer to take this one over.
   const second = await mia.context().newPage();
   await second.goto(owner.url());
-  await expect(second.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await second.getByRole("button", { name: "Share screen" }).click();
+  const offer = second.getByRole("dialog", { name: "Your screen is already live" });
+  await offer.getByRole("button", { name: "Cancel" }).click();
+  await expect(offer).toHaveCount(0);
+  expect(await asked(second)).toEqual([]);
   await second.close();
 
   // Leaving ends it.
