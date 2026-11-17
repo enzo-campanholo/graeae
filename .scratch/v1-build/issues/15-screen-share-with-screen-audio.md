@@ -8,19 +8,19 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 
 **Blocked by:** 13, 14
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] "Share screen" goes straight to the browser's picker: 3 clicks, 4 the first time on a device
 - [x] The first time on a device a short notice comes first, once: a tab or a game's window sends sound, a whole screen is video only. No borderless-mode tip
 - [x] On Firefox the notice instead says: video only, possibly less smooth, a Chromium browser does better
 - [x] graeae asks the picker to have its audio checkbox ticked and has no audio toggle of its own before the picker
-- [ ] Screen audio is sent in stereo with echo cancellation, noise suppression and automatic gain off
-- [ ] The sharing page's own audio is always excluded from the capture
+- [x] Screen audio is sent in stereo with echo cancellation, noise suppression and automatic gain off
+- [x] The sharing page's own audio is always excluded from the capture
 - [x] The whole system's sound is never requested
 - [x] A screen share is one unit: its video track and, when there is one, its audio track, recorded and closed together
 - [x] The sharer's own live share has an audio on and off control
 - [x] A share that ended up with no audio shows the sharer one line saying so; viewers see "video only"
-- [ ] The share ends when the sharer presses stop, uses the browser's own "stop sharing" bar, closes the shared tab or window, or leaves
+- [x] The share ends when the sharer presses stop, uses the browser's own "stop sharing" bar, closes the shared tab or window, or leaves
 - [x] One screen share per member; a second attempt is refused until ticket 19 adds hand-over
 - [x] The screen icon appears on the member's row, and a name click watches screen and webcam together
 - [x] The app never checks the operating system and never blocks a browser; extra audio a picker offers elsewhere is passed through
@@ -51,3 +51,11 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 4. Check that Chrome's picker opens with its audio checkbox ticked for a tab and for a window. Check that a game's window sends only that game's sound, not Discord.
 5. In Firefox: the Firefox notice, and a window share that plays on another browser, as video only.
 6. A caveat to judge, not a bug: the research says Chrome falls back to the whole system's sound for a window on Windows 10 or older macOS, where app-only audio does not exist. graeae cannot tell without checking the system, which the spec forbids. Windows 10 is best effort.
+
+**Checked by the owner** on 2026-11-17, with an agent reading webrtc-internals dumps, on `graeae-test` (Chrome on Windows 11, the sharer and the viewer in two tabs of one Chrome).
+
+- **Stereo with the processing off (box 5): passed.** A tab playing a left and right test, shared with its sound; the owner heard it come through on the viewer. The capture's request reads `channelCount` 2, `echoCancellation`, `noiseSuppression` and `autoGainControl` false and `restrictOwnAudio` true, and the picker gave "Tab audio". The sharer's offer and the answer it applied carry `stereo=1;sprop-stereo=1`, and the Opus sender targets 64 kbps, Chrome's stereo rate (mono is 32), peaking at 67 kbps while the clip played. The media server's own offer to the viewer has no `stereo=1`, and the viewer's answer adds it: the viewer's Opus codec reads 2 channels, with no packet lost. So `stereoOpus` is enough for Cloudflare, which forwards the stereo packets unchanged.
+- **The page's own sound left out (box 6): passed,** by the owner's report; no dump was taken. A window share on Windows 11 sends only its application's sound, so a game's or a music player's window leaves graeae out whether or not `restrictOwnAudio` works. The test that means something is a Chrome window: a member watching a share with sound shared a separate, silent Chrome window with its sound, and the music their graeae tab played did not come back out.
+- **Every way of ending (box 11): passed.** Chrome's own "Stop sharing" bar, closing the shared tab or window, and the sharer leaving each took the share off the viewer's stage at once. Stopping from graeae passed in ticket 13.
+- **The picker (point 4): passed.** Chrome's picker opened with its audio checkbox ticked for a tab and for a window, and a game's window sent only that game's sound.
+- **Not checked here:** the Firefox notice (point 5). Ticket 17 checked that a Firefox screen share starts and plays, in VP9; ticket 27's Firefox line covers the notice. Point 6, Chrome's fall-back to the whole system's sound for a window on Windows 10, stays a caveat.

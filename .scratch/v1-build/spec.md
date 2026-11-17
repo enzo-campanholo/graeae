@@ -526,6 +526,7 @@ Not designed, and free for the implementer to settle without reopening a decisio
 ### Unverified facts the design rests on
 
 - The media server describes a baseline (`42001f`) track to viewers as constrained baseline (`42e01f`) while forwarding it unchanged. It works in Chromium and Firefox and is undocumented.
+- The media server offers a viewer Opus without `stereo=1`, and forwards a sharer's stereo Opus unchanged once the viewer's answer asks for stereo. It works in Chrome (build ticket 15) and is undocumented.
 - Why a viewer of an H.264 share's lower simulcast quality freezes. Ticket 17's dumps point to the media server's padding while it probes for bandwidth; Cloudflare documents nothing of it.
 - How the media server judges that a viewer needs the lower quality is undocumented.
 - Whether Cloudflare ever tears down a cut-off media connection with no tracks, and whether it drops packets a cut-off sharer keeps sending. A cut-off sharer's bitrate collapses by itself within 30 seconds.
