@@ -111,6 +111,13 @@ export class Shares {
     );
   }
 
+  /** The shares the tab `tab` watches, in the order it began watching them. */
+  stage(tab: string): LiveShare[] {
+    return this.watches("WHERE tab_id = ? AND watching_at IS NOT NULL ORDER BY watching_at, rowid", tab).map(
+      (watch) => watch.share,
+    );
+  }
+
   /** Who watches each of `member`'s live shares in the room at `address`. A share nobody watches is left out. */
   watchers(address: string, member: string): { share: LiveShare; members: string[] }[] {
     return this.records("WHERE room_address = ? AND member_id = ? AND live_at IS NOT NULL ORDER BY live_at, rowid", address, member)

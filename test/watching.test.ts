@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { LiveShare, ServerMessage } from "../src/shared/socket/index.ts";
 import { startInstance } from "./harness.ts";
 import {
-  addDevice,
   addMember,
+  addSecondBrowser,
   connectMedia,
   createRoom,
   setUpOwner,
@@ -54,11 +54,11 @@ async function caioToo() {
  */
 async function secondDevice(
   instance: Awaited<ReturnType<typeof startInstance>>,
-  browser: Parameters<typeof addDevice>[1],
+  browser: Parameters<typeof addSecondBrowser>[1],
   room: string,
   open: Tab[],
 ) {
-  const other = await addDevice(instance, browser);
+  const { other } = await addSecondBrowser(instance, browser);
   const { tab } = await openRoom(other, room);
   await connectMedia(tab);
   for (const already of open) await settle(already);
@@ -477,5 +477,44 @@ describe("watching", () => {
     const { state } = await openRoom(bia, room);
     expect(state.watching.watchers).toEqual([{ share: biasWebcam, members: [ownerId] }]);
     expect(instance.media.connections()[1]).toHaveLength(1);
+  });
+});
+
+describe("a viewer's lost connection", () => {
+  /** Lets `ms` go by in steps of 5 seconds, with the tabs in `alive` beating at each. */
+  async function pass(instance: Awaited<ReturnType<typeof startInstance>>, ms: number, alive: Tab[]) {
+    for (let left = ms; left > 0; left -= 5000) {
+      await instance.clock.advance(Math.min(left, 5000));
+      for (const tab of alive) await tab.heartbeat();
+    }
+  }
+
+  it("keeps the watching through the grace period, and a reconnect finds the stage as it was", async () => {
+    const { instance, owner, room, ownerTab, biaTab, biasWebcam } = await biaSharing();
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasWebcam);
+    await ownerTab.drop();
+    await pass(instance, 25_000, [biaTab]);
+
+    const { state } = await openRoom(owner, room);
+
+    expect(state.watching.stage).toEqual([biasWebcam]);
+    expect(instance.media.connections()[1]).toHaveLength(1);
+  });
+
+  it("force-closes the watching when the grace period runs out", async () => {
+    const { instance, ownerTab, biaTab, ownerId, biasWebcam } = await biaSharing();
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasWebcam);
+    await ownerTab.drop();
+
+    await pass(instance, 30_000, [biaTab]);
+    await settle(biaTab);
+
+    expect(watchingMessages(biaTab)).toEqual([
+      { type: "watching", change: { type: "watchers", share: biasWebcam, members: [ownerId] } },
+      { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
+    ]);
+    expect(instance.media.connections()[1]).toEqual([]);
   });
 });

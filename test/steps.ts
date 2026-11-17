@@ -90,6 +90,22 @@ export function renameRoom(owner: TestBrowser, address: string, name: unknown) {
   });
 }
 
+/** What the "You" page's "Add a device" sends. */
+export function addDevice(browser: TestBrowser) {
+  return browser.fetch("/api/me/devices", { method: "POST" });
+}
+
+/** Has `browser`'s member add a device, and returns a fresh browser made that device by pressing the invite. */
+export async function addSecondBrowser(instance: TestInstance, browser: TestBrowser, userAgent?: string) {
+  const made = await addDevice(browser);
+  expect(made.status).toBe(200);
+  const { invite } = await made.json<DeviceInviteAnswer>();
+  const other = instance.browser({ userAgent });
+  const joined = await pressJoin(other, invite.code);
+  expect(joined.status).toBe(200);
+  return { other, to: (await joined.json<JoinAnswer>()).to };
+}
+
 /** What the fake media client offers: no media server could read it, and the fake needs nothing more. */
 export const FAKE_OFFER = "v=0 a stand-in offer";
 
@@ -161,13 +177,3 @@ export async function watch(tab: Tab, share: LiveShare): Promise<string> {
 
 /** What the fake media client answers to the media server's offer for a pull. */
 export const FAKE_ANSWER = "v=0 a stand-in answer";
-
-/** Has `browser`'s member add a device through "Add a device", and returns a fresh browser made that device. */
-export async function addDevice(instance: TestInstance, browser: TestBrowser): Promise<TestBrowser> {
-  const made = await browser.fetch("/api/me/devices", { method: "POST" });
-  expect(made.status).toBe(200);
-  const { invite } = await made.json<DeviceInviteAnswer>();
-  const other = instance.browser();
-  expect((await pressJoin(other, invite.code)).status).toBe(200);
-  return other;
-}

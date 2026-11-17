@@ -20,6 +20,7 @@
     name,
     you = false,
     away = false,
+    reconnecting = false,
     followed = false,
     screen = null,
     webcam = null,
@@ -30,6 +31,8 @@
     you?: boolean;
     /** Has access to the room but is not present: dimmed, and nothing to click. */
     away?: boolean;
+    /** Present, but the room has not heard from them for about 10 seconds. */
+    reconnecting?: boolean;
     followed?: boolean;
     screen?: RowShare | null;
     webcam?: RowShare | null;
@@ -74,8 +77,9 @@
       aria-pressed={followed}
       onclick={onfollow}
     >
-      <Avatar {name} {followed} ring={followed ? "var(--raised)" : "var(--ground)"} />
+      <Avatar {name} {followed} {reconnecting} ring={followed ? "var(--raised)" : "var(--ground)"} />
       <span class="truncate font-medium">{name}</span>
+      {#if reconnecting}<span class="text-dim -ml-1 shrink-0">· reconnecting</span>{/if}
     </button>
     {#if screen}
       {@render shareIcon("screen", screen)}

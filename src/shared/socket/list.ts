@@ -8,10 +8,13 @@
 // The conversation. Every message is one JSON text frame. The instance sends
 // `{ type: "state" }` first, holding the whole list, then a `rooms` change each time a
 // room's line in the list changes: a room renamed, someone arriving or leaving, or a
-// room the member newly has access to, a share starting or ending. A list that connects again gets the whole list
-// again. The list sends nothing yet (ticket 06 adds the heartbeat).
+// room the member newly has access to, a share starting or ending. A list that connects
+// again gets the whole list again. The list sends only the heartbeat, which the instance
+// answers, as on a room's socket (`heartbeat.ts`); a list's lost connection has no
+// presence to keep.
 
 import { unknownChange } from "./area.ts";
+import type { Heard, Heartbeat } from "./heartbeat.ts";
 
 export const LIST_SOCKET_PATH = "/api/socket";
 
@@ -44,7 +47,11 @@ export type ListChange =
 export type ListMessage =
   | { type: "state"; state: ListState }
   | { type: "rooms"; change: ListChange }
-  | { type: "gone" };
+  | { type: "gone" }
+  | Heard;
+
+/** A message from the list to the instance. */
+export type ListClientMessage = Heartbeat;
 
 export function applyList(state: ListState, change: ListChange): ListState {
   switch (change.type) {

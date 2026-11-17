@@ -4,6 +4,8 @@
     name: string;
     followed: boolean;
     sharing: boolean;
+    /** Present, but the room has not heard from them for about 10 seconds. */
+    reconnecting: boolean;
   }
 </script>
 
@@ -48,7 +50,7 @@
                   "grid size-9 place-items-center rounded-md transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   person.followed ? "bg-raised" : "hover:bg-raised",
                 ]}
-                aria-label="Follow {person.name}"
+                aria-label={person.reconnecting ? `Follow ${person.name}, reconnecting` : `Follow ${person.name}`}
                 aria-pressed={person.followed}
                 onclick={() => onfollow?.(person.id)}
               >
@@ -57,12 +59,15 @@
                   size={28}
                   followed={person.followed}
                   sharing={person.sharing}
+                  reconnecting={person.reconnecting}
                   ring={person.followed ? "var(--raised)" : "var(--ground)"}
                 />
               </button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content side="right">{person.name}</Tooltip.Content>
+          <Tooltip.Content side="right">
+            {person.name}{#if person.reconnecting}<span class="text-muted-foreground"> · reconnecting</span>{/if}
+          </Tooltip.Content>
         </Tooltip.Root>
       </li>
     {/each}
