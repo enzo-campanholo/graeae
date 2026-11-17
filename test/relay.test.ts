@@ -168,7 +168,7 @@ describe("a restart on the relay", () => {
     const { instance, owner, room, biaTab, ownerWebcam, biaWebcam } = await bothSharingAndWatching();
     const tracks = instance.media.connections();
 
-    biaTab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER } });
+    biaTab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER, mid: "9" } });
 
     expect(await biaTab.next()).toEqual({ type: "media", change: { type: "restarted", answer: expect.any(String) } });
     expect(instance.media.calls("restart")).toBe(1);
@@ -182,7 +182,7 @@ describe("a restart on the relay", () => {
     const { instance, owner, room, biaTab, ownerWebcam, biaWebcam } = await bothSharingAndWatching();
     instance.media.fail("restart");
 
-    biaTab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER } });
+    biaTab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER, mid: "9" } });
 
     expect(await biaTab.next()).toEqual({ type: "media", change: { type: "restart-refused" } });
     const { state } = await openRoom(owner, room);
@@ -194,7 +194,7 @@ describe("a restart on the relay", () => {
     const owner = instance.browser();
     const { tab } = await openRoom(owner, await setUpOwner(owner));
 
-    tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER } });
+    tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER, mid: "9" } });
 
     expect(await tab.next()).toEqual({ type: "media", change: { type: "restart-refused" } });
     expect(instance.media.calls("restart")).toBe(0);

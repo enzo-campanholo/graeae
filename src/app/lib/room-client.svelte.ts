@@ -600,12 +600,18 @@ export class RoomClient {
       if (!this.made) return false;
       this.usage.report({ final: true, restarting: true });
       await this.usage.sent();
-      const offer = await this.media.restart(iceServers);
+      const { sdp: offer, mid } = await this.media.restart(iceServers);
       const answer = await this.request(
-        { type: "media", request: { type: "restart", offer } },
+        { type: "media", request: { type: "restart", offer, mid } },
         (change) => change.type === "restarted" || change.type === "restart-refused",
-      );
-      if (answer.type !== "restarted") return false;
+      ).catch(async (error: unknown) => {
+        await this.media.abandonRestart();
+        throw error;
+      });
+      if (answer.type !== "restarted") {
+        await this.media.abandonRestart();
+        return false;
+      }
       await this.media.restarted(answer.answer);
       return true;
     }).catch(() => false);

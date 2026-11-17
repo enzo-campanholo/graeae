@@ -32,7 +32,7 @@ export type CheckedRequest =
   | { name: "usage.received"; bytes: number; relayed: boolean }
   | { name: "media.connect" }
   | { name: "media.answer"; answer: string }
-  | { name: "media.restart"; offer: string }
+  | { name: "media.restart"; offer: string; mid: string }
   | { name: "media.reconnect" }
   | { name: "media.faltering" }
   | { name: "media.recovered" }
@@ -55,7 +55,7 @@ const CHECKS: { [Name in RequestName]: (request: Fields) => Checked<Name> | null
     isByteCount(bytes) && typeof relayed === "boolean" ? { name: "usage.received", bytes, relayed } : null,
   "media.connect": () => ({ name: "media.connect" }),
   "media.answer": ({ answer }) => (isSdp(answer) ? { name: "media.answer", answer } : null),
-  "media.restart": ({ offer }) => (isSdp(offer) ? { name: "media.restart", offer } : null),
+  "media.restart": ({ offer, mid }) => (isSdp(offer) && isMid(mid) ? { name: "media.restart", offer, mid } : null),
   "media.reconnect": () => ({ name: "media.reconnect" }),
   "media.faltering": () => ({ name: "media.faltering" }),
   "media.recovered": () => ({ name: "media.recovered" }),

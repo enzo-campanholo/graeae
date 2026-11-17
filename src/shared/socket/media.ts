@@ -56,12 +56,14 @@ export type MediaRequest =
   /** The browser's SDP answer to the media server's offer in `pulled`. The instance replies `answered`. */
   | { type: "answer"; answer: string }
   /**
-   * Restart the tab's media connection with the fresh credential `renewed` brought: the
-   * browser's SDP `offer` restarts its ICE, keeping every share and watch. A tab on the
-   * relay sends it, after its final usage total. The instance replies `restarted` or
-   * `restart-refused`.
+   * Restart the tab's media connection: the browser's SDP `offer` restarts its ICE,
+   * keeping every share and watch. A tab on the relay sends it with the fresh credential
+   * `renewed` brought, and any tab whose connection the browser gave up on sends it, each
+   * after its final usage total. The media server takes no offer without a track, so the
+   * offer carries an empty transceiver of its own, on `mid`, which sends nothing. The
+   * instance replies `restarted` or `restart-refused`.
    */
-  | { type: "restart"; offer: string }
+  | { type: "restart"; offer: string; mid: string }
   /**
    * The restart failed: let go of the tab's media connection and everything it carries.
    * Its shares end and its watching is closed; then it hears `dropped`, and makes a new

@@ -35,6 +35,8 @@ const RESTART_WAIT_MS = 15_000;
 export class BrowserMediaClient implements MediaClient {
   readonly browser: BrowserFamily = browserFamily(navigator.userAgent);
   private connection: RTCPeerConnection | null = null;
+  /** The empty transceiver the last restart offer carried, until the media server answers it. */
+  private spare: RTCRtpTransceiver | null = null;
   /** The transceivers sending each capture, so stopping one stops its sending. */
   private readonly sending = new Map<Capture, RTCRtpTransceiver[]>();
   /** The last offer's capture, its video transceiver, plan and capture height, followed once it is accepted. */
@@ -102,13 +104,25 @@ export class BrowserMediaClient implements MediaClient {
     }
   }
 
-  async restart(iceServers: IceServer[]): Promise<string> {
+  async restart(iceServers: IceServer[]): Promise<{ sdp: string; mid: string }> {
     this.renew(iceServers);
     const connection = await this.settled();
+    // The media server takes no offer without a track: this one sends nothing.
+    const spare = connection.addTransceiver("audio", { direction: "sendonly" });
+    this.spare = spare;
     const offer = await connection.createOffer({ iceRestart: true });
     await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
-    if (!connection.localDescription) throw new Error("The browser made no restart offer");
-    return connection.localDescription.sdp;
+    if (!connection.localDescription || spare.mid === null) throw new Error("The browser made no restart offer");
+    return { sdp: connection.localDescription.sdp, mid: spare.mid };
+  }
+
+  async abandonRestart() {
+    const connection = this.connection;
+    if (!connection || connection.signalingState !== "have-local-offer") return;
+    await connection.setLocalDescription({ type: "rollback" });
+    // Never negotiated, it would otherwise go out with the next offer.
+    this.spare?.stop();
+    this.spare = null;
   }
 
   async restarted(answer: string) {
@@ -278,6 +292,7 @@ export class BrowserMediaClient implements MediaClient {
     for (const capture of [...this.following.keys()]) this.unfollow(capture);
     this.connection?.close();
     this.connection = null;
+    this.spare = null;
     this.sending.clear();
     this.offered = null;
   }

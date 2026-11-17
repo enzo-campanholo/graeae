@@ -17,7 +17,7 @@
 // | pull           | POST sessions/{id}/tracks/new, remote tracks; gives the server's offer |
 // | setQuality     | PUT sessions/{id}/tracks/update, the pulled track's simulcast choice  |
 // | renegotiate    | PUT sessions/{id}/renegotiate, the browser's answer                   |
-// | restart        | POST sessions/{id}/tracks/new, the browser's ICE restart offer alone  |
+// | restart        | POST sessions/{id}/tracks/new, the ICE restart offer and a spare track |
 // | close          | PUT sessions/{id}/tracks/close, force: true                           |
 // | tracks         | GET sessions/{id}                                                     |
 //
@@ -145,13 +145,16 @@ export class CloudflareMediaServer implements MediaLayer {
     });
   }
 
-  async restart(connection: MediaConnectionId, offer: string): Promise<string> {
-    // Unproven against Cloudflare (ticket 25's note for the owner): an offer with no new
-    // tracks, which restarts ICE on the session. A refusal sends the tab down the ordinary
-    // reconnect path, so a media server that will not take it costs a reconnect, no more.
+  async restart(connection: MediaConnectionId, offer: string, mid: string): Promise<string> {
+    // Cloudflare takes no offer with no track ("Expecting at least 1 track in the
+    // request"), nor an offer on `renegotiate` (ticket 31). So the offer restarting ICE
+    // carries an empty transceiver of the browser's, pushed as a track that sends nothing
+    // and stays. A sweep may close it later, as a track no record names; it carries nothing.
     const answer = await this.sfu("POST", `/sessions/${connection}/tracks/new`, {
       sessionDescription: { type: "offer", sdp: offer },
+      tracks: [{ location: "local", mid, trackName: `restart-${crypto.randomUUID()}` }],
     });
+    failedTracks(answer.tracks);
     if (answer.sessionDescription?.type !== "answer") throw new Error("The media server gave no answer to a restart");
     return answer.sessionDescription.sdp;
   }

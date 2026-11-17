@@ -154,10 +154,11 @@ class FakeMediaServer implements MediaLayer {
     });
   }
 
-  restart(connection: MediaConnectionId, offer: string): Promise<string> {
+  restart(connection: MediaConnectionId, offer: string, mid: string): Promise<string> {
     return this.call("restart", () => {
       this.connection(connection);
       void offer;
+      void mid;
       return "v=0 a stand-in answer to a restart";
     });
   }

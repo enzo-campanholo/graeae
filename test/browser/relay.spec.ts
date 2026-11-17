@@ -140,7 +140,9 @@ test("a tab on the relay sends its final total, then restarts its connection wit
 
   route.hand({ type: "media", change: { type: "renewed", iceServers: FRESH } });
 
-  await expect.poll(() => requests(route, "media", "restart")).toEqual([{ type: "restart", offer: expect.any(String) }]);
+  await expect
+    .poll(() => requests(route, "media", "restart"))
+    .toEqual([{ type: "restart", offer: expect.any(String), mid: expect.any(String) }]);
   await expect.poll(async () => (await fake(pia)).restarts).toBe(1);
   expect(await fake(pia)).toMatchObject({ connections: 1, iceServers: FRESH });
   // The final total went out just before the restart.

@@ -71,10 +71,11 @@ export interface MediaLayer {
 
   /**
    * Hands the media server the browser's SDP `offer` restarting the ICE of the media
-   * connection `connection`, as it takes up a fresh relay credential, and returns the
-   * media server's answer. Every track on it stays as it is.
+   * connection `connection`, and returns the media server's answer. Every track on it
+   * stays as it is. The offer carries an empty transceiver on `mid`, added as a track
+   * that sends nothing, since the media server takes no offer without one.
    */
-  restart(connection: MediaConnectionId, offer: string): Promise<string>;
+  restart(connection: MediaConnectionId, offer: string, mid: string): Promise<string>;
 
   /**
    * Force-closes `tracks` on `connection`: the media stops at once, with nothing needed

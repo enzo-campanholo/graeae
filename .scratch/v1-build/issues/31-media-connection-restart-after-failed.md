@@ -10,11 +10,11 @@ Spec: [Shares](../spec.md#shares) ("If media falters while the signaling connect
 
 **Status:** ready-for-human
 
-- [ ] A media connection that reaches "failed" is restarted through the instance (`media.restart`), keeping every share and watch
-- [ ] A restart that finds no path is tried again while the connection stays failed and the tab still holds it
-- [ ] "disconnected" alone starts no restart: the browser recovers from it by itself
-- [ ] The instance's 30 seconds stand: a connection still failed then ends its shares as before, and the tries stop
-- [ ] Seam 2 tests on the fake; the owner's check (or the agent's harness) on Cloudflare for a 20-second drop
+- [x] A media connection that reaches "failed" is restarted through the instance (`media.restart`), keeping every share and watch
+- [x] A restart that finds no path is tried again while the connection stays failed and the tab still holds it
+- [x] "disconnected" alone starts no restart: the browser recovers from it by itself
+- [x] The instance's 30 seconds stand: a connection still failed then ends its shares as before, and the tries stop
+- [x] Seam 2 tests on the fake; the owner's check (or the agent's harness) on Cloudflare for a 20-second drop
 
 ## Comments
 
@@ -30,4 +30,13 @@ Spec: [Shares](../spec.md#shares) ("If media falters while the signaling connect
   So the Realtime SFU takes no offer that only restarts ICE. Its docs advise a new session after a loss of connectivity (developers.cloudflare.com/realtime/sfu/get-started/connection-patterns/), and another project reports the same refusal (github.com/Q9Labs/chalk/pull/838).
 - **Also found:** a refused restart leaves the browser's offer applied (`have-local-offer`), and nothing rolls it back. In the real run the next try took about 18 s to go out. The fake applies no description, so it cannot show this.
 
-**Needs the owner:** how to bring a failed connection back, given the above. The options are in the conversation of 2026-11-17: a restart offer that carries one throwaway track, a new connection, or leaving 17-to-30-second drops to end the share.
+**The owner chose the throwaway track**, and it works on Cloudflare.
+- **How.** The restart offer carries one empty transceiver of its own (audio, sendonly, no track). `media.restart` now names its `mid`, and the instance pushes it as a local track in the same `tracks/new` call, so the call has the track Cloudflare insists on. The track sends nothing and stays on the session. A sweep may close it later, as a track no record names.
+- **The stuck offer is fixed too.** A restart that is refused, or whose socket is lost, rolls back the browser's offer. The never-negotiated spare transceiver is stopped, so it does not go out with the next offer.
+- **On `graeae-test`** (version `2d907b70`):
+  - **A 20-second cut of the sharer's media.** The restart went out at "failed" and was answered at once, while the network was still down. The connection recovered 0.2 s after the network came back, and the viewer was decoding 20 fps again within 4 s: the same share, the same viewer and the same connection.
+  - **The same cut, then a stop, a new share and a new watch** on the restarted connection: 20 fps.
+  - **A 20-second cut of the viewer's media.** The viewer's own restart brought the picture back about 2 s after the network, without watching again.
+  - **A 45-second cut.** Two restarts went out while the network was down, each waiting 15 s for a path. The share ended 31 s after the faltering. The tries stopped, and the next share made a new connection and was watched.
+- Ticket 25's relay renewal restarts the same way, so it should work on Cloudflare now too. It has not been watched at its 11-hour mark.
+- `pnpm test` (427 tests and 38 journeys), `pnpm typecheck` and `pnpm lint` pass.

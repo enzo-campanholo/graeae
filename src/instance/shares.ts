@@ -693,11 +693,11 @@ export class Shares {
    * returns the media server's answer. Null when the tab has no media connection, or the
    * media server failed it. Every share and watch on the connection stays as it is.
    */
-  async restart(tab: Tab, offer: string): Promise<string | null> {
+  async restart(tab: Tab, offer: string, mid: string): Promise<string | null> {
     const mediaId = this.connectionRow(tab.id)?.media_id;
     if (typeof mediaId !== "string") return null;
     try {
-      return await this.media.restart(mediaId, offer);
+      return await this.media.restart(mediaId, offer, mid);
     } catch {
       return null;
     }

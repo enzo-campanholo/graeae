@@ -82,11 +82,18 @@ export interface MediaClient {
    */
   renew(iceServers: IceServer[]): void;
   /**
-   * Restarts the media connection's ICE with a fresh relay credential in `iceServers`,
-   * keeping every share and watch, and makes the offer that restarts it, for the instance
-   * to answer: what a tab on the relay does.
+   * Restarts the media connection's ICE with the relay credential `iceServers`, keeping
+   * every share and watch, and makes the offer that restarts it, for the instance to
+   * answer: what a tab on the relay does with a fresh credential, and any tab whose
+   * connection the browser gave up on. The offer carries an empty transceiver, on `mid`,
+   * since the media server takes no offer without a track.
    */
-  restart(iceServers: IceServer[]): Promise<string>;
+  restart(iceServers: IceServer[]): Promise<{ sdp: string; mid: string }>;
+  /**
+   * Takes back the restart offer the media server did not answer, so the connection is
+   * as it was and ready for its next negotiation.
+   */
+  abandonRestart(): Promise<void>;
   /**
    * Applies the media server's answer to the restart offer, and settles once the
    * connection has its path back. Throws if the restart fails.

@@ -144,13 +144,15 @@ export class FakeMediaClient implements MediaClient {
     if (this.connected) control().iceServers = iceServers;
   }
 
-  async restart(iceServers: IceServer[]): Promise<string> {
+  async restart(iceServers: IceServer[]): Promise<{ sdp: string; mid: string }> {
     if (!this.connected) throw new Error("The media connection is not made yet");
     const fake = control();
     fake.iceServers = iceServers;
     fake.restarts += 1;
-    return "v=0 a stand-in offer restarting ICE";
+    return { sdp: "v=0 a stand-in offer restarting ICE", mid: this.mid() };
   }
+
+  async abandonRestart() {}
 
   async restarted(answer: string) {
     void answer;

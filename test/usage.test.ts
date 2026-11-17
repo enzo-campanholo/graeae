@@ -30,7 +30,7 @@ async function newConnection(tab: Tab) {
 
 /** A restart of the tab's media connection, which resets its running total. */
 async function restartConnection(tab: Tab) {
-  tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER } });
+  tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER, mid: "9" } });
   expect(await tab.next()).toEqual({ type: "media", change: { type: "restarted", answer: expect.any(String) } });
 }
 

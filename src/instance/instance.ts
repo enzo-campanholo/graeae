@@ -354,8 +354,8 @@ export class Instance extends DurableObject<Env> {
       this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
     },
     // A restart needs no check: like an answer, it only renews the tab's own path to the media server.
-    "media.restart": async (tab, { offer }) => {
-      const answer = await this.shares.restart(tab, offer);
+    "media.restart": async (tab, { offer, mid }) => {
+      const answer = await this.shares.restart(tab, offer, mid);
       if (answer !== null) this.usage.newTotal(tab.id);
       this.signaling.toTab(
         tab.id,

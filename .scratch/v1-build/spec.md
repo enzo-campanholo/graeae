@@ -232,7 +232,7 @@ Four deep modules carry the design. Each is described by what it does, not where
 - Starting a share of a kind that is already live offers a hand-over. The backend registers the new share first, then closes the old one and moves each viewer in the same room (close the old pull, create the new one). If the new share fails to register, the old one carries on. A hand-over into a different room ends the share in the first room and carries nobody.
 - A sharer who returns after their grace period ran out has the share start again by itself if the tab still holds the capture, unless they started it from another device meanwhile. Their previous viewers are not carried over, since for them the share ended.
 - A screen share is video together with its screen audio as one unit. A webcam share is video only.
-- If media falters while the signaling connection is fine, the share stays live for 30 seconds while the browser tries to recover, then ends.
+- If media falters while the signaling connection is fine, the share stays live for 30 seconds while the browser tries to recover, then ends. Once the browser gives the media connection up, the tab restarts it through the backend, and again after each restart that finds no path, until it recovers or the 30 seconds run out.
 - Watching belongs to a device, since each device has its own stage. A watching member is named to the sharer once however many devices they watch on.
 
 ### Screen audio
