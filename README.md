@@ -2,4 +2,206 @@
 
 # graeae
 
-Created in [T3 Code](https://t3.codes).
+A private web app where a small group of friends shares screens and webcams with each other while Discord keeps the voice and the text.
+
+One person, the **owner**, deploys an **instance** to their own Cloudflare account on the free plan and lets friends in with single-use invites. Nobody signs up or logs in: each browser that opens an invite is remembered as a device for 400 days from its last visit. Inside an instance are permanent rooms. In a room, members share a screen (with the sound of the tab or application shared, where the browser can capture it) and a webcam, and everyone else chooses what to watch. graeae never touches a microphone.
+
+Every share goes through Cloudflare's media server in the owner's account. graeae counts what members watch and stops all watching when the month's usage budget runs out, so the expected cost is $0.
+
+**Before you start, read [Cost](#cost), [Limits](#limits) and [No support](#licence-and-no-support).** graeae is 0BSD software with no warranty and no promise of support.
+
+- [Cost](#cost)
+- [Limits](#limits)
+- [Platforms](#platforms)
+- [Deploying](#deploying)
+- [Updating](#updating)
+- [Looking after an instance](#looking-after-an-instance)
+- [Licence and no support](#licence-and-no-support)
+- [Working on graeae](#working-on-graeae)
+
+## Cost
+
+- **Expected cost: $0.** The instance runs on Cloudflare's free Workers plan, and Cloudflare's media server and relay include 1,000 GB a month.
+- **Cloudflare requires a card on file** before it turns on Realtime, the product that holds the media server and the relay.
+- **The media server and the relay share the 1,000 GB.** Past it, Cloudflare charges $0.05 per GB, billed to the card automatically. Only what Cloudflare sends out counts; what members send in is free.
+- **The usage budget defaults to 1,000 GB**, so no media bill arrives unless you raise it. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live.
+- **The usage budget bounds what members watch, not the whole bill.** Relay traffic graeae never sees, such as a removed device using an unexpired relay credential, is not counted. **Keep Cloudflare's billing alert on**: in the dashboard, Manage Account › Billing › Billable Usage › Budget alerts. It emails you when the account's usage-based spend passes the figure you set. It does not stop anything.
+- **The usage count is unverified.** graeae counts the bytes each browser reports receiving and adds 5%, so it should never read below Cloudflare's own figure. That has not yet been compared with Cloudflare's figure on a real session, so treat the meter as an estimate until a release says otherwise.
+
+What the 1,000 GB buys, by the estimate graeae was designed to: 30 hours a month with one screen and one webcam live, each watched by three people, comes to about 550 GB. A heavy night of four screens and four webcams, each watched by three, uses about 73 GB an hour.
+
+## Limits
+
+- Designed for a group of about 4 to 6, with at most 8 members present in one room at once. Access lists and the number of rooms are not limited.
+- Four screens live at once at 1080p60 is the aim, but the load on a viewer's machine of decoding three or four game shares has not been measured.
+- Every member needs at least 20 Mbps of upload to share a screen at 1080p60. A sharer with less is sent at 720p, and is told so.
+- Hardware encoding at 1080p60 has been proven on two recent NVIDIA graphics cards only. The effect of sharing on a game is unmeasured on a weaker machine.
+- **The 144 Hz caveat:** on Windows, a sharer whose monitor runs at 144 Hz gets 48 fps instead of 60, until Chrome's fix for it ships. graeae notices and tells the sharer; setting the monitor to 120 Hz gives 60.
+- No phone layout, no sharing from a phone, no voice or text chat, no recording.
+- The instance runs on Cloudflare's free plan. Whether one busy instance stays inside the free plan's daily Durable Object allowance has not yet been measured.
+
+## Platforms
+
+Three levels. **Supported**: the targets hold, and a failure is a bug. **Limited**: it works, with named gaps that are not bugs. **Best effort**: never blocked, never tested, no fix promised.
+
+| Platform | Level | Watching | Sharing |
+|---|---|---|---|
+| Windows 11, current stable Chrome or Helium | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio |
+| Windows 11, current stable Vivaldi or Brave | Supported, not yet verified | The same | The same |
+| Windows 11, current stable Firefox | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
+| macOS and Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
+| Everything else | Best effort, untested | Whatever the browser can do | Whatever the browser can do |
+
+"Everything else" is untested: Windows 10, Edge, Opera and other Chromium browsers, Firefox and Safari on macOS and Linux, and every phone browser. graeae never checks the operating system and never blocks a browser. The 144 Hz caveat under [Limits](#limits) applies to the Supported level.
+
+## Deploying
+
+From an empty Cloudflare account to a working instance takes about half an hour. Everything you choose later (rooms, invites, the usage budget, the reset day) is set in the app; the only configuration is five secrets.
+
+You need [Node.js](https://nodejs.org) 24, [pnpm](https://pnpm.io) 12 (`corepack enable pnpm` sets it up from Node.js), [git](https://git-scm.com), and a Cloudflare account with a card.
+
+### 1. In the Cloudflare dashboard
+
+Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) if you have no account.
+
+1. **Add a card and turn on Realtime.** Open **Realtime** in the dashboard. Cloudflare asks for a card before Realtime can be used.
+2. **Create a media server application.** Go to **Realtime › Serverless SFU** and create an application. Keep its **App ID** and **App Secret** for the secrets file.
+3. **Create a relay key.** In **Realtime**, open TURN and create a TURN key. Keep its **Turn Token ID** and **API Token** for the secrets file.
+
+### 2. Clone and install
+
+Check out the newest release, which is the newest tag. Its entry in [CHANGELOG.md](CHANGELOG.md) says whether it needs anything by hand.
+
+```sh
+git clone https://github.com/enzo-campanholo/graeae.git
+cd graeae
+git checkout "$(git describe --tags --abbrev=0 origin/HEAD)"
+pnpm install --frozen-lockfile
+```
+
+### 3. Fill in the secrets file
+
+```sh
+cp .secrets.example .secrets
+```
+
+`.secrets` is ignored by git. Fill in all five values:
+
+| Secret | What it is |
+|---|---|
+| `SETUP_SECRET` | Makes a browser the owner's device. At least 32 characters; generate one with the command below. |
+| `SFU_APP_ID` | The media server application's App ID |
+| `SFU_APP_SECRET` | The media server application's App Secret |
+| `TURN_KEY_ID` | The relay key's Turn Token ID |
+| `TURN_KEY_TOKEN` | The relay key's API Token |
+
+Generate the setup secret with:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+**Keep a copy of the setup secret in your password manager.** It is the owner's way back in after losing every device, and you are about to delete the file that holds it.
+
+### 4. Deploy
+
+```sh
+pnpm exec wrangler login
+pnpm run deploy
+```
+
+`wrangler login` opens a browser to sign in to Cloudflare once. `pnpm run deploy` builds graeae, uploads it with the five secrets, and prints the instance's address, `https://graeae.<your subdomain>.workers.dev`. A deploy with any secret missing fails and names it. A line left blank in `.secrets` is refused before anything is uploaded.
+
+Always deploy with `pnpm run deploy`. Do not run `wrangler deploy` yourself: it uploads whatever build is lying in `dist/`, and after the tests that is a build with no real media in it.
+
+**Then delete `.secrets`.** The Worker keeps the secrets, and later deploys without the file leave them as they are. A secrets file left on disk is one more place for them to leak from.
+
+```sh
+rm .secrets
+```
+
+To run a second instance on the same Cloudflare account, give it its own name each time you deploy it: `pnpm run deploy --name <other name>`.
+
+### 5. Open the setup address
+
+Open `https://graeae.<your subdomain>.workers.dev/setup#<your setup secret>` in the browser you will use. That browser becomes the owner's first device, the first room is made, and you land in it. The part after `#` never leaves your browser in an address.
+
+If the page says secrets are missing, the media server or relay is not set up: put the missing ones in a new `.secrets` (see [Rotating a secret](#rotating-a-secret)) and deploy again.
+
+### 6. Set the reset day
+
+Open the gear in the room's bar, then **Usage**. Set **Reset day** to the day your Cloudflare billing period starts (in the dashboard, Manage Account › Billing). The usage budget then runs over the same month as the bill. Raise the usage budget here too if you choose to pay for more than 1,000 GB.
+
+### 7. Invite people
+
+On the owner page, under **Invites**: type a display name, tick the rooms, and press **Create and copy link**. Paste the link to that person, in Discord for example. An invite works once, for 7 days; it is only used up when they press the button on its page, so a chat app's link preview cannot spend it.
+
+### Optional: a custom hostname
+
+graeae runs on its `workers.dev` address; you need no domain. To use your own hostname instead, your domain must be on Cloudflare. In the dashboard, go to **Workers & Pages**, pick the `graeae` Worker, then **Settings › Domains & Routes › Add › Custom Domain**, and type the hostname. Do not add it to `wrangler.jsonc`: the repo's config names no routes, so nobody edits a tracked file.
+
+## Updating
+
+```sh
+git fetch --tags
+git checkout "$(git describe --tags --abbrev=0 origin/HEAD)"
+pnpm install --frozen-lockfile
+pnpm run deploy
+```
+
+Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first: a release that needs a step by hand says so there. You need no secrets file; the Worker keeps its secrets.
+
+Changes to stored data are applied by the instance itself, the first time it starts after the deploy. Members, devices, rooms and settings are kept. **Going back to an older release is not supported** once a newer one has run: an older release cannot read data a newer one has changed.
+
+## Looking after an instance
+
+### Getting back in as the owner
+
+If you lose every device, or one is stolen, open `/setup#<your setup secret>` in any browser. That browser becomes an owner device and every other owner device is forgotten, so a thief is locked out too. Members' devices are not touched.
+
+If you have lost the setup secret as well, set a new one (below) and use that.
+
+### Rotating a secret
+
+To replace secrets, write a `.secrets` that holds only the lines you are changing, deploy, and delete the file again:
+
+```sh
+cp .secrets.example .secrets   # then delete every line you are not changing
+pnpm run deploy
+rm .secrets
+```
+
+Secrets left out of the file keep their values on the Worker.
+
+- **`SETUP_SECRET`**: generate a new one with the command under [step 3](#3-fill-in-the-secrets-file). The old one stops working at once. Owner devices stay remembered.
+- **`SFU_APP_ID` and `SFU_APP_SECRET`**: create a new media server application under Realtime › Serverless SFU, deploy both of its values together, then delete the old application. Do this when nobody has a room open: shares and watching on the old application end when it goes.
+- **`TURN_KEY_ID` and `TURN_KEY_TOKEN`**: create a new TURN key under Realtime, TURN, deploy both of its values together, then delete the old key. Tabs pick up the new key when they next make their media connection.
+
+### Emergency stop for relay abuse
+
+graeae cannot see relay traffic, and a removed member's browser may hold a relay credential for up to 12 hours. If the relay figures in the dashboard climb with nobody watching, replace the relay key: create a new one, deploy it as under [Rotating a secret](#rotating-a-secret), and delete the old one. **It is unverified whether deleting the key ends the credentials already issued from it.** Each one expires 12 hours after it was issued in any case.
+
+### Deleting an instance
+
+```sh
+pnpm exec wrangler delete
+```
+
+This deletes the `graeae` Worker (add `--name <other name>` for a second instance). Cloudflare describes it as deleting the Worker and all its associated resources: the instance's address, and the Durable Object that holds its members, devices, rooms and usage. Then, in the dashboard, delete the media server application and the TURN key, and check that a custom hostname, if you added one, has gone from your domain's DNS.
+
+### No backup
+
+There is no export and no backup. If an instance's stored data is lost, open the setup address again: it makes a fresh owner and first room. Then recreate the other rooms and invite everyone again. Room addresses change, so share the new links.
+
+## Licence and no support
+
+graeae is released under the [0BSD licence](LICENSE): do anything you like with it. It comes with **no warranty** of any kind, and **no promise of support**. Issues and pull requests are open, but they may go unanswered. You run your instance, and answer for its bill, yourself.
+
+Changes from release to release are in [CHANGELOG.md](CHANGELOG.md).
+
+## Working on graeae
+
+Development notes for contributors are in [CLAUDE.md](CLAUDE.md), the terms the code uses in [GLOSSARY.md](GLOSSARY.md), and the decisions behind it in [docs/adr](docs/adr). In short:
+
+- `pnpm dev:fake-media` runs the whole app locally on fake media, with the five secrets in a git-ignored `.dev.vars` (any values; a setup secret of 32 characters or more). `pnpm dev` runs it on the real media server, so sharing needs real secrets there.
+- `pnpm test` builds a test version and runs every test on the fakes; nothing automated talks to Cloudflare. `pnpm typecheck` and `pnpm lint` check the rest.
