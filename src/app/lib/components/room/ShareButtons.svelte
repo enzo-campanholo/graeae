@@ -10,14 +10,19 @@
   let {
     compact = false,
     webcamLive = false,
+    webcamStarting = false,
     onscreen,
     onwebcam,
   }: {
     compact?: boolean;
     webcamLive?: boolean;
+    /** Pressed, and not live yet. */
+    webcamStarting?: boolean;
     onscreen?: () => void;
     onwebcam?: () => void;
   } = $props();
+
+  const webcamLabel = $derived(webcamStarting ? "Starting webcam" : webcamLive ? "Webcam live" : "Share webcam");
 </script>
 
 {#if compact}
@@ -26,11 +31,11 @@
       <Monitor />
     </IconButton>
     <IconButton
-      label={webcamLive ? "Webcam live" : "Share webcam"}
+      label={webcamLabel}
       variant="secondary"
       size="icon"
       side="right"
-      disabled={webcamLive}
+      disabled={webcamLive || webcamStarting}
       class="disabled:text-faint disabled:opacity-100"
       onclick={onwebcam}
     >
@@ -45,10 +50,10 @@
     <Button
       variant="secondary"
       class="disabled:text-muted-foreground disabled:opacity-100"
-      disabled={webcamLive}
+      disabled={webcamLive || webcamStarting}
       onclick={onwebcam}
     >
-      <Video />{webcamLive ? "Webcam live" : "Share webcam"}
+      <Video />{webcamStarting ? "Starting" : webcamLive ? "Webcam live" : "Share webcam"}
     </Button>
   </div>
 {/if}

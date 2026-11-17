@@ -1,7 +1,7 @@
 <script lang="ts">
   // The list of rooms, at the root address for a member with more than one: who is
   // present in each, kept live over the list's own connection. Looking does not make
-  // you present anywhere. How many shares are live in each arrives with ticket 10.
+  // you present anywhere, and how many shares are live in each.
   import { sample } from "$sample";
   import PlainPage from "$lib/components/plain/PlainPage.svelte";
   import { ListClient } from "$lib/list-client.svelte.js";
@@ -29,7 +29,7 @@
 
   const rooms = $derived(
     sample?.rooms ??
-      (list && list.rooms.length !== 1 ? list.rooms.map((room) => ({ ...room, live: 0 })) : null),
+      (list && list.rooms.length !== 1 ? list.rooms : null),
   );
   const gear = $derived(!!sample || !!list?.you.owner);
 </script>
