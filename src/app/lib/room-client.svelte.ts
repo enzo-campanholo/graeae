@@ -18,19 +18,30 @@ export class RoomClient {
     this.socket = new WebSocket(`${scheme}//${window.location.host}${roomSocketPath(address)}`);
     this.socket.addEventListener("message", (event) => {
       if (typeof event.data !== "string") return;
-      this.view = applyMessage(this.view, JSON.parse(event.data) as ServerMessage);
+      const message = JSON.parse(event.data) as ServerMessage;
+      if (message.type === "gone") {
+        this.refused = true;
+        this.close();
+        return;
+      }
+      this.view = applyMessage(this.view, message);
     });
+    // A socket refused at the start, or closed by the instance later (this device was
+    // forgotten), shows "nothing here" once the instance confirms the refusal.
     this.socket.addEventListener("close", () => {
-      if (this.view === null) void this.checkRefused();
+      if (!this.leaving) void this.checkRefused();
     });
   }
+
+  private leaving = false;
 
   /** Leaves the room: the instance ends this tab's presence at once. */
   close() {
+    this.leaving = true;
     this.socket.close(1000, "left");
   }
 
-  // A refused socket only shows the browser a failed connection, so ask the instance
+  // A refused or closed socket tells the browser nothing about why, so ask the instance
   // over HTTP, where a refusal is the "nothing here" answer.
   private async checkRefused() {
     const room = await getJson(`/api/rooms/${encodeURIComponent(this.address)}`).catch(() => undefined);

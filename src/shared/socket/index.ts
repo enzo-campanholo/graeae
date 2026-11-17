@@ -17,6 +17,8 @@
 // - The tab sends requests the same way, by area. A request the instance does not
 //   understand is ignored.
 // - A clean close by the tab (closed, reloaded, navigated away) ends its presence at once.
+// - A tab whose device is no longer remembered gets `{ type: "gone" }`, and then the
+//   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
 import { applyPeople, type PeopleChange, type PeopleState } from "./people.ts";
 import { applyPresence, type PresenceChange, type PresenceRequest, type PresenceState } from "./presence.ts";
@@ -47,6 +49,8 @@ export interface RoomView {
 /** A message from the instance to a tab. */
 export type ServerMessage =
   | { type: "state"; state: RoomView }
+  /** This tab's device is forgotten: the socket closes next and the page is "nothing here". */
+  | { type: "gone" }
   | { type: "room"; change: RoomChange }
   | { type: "people"; change: PeopleChange }
   | { type: "presence"; change: PresenceChange }

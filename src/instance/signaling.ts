@@ -77,6 +77,8 @@ export class Signaling {
       const tab = tabOf(socket);
       if (!tab) continue;
       socket.serializeAttachment({ ...tab, cutOff: true } satisfies Tab);
+      // Said as well as done: a close frame can be lost on the way, a message is not.
+      send(socket, { type: "gone" });
       try {
         socket.close(GONE_CLOSE_CODE, "");
       } catch {

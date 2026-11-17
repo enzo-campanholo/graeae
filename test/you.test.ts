@@ -290,7 +290,9 @@ describe("forgetting a device", () => {
 
     await forget(bia, laptopId);
 
+    expect(await laptopTab.next()).toEqual({ type: "gone" });
     await laptopTab.closed();
+    expect((await laptop.fetch(`/api/rooms/${addressOf(room)}`)).status).toBe(404);
     expect(await ownerTab.next()).toEqual({ type: "presence", change: { type: "left", member: biaId } });
     const { state: after } = await openRoom(owner, room);
     expect(after.presence.present).not.toContain(biaId);
