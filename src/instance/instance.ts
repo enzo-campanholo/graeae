@@ -25,8 +25,8 @@ import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Member, type Visitor } from "./people.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
-import { Shares } from "./shares.ts";
-import { Signaling, type Tab } from "./signaling.ts";
+import { Shares, type Covered } from "./shares.ts";
+import { Signaling, type Cut, type Tab } from "./signaling.ts";
 
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
 export const INSTANCE_NAME = "instance";
@@ -168,8 +168,7 @@ export class Instance extends DurableObject<Env> {
   private async forget(member: Member, id: string, visitor: Visitor): Promise<Response | null> {
     // Storage first, so the forgotten browser is refused from this instant, then its tabs.
     if (!this.people.forgetDevice(member, id)) return null;
-    // Its tabs are gone, so whatever they were sending ends as on a clean leave.
-    for (const tab of this.signaling.closeDevice(id)) await this.left(tab);
+    await this.cutOff({ device: id }, this.signaling.cutDevice(id));
     return id === visitor.deviceId ? withCookie(done(), FORGET_DEVICE_COOKIE) : done();
   }
 
@@ -267,9 +266,29 @@ export class Instance extends DurableObject<Env> {
     }
   }
 
-  /** A tab left cleanly, or its grace period ran out: whatever it was sending ends with it. */
+  /**
+   * A tab left cleanly, or its grace period ran out. Its presence has already ended, so
+   * nothing it asks is granted any more: whatever it was sending and watching is cut off.
+   */
   private async left(tab: Tab) {
-    for (const share of await this.shares.left(tab)) this.shareChanged(tab.room, { type: "ended", share });
+    await this.cutOff({ tab: tab.id });
+  }
+
+  /**
+   * The cut-off: the one routine that ends what `covered` takes in, for every case (spec,
+   * "Cut-off"; ADR 0003). The caller has done its first step, changing storage, so any
+   * request from what is covered is refused from that instant; `cut` holds the tabs it
+   * cut off. This force-closes the covered shares' tracks, then everyone else's pulls of
+   * them, then the covered pulls; the room and the lists hear which shares ended; and
+   * last, the cut-off tabs are told they are gone and closed.
+   */
+  private async cutOff(covered: Covered, cut?: Cut) {
+    try {
+      const ended = await this.shares.cutOff(covered, cut?.tabs.map((tab) => tab.id));
+      for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+    } finally {
+      cut?.tell();
+    }
   }
 
   /** Tells the room and the lists of rooms that a share started or ended. */
@@ -435,11 +454,11 @@ export class Instance extends DurableObject<Env> {
       // Storage first: from this instant every device of theirs is a stranger.
       const rooms = member && this.people.remove(member);
       if (!member || !rooms) return refuse();
-      const tabs = this.signaling.closeMember(member.id);
+      const cut = this.signaling.cutMember(member.id);
       for (const address of rooms) {
         this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
       }
-      for (const tab of tabs) await this.left(tab);
+      await this.cutOff({ member: member.id }, cut);
       return done();
     }
     return refuse();
@@ -447,18 +466,19 @@ export class Instance extends DurableObject<Env> {
 
   /**
    * `member` has just lost access to the room at `address`, in storage. Their tabs there
-   * are told they are gone and closed, on every device, and the room hears they left and
-   * no longer belong to it. Then what those tabs were sending ends.
+   * are cut off, on every device, and the room hears they left and no longer belong to
+   * it. Then what they were sending and watching there is cut off, and last their tabs
+   * there are told they are gone and closed.
    */
   private async accessRemoved(member: Member, address: string) {
-    const tabs = this.signaling.closeMember(member.id, address);
+    const cut = this.signaling.cutMember(member.id, address);
     this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
     this.signaling.toMember(member.id, {
       type: "people",
       change: { type: "access", rooms: this.people.rooms(member).length },
     });
     this.signaling.toLists(new Set([member.id]), { type: "rooms", change: { type: "unlisted", address } });
-    for (const tab of tabs) await this.left(tab);
+    await this.cutOff({ member: member.id, room: address }, cut);
   }
 
   /** `member` has just been given access to the room at `address`: every tab that shows it hears so. */
@@ -482,6 +502,7 @@ export class Instance extends DurableObject<Env> {
       owner: member.owner,
       rooms,
       present: rooms.filter((address) => this.signaling.present(address).has(member.id)),
+      sharing: this.shares.sharedBy(member.id),
       devices,
       lastVisit: devices.length > 0 ? Math.max(...devices.map((device) => device.lastUsed)) : null,
       letBackIn: this.people.letBackIn(member),
@@ -505,9 +526,7 @@ export class Instance extends DurableObject<Env> {
     const joined = await this.people.join(request, visitor, code);
     if (!joined) return nothingHere(this.env.ASSETS, request);
     // "Let back in" forgot the member's other devices: their tabs close as on forgetting one.
-    for (const device of joined.forgotten) {
-      for (const tab of this.signaling.closeDevice(device)) await this.left(tab);
-    }
+    for (const device of joined.forgotten) await this.cutOff({ device }, this.signaling.cutDevice(device));
     const { id, name } = joined.member;
     for (const room of this.people.rooms(joined.member)) {
       this.signaling.toRoom(room.address, { type: "people", change: { type: "added", person: { id, name } } });

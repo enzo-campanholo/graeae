@@ -86,6 +86,22 @@
     return `Present in ${andList(entry.present.map(roomName))}`;
   }
 
+  /**
+   * What a removal ends of a present member's shares, for the confirm: in the room at
+   * `address`, or in every room without it. Shares end for their viewers too, so the
+   * owner hears that before the press.
+   */
+  function sharingLine(entry: MemberEntry, address?: string): string {
+    const shares = entry.sharing.filter((share) => address === undefined || share.room === address);
+    if (shares.length === 0) return address === undefined ? "They share nothing now." : "They share nothing there now.";
+    const items =
+      address === undefined
+        ? shares.map((share) => `${share.kind} share in ${roomName(share.room)}`)
+        : [`${andList(shares.map((share) => share.kind))} ${shares.length > 1 ? "shares" : "share"} there`];
+    const ends = shares.length > 1 ? "end" : "ends";
+    return `Their ${andList(items)} ${ends} for everyone watching.`;
+  }
+
   // Access. A tick grants at once; an untick asks first and changes nothing until then.
   let granting = $state<string | null>(null);
 
@@ -120,9 +136,12 @@
       return {
         title: `Remove ${name} from ${room}?`,
         lines: [
-          asked.present.includes(what.address)
-            ? `${name} is in ${room} now. Their page there becomes “nothing here” within about 2 seconds.`
-            : `${name} is not in ${room} now.`,
+          ...(asked.present.includes(what.address)
+            ? [
+                `${name} is in ${room} now. Their page there becomes “nothing here” within about 2 seconds.`,
+                sharingLine(asked, what.address),
+              ]
+            : [`${name} is not in ${room} now.`]),
           keeps.length > 0
             ? `They keep ${andList(keeps)}.`
             : `${room} is their only room. They stay a member with no room until you tick one.`,
@@ -139,9 +158,12 @@
     return {
       title: `Remove ${name} from graeae?`,
       lines: [
-        asked.present.length > 0
-          ? `${name} is present in ${andList(asked.present.map(roomName))}. Every page of theirs becomes “nothing here” within about 2 seconds.`
-          : `${name} is not in any room now.`,
+        ...(asked.present.length > 0
+          ? [
+              `${name} is present in ${andList(asked.present.map(roomName))}. Every page of theirs becomes “nothing here” within about 2 seconds.`,
+              sharingLine(asked),
+            ]
+          : [`${name} is not in any room now.`]),
         asked.rooms.length > 0 ? `They lose ${andList(asked.rooms.map(roomName))} and keep no room.` : "They have no room to lose.",
         `${forgotten} Coming back takes a new invite.`,
       ],
