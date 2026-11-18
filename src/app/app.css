@@ -97,9 +97,8 @@
   --avatar-lg-text: 14px;
 
   --header: 52px; /* the bar's and the owner navigation's header */
-  --bar: 316px; /* the room's bar */
+  --bar: 316px; /* the room's bar and the owner page's navigation, one width */
   --rail: 64px; /* the folded bar */
-  --nav: 256px; /* the owner page's navigation */
   --caption: 32px; /* under a share's picture: its line and the gap above it */
   --plain: 720px; /* the plain pages' column */
   --owner: 1000px; /* the owner page's content */
@@ -164,7 +163,6 @@
   --spacing-header: var(--header);
   --spacing-bar: var(--bar);
   --spacing-rail: var(--rail);
-  --spacing-nav: var(--nav);
   --container-plain: var(--plain);
   --container-owner: var(--owner);
 

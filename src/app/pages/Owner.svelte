@@ -98,7 +98,7 @@
   <NothingHere />
 {:else}
   <div class="flex h-dvh py-2 pr-2">
-    <aside class="flex w-nav shrink-0 flex-col px-2">
+    <aside class="flex w-bar shrink-0 flex-col px-2">
       <header class="grid h-header grid-cols-[var(--control-sm)_1fr_var(--control-sm)] items-center">
         <IconButton label="Rooms" href={home}><House /></IconButton>
         <span class="text-center text-sm font-medium">Owner</span>

@@ -250,7 +250,7 @@ The app is desktop only; no phone layout exists.
 
 **Plain pages** (Rooms, You): one centred column, 720px max, 24px side padding, 20px from the top, 40px between header and content and 32px between sections; rows are 64px (rooms) or 56px (devices), bleeding 12px past the column so hover fills align with the text.
 
-**The owner page**: a 256px navigation on the ground (52px header, 40px links, the usage meter always in view at its foot) beside the inset content panel (content 1000px max, centred in the panel, 40px side padding).
+**The owner page**: a navigation on the ground, as wide as the room's bar (316px, `w-bar`) so the side column keeps one width from the room to the owner page, with a 52px header, 40px links and the usage meter always in view at its foot; beside it the inset content panel (content 1000px max, centred in the panel, 40px side padding).
 
 **Centred pages** (invite, "nothing here"): one small stack in the middle of the viewport, the large mark above.
 

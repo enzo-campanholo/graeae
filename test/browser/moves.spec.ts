@@ -110,3 +110,17 @@ test("the home links take a member with one room straight into it, without the l
   // The list of rooms has a socket of its own; it was never opened.
   expect(sockets).not.toContain("/api/socket");
 });
+
+test("the side bar is one width from the room to the owner page", async ({ browser, baseURL }) => {
+  const { owner } = await asOwner(browser, baseURL);
+  const bar = (await owner.getByRole("complementary", { name: "People" }).boundingBox())!;
+
+  await owner.goto("/owner/invites");
+  const navigation = owner
+    .getByRole("complementary")
+    .filter({ has: owner.getByRole("navigation", { name: "Owner page" }) });
+  await expect(navigation).toBeVisible();
+  const side = (await navigation.boundingBox())!;
+
+  expect(side.width).toBe(bar.width);
+});
