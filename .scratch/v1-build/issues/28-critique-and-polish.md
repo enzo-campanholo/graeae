@@ -6,7 +6,7 @@ Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md
 
 **Blocked by:** 14, 16, 24, 27
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Critique, audit and polish the room: bar, rail, stage in grid and focus, hover controls, the sharer's previews and notes, the strips
 - [x] The same for the owner page's four sections and the removal modal
@@ -65,3 +65,5 @@ Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md
 - **Splits** (finding 7): `shares.ts` loses its retry backoff (`retries.ts`), faltering timers (`faltering.ts`) and hand-over marks (`hand-overs.ts`); the room client loses its usage reports (`usage-reports.ts`). **Declined, with reasons:** the sweep, the retries' re-runs and the hand-over's moves stay in `Shares`, since each runs its close routines and reads its in-flight sets; moving them out would mean exposing those internals, a shallower module behind a wider interface. The relay renewal stays in the room client: its decision already lives in `media/renewal.ts`, and the rest drives the room client's own negotiation and rebuild.
 - **Tabs** (finding 8): in `Shares`' interface, its listener, `Covered` and `Ended`, a parameter named `tab` is a `Tab` and a tab's id is `tabId`. Record fields and local variables keep `tab`.
 - **Declined** (finding 9): `Instance.migrations` and `Instance.relayLives` stay. A Durable Object gets only its state and its bindings, and making either a binding would turn a test-only setting into deploy configuration.
+
+**2026-11-18: the owner ruled on "Needs the owner".** Items 2 and 3, and item 1's question about the tiles' shape, were settled in a grilling: every call stays, each listed with its reason in `.impeccable/critique/ignore.md`. The rest of item 1 (checks on real media) moved to ticket 32, together with the three doc fixes the grilling found, `/impeccable doctor`, and the second pass.
