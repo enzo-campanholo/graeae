@@ -63,7 +63,8 @@
           <div class="grid h-full place-content-center">{@render focused()}</div>
         </div>
         {#if strip && count > 1}
-          <ul class="flex shrink-0 justify-center-safe gap-3 overflow-x-auto" aria-label="Other shares">
+          <!-- Overflowing, the strip scrolls under a soft fade at each end, as the bar's people do. -->
+          <ul class="strip flex shrink-0 justify-center-safe gap-3 overflow-x-auto px-4" aria-label="Other shares">
             {@render strip()}
           </ul>
         {/if}
@@ -96,6 +97,9 @@
         ) +
         (var(--cols) - 1) * 12px + 1px
     );
+  }
+  .strip {
+    mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
   }
   /* Arrives as the screen notice does: 180ms, rising 4px. */
   .note {

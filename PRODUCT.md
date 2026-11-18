@@ -61,4 +61,4 @@ A private instance per friend group, deployed by one of them to their own Cloudf
 2. **A few clicks to the picture.** One click to watch a member or share a webcam; three to share a screen.
 3. **Among friends, not a service.** No sign-in, no account language, no onboarding tours. It should feel like something one of them set up.
 4. **Say only what matters, to whom it matters.** Notes and gaps go to the one member affected, at the moment they matter.
-5. **Owner chores stay out of the room.** Nothing owner-only sits in the room beyond the gear.
+5. **Owner chores stay out of the room.** Nothing owner-only sits in the room beyond the gear and the owner's usage budget warning.

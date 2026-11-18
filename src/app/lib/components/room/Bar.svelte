@@ -9,10 +9,18 @@
 
 <aside class="flex w-[288px] shrink-0 flex-col px-2" aria-label="People">
   {@render header()}
-  <div class="min-h-0 flex-1 overflow-y-auto pt-3">
+  <!-- When your own shares fill the foot, the people scroll under a soft fade, so a cut row
+       reads as "more below" rather than as a sliver; the padding lets the last row scroll clear. -->
+  <div class="people min-h-0 flex-1 overflow-y-auto pt-3 pb-4">
     {@render children?.()}
   </div>
   {#if foot}
     <div class="grid gap-0 pt-2 pb-1">{@render foot()}</div>
   {/if}
 </aside>
+
+<style>
+  .people {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+  }
+</style>

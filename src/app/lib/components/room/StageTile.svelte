@@ -134,7 +134,7 @@
     <span class="text-soft truncate font-medium">{name}</span>
     <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{:else if audio?.muted}<span aria-hidden="true">&nbsp;·</span> muted{/if}</span>
     {#if lower}
-      <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-[4px] px-1 text-[11px] leading-4 font-medium tabular-nums"
+      <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-sm px-1 text-[11px] leading-4 font-medium tabular-nums"
         ><span class="sr-only">Received at&nbsp;</span>720p</span
       >
     {/if}

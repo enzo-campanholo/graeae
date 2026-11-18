@@ -50,8 +50,8 @@
   {onkeydown}
 >
   <div class="grid gap-1">
-    <h2 {id} class="text-fg text-[13px] leading-[19px] font-medium">{title}</h2>
-    <p class="text-soft text-[13px] leading-[19px] text-pretty">{@render children()}</p>
+    <h2 {id} class="text-fg text-sm font-medium">{title}</h2>
+    <p class="text-soft text-sm text-pretty">{@render children()}</p>
   </div>
   <div class="flex items-center justify-end gap-1.5">
     <Button variant="ghost" size="sm" class="hover:bg-raised-2" onclick={oncancel}>Cancel</Button>

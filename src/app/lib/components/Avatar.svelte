@@ -33,7 +33,7 @@
 
 <span
   class={cn("avatar", size === 28 && "large", away && "away", reconnecting && "reconnecting", sharing && "sharing", className)}
-  style:--ring={ring}
+  style:--cutout={ring}
   aria-hidden="true"
 >
   {initial}
@@ -85,7 +85,7 @@
     height: 8px;
     border-radius: 50%;
     background: var(--eye);
-    box-shadow: 0 0 0 2px var(--ring);
+    box-shadow: 0 0 0 2px var(--cutout);
     animation: light 220ms var(--ease-out);
   }
   .large .eye {

@@ -43,7 +43,7 @@
       size="icon"
       side="right"
       disabled={screenLive || screenStarting}
-      class={screenLive ? "disabled:text-faint disabled:opacity-100" : undefined}
+      class={screenLive ? "disabled:text-muted-foreground disabled:opacity-100" : undefined}
       onclick={onscreen}
     >
       <Monitor />
@@ -54,7 +54,7 @@
       size="icon"
       side="right"
       disabled={webcamLive || webcamStarting}
-      class="disabled:text-faint disabled:opacity-100"
+      class="disabled:text-muted-foreground disabled:opacity-100"
       onclick={onwebcam}
     >
       <Video />

@@ -100,10 +100,15 @@
   function sharingLine(entry: MemberEntry, address?: string): string {
     const shares = entry.sharing.filter((share) => address === undefined || share.room === address);
     if (shares.length === 0) return address === undefined ? "They share nothing now." : "They share nothing there now.";
+    // Grouped by room, so two shares in one room read "screen and webcam shares in First room".
+    const sharesPhrase = (list: typeof shares) =>
+      `${andList(list.map((share) => share.kind))} ${list.length > 1 ? "shares" : "share"}`;
     const items =
       address === undefined
-        ? shares.map((share) => `${share.kind} share in ${roomName(share.room)}`)
-        : [`${andList(shares.map((share) => share.kind))} ${shares.length > 1 ? "shares" : "share"} there`];
+        ? [...new Set(shares.map((share) => share.room))].map(
+            (room) => `${sharesPhrase(shares.filter((share) => share.room === room))} in ${roomName(room)}`,
+          )
+        : [`${sharesPhrase(shares)} there`];
     const ends = shares.length > 1 ? "end" : "ends";
     return `Their ${andList(items)} ${ends} for everyone watching.`;
   }
@@ -343,7 +348,7 @@
       {:else}
         {@const entry = person}
         <header class="grid gap-0.5 pt-1">
-          <h2 class="text-[15px] leading-[22px] font-medium text-balance">{entry.name}</h2>
+          <h2 class="text-base font-medium text-balance">{entry.name}</h2>
           <p class="text-muted-foreground text-xs">{entry.owner ? "The owner, with every room" : presentLine(entry)}</p>
         </header>
 

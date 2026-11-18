@@ -1,6 +1,8 @@
 // What `$sample` resolves to under `pnpm dev`: the sample, when the address carries
-// `?sample`. `?sample=one` puts a single share on the stage, `?sample=none` none, and
-// `?sample=busy` seven.
+// `?sample`. `?sample=one` follows Caio, whose one share fills the stage, `?sample=none`
+// watches nothing, and `?sample=busy` watches seven shares. Each is a state the room can
+// really be in: only members here share, and a followed member's shares are all that is
+// watched.
 
 import SampleScene from "./SampleScene.svelte";
 import type { Sample, SampleModule, SampleShare } from "./types.ts";
@@ -10,6 +12,7 @@ export { SampleScene };
 const DAY = 86_400_000;
 
 const variant = new URLSearchParams(window.location.search).get("sample");
+const isBusy = variant === "busy";
 
 const stage: SampleShare[] = [
   { id: "bia-screen", name: "Bia", kind: "screen", scene: "game" },
@@ -22,11 +25,11 @@ const busy: SampleShare[] = [
   { id: "duda-webcam", name: "Duda", kind: "webcam", scene: "webcam-2" },
   { id: "edu-screen", name: "Edu", kind: "screen", scene: "race" },
   { id: "caio-webcam", name: "Caio", kind: "webcam", scene: "webcam-2" },
-  { id: "fe-screen", name: "Fê", kind: "screen", scene: "game" },
+  { id: "duda-screen", name: "Duda", kind: "screen", scene: "game" },
 ];
 
 function build(): Sample {
-  const onStage = variant === "one" ? stage.slice(0, 1) : variant === "none" ? [] : variant === "busy" ? busy : stage;
+  const onStage = variant === "one" ? stage.filter((share) => share.id === "caio-screen") : variant === "none" ? [] : isBusy ? busy : stage;
   const watched = (id: string) => onStage.some((share) => share.id === id);
   return {
     room: {
@@ -38,14 +41,28 @@ function build(): Sample {
         {
           id: "bia",
           name: "Bia",
-          followed: variant !== "none",
+          followed: false,
           screen: { watched: watched("bia-screen") },
           webcam: { watched: watched("bia-webcam") },
         },
-        { id: "caio", name: "Caio", followed: false, screen: { watched: watched("caio-screen") }, webcam: null },
-        { id: "duda", name: "Duda", followed: false, reconnecting: true, screen: null, webcam: { watched: watched("duda-webcam"), reconnecting: true } },
+        {
+          id: "caio",
+          name: "Caio",
+          followed: variant === "one",
+          screen: { watched: watched("caio-screen") },
+          webcam: isBusy ? { watched: watched("caio-webcam") } : null,
+        },
+        {
+          id: "duda",
+          name: "Duda",
+          followed: false,
+          reconnecting: true,
+          screen: isBusy ? { watched: watched("duda-screen"), reconnecting: true } : null,
+          webcam: { watched: watched("duda-webcam"), reconnecting: true },
+        },
+        ...(isBusy ? [{ id: "edu", name: "Edu", followed: false, screen: { watched: watched("edu-screen") }, webcam: null }] : []),
       ],
-      away: ["Edu", "Fê"],
+      away: isBusy ? ["Fê"] : ["Edu", "Fê"],
       mine: [{ kind: "webcam", watchers: ["Bia", "Caio"], scene: "webcam-2" }],
       stage: onStage,
     },

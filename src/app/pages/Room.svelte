@@ -378,6 +378,7 @@
           {#each mine as share (share.kind)}
             <OwnShare
               kind={share.kind}
+              paired={mine.length > 1}
               watchers={view ? watchersOf({ member: view.people.you.id, kind: share.kind }) : []}
               audio={share.audio}
               notes={share.notes}

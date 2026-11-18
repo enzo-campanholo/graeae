@@ -157,7 +157,7 @@
     </section>
 
     <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
-      <h2 class="text-muted-foreground flex h-7 items-center text-xs font-normal">Usage budget</h2>
+      <h2 class="flex h-7 items-center text-sm font-medium">Usage budget</h2>
       <div class="grid gap-1.5">
         <label for="usage-budget-gb" class="text-muted-foreground text-xs">GB a month</label>
         <div class="flex items-center gap-1.5">
@@ -214,7 +214,7 @@
     />
 
     <form class="grid gap-3" aria-label="Reset day" onsubmit={save} novalidate>
-      <h2 class="text-muted-foreground flex h-7 items-center text-xs font-normal">Reset day</h2>
+      <h2 class="flex h-7 items-center text-sm font-medium">Reset day</h2>
       <div class="grid gap-1.5">
         <label for="usage-reset-day" class="text-muted-foreground text-xs">Day of the month</label>
         <div class="flex items-center gap-1.5">

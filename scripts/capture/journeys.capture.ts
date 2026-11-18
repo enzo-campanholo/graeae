@@ -272,6 +272,9 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   await expect(strip(owner)).toHaveText(/past 80%/, { timeout: 15_000 });
   await owner.mouse.move(0, 0);
   await shoot(owner, "room--budget-80-owner");
+  // The Usage section asks for its figures every so often; a reload asks at once.
+  await admin.reload();
+  await expect(admin.getByRole("region", { name: "This month" }).getByLabel("Used")).not.toHaveText("0 GB");
   await shoot(admin, "owner--usage-past-80");
   await reach(0.96);
   await expect(strip(caio)).toHaveText(/past 95%/, { timeout: 15_000 });

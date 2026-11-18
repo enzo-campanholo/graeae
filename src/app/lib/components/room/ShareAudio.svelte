@@ -2,7 +2,7 @@
   // What a viewer hears of one watched share with screen audio, in its pill of controls:
   // mute, the volume, and "hear only this one" while another watched share has sound too.
   // In the strip beneath a focused share there is room for mute alone. The speaker shows
-  // the volume, and a muted share's speaker and volume go faint, as the sharer's own audio
+  // the volume, and a muted share's speaker and volume go dim, as the sharer's own audio
   // switch does while off.
   import Headphones from "@lucide/svelte/icons/headphones";
   import Volume from "@lucide/svelte/icons/volume";
@@ -43,7 +43,7 @@
     label={muted ? `Unmute ${share}` : `Mute ${share}`}
     {size}
     side="bottom"
-    class={muted ? "text-faint" : undefined}
+    class={muted ? "text-dim" : undefined}
     onclick={() => onmute(!muted)}
   >
     {#if muted}<VolumeOff />{:else if volume === 0}<Volume />{:else if volume < 50}<Volume1 />{:else}<Volume2 />{/if}
@@ -77,7 +77,7 @@
 
 <style>
   /* A 4px pill track on raised-2 filled in soft up to the volume, with a 12px knob, in a
-     28px-high target. Muted, the fill and the knob go faint. */
+     28px-high target. Muted, the fill and the knob go dim, which still reads over a bright picture. */
   .volume {
     --fill: var(--soft);
     --knob: var(--fg);
@@ -95,8 +95,8 @@
     }
   }
   .volume.muted {
-    --fill: var(--faint);
-    --knob: var(--faint);
+    --fill: var(--dim);
+    --knob: var(--dim);
   }
   .volume::-webkit-slider-runnable-track {
     height: 4px;

@@ -25,6 +25,7 @@
     onaudio,
     notes = null,
     children,
+    paired = false,
   }: {
     kind: ShareKind;
     watchers: readonly string[];
@@ -39,6 +40,8 @@
     notes?: SharerNotes | null;
     /** The preview itself: the local video. */
     children?: Snippet;
+    /** Your screen and webcam are both live, so on a short window each preview steps down. */
+    paired?: boolean;
   } = $props();
 
   const line = $derived(watchersLine(watchers));
@@ -52,7 +55,7 @@
 </script>
 
 <figure class="grid">
-  <div class="bg-letterbox relative aspect-video overflow-hidden rounded-lg">
+  <div class={["preview bg-letterbox relative aspect-video overflow-hidden rounded-lg", paired && "paired"]}>
     {@render children?.()}
   </div>
   <figcaption class="text-muted-foreground grid px-0.5 text-xs">
@@ -67,7 +70,7 @@
             size="icon-xs"
             side="top"
             disabled={stopping}
-            class={audio === "off" ? "text-faint" : undefined}
+            class={audio === "off" ? "text-dim" : undefined}
             onclick={() => onaudio?.(audio !== "on")}
           >
             {#if audio === "on"}<Volume2 />{:else}<VolumeOff />{/if}
@@ -98,3 +101,15 @@
     </div>
   </figcaption>
 </figure>
+
+<style>
+  /* On a short window (a 1366x768 laptop), two full-width previews and their notes would
+     push the people and the Watch row out of the bar. Each preview steps down to a 16:9
+     thumbnail 112px high, on the caption's left edge; at 1080p nothing changes. */
+  @media (max-height: 800px) {
+    .preview.paired {
+      justify-self: start;
+      height: 112px;
+    }
+  }
+</style>

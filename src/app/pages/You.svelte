@@ -281,7 +281,7 @@
             role="radio"
             aria-checked={theme.current === option.value}
             class={[
-              "h-7 rounded-[4px] px-3 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "h-7 rounded-sm px-3 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
               theme.current === option.value ? "bg-raised-2 text-fg" : "text-muted-foreground hover:text-fg",
             ]}
             onclick={() => theme.set(option.value)}

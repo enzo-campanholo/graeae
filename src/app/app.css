@@ -20,12 +20,12 @@
   --fg: #0b0b0c; /* names, headings, values */
   --soft: #3a3a3f; /* secondary text */
   --muted-text: #55555c; /* labels, captions */
-  --dim: #6b6b72; /* members not here, counts */
+  --dim: #65656c; /* members not here, counts */
   --faint: #8a8a91; /* icons of shares nobody here is watching */
   --primary-fill: #0b0b0c; /* the one filled button */
   --primary-text: #f4f4f5;
   --eye: #0a7f8b;
-  --stop: #c9302c;
+  --stop: #a02421;
   --warn: #a15c00;
   --letterbox: #0b0b0c; /* behind a share's picture, in either mode */
   --mark-dot: #d4d4d8; /* the mark's two unlit sisters */
@@ -41,7 +41,7 @@
   --fg: #ececee;
   --soft: #b9b9bf;
   --muted-text: #8e8e95;
-  --dim: #7c7c83;
+  --dim: #808087;
   --faint: #6b6b72;
   --primary-fill: #ececee;
   --primary-text: #0b0b0c;
