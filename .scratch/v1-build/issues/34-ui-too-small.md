@@ -58,7 +58,7 @@ At 16, a 1366x768 laptop with both shares live loses the Watch row under the fad
 - the bar and owner navigation widths differing, now 316 and 256 (35);
 - the owner page's alignment and layouts (36, 37).
 
-**Not done:** nothing is deployed to `graeae-test`.
+**Not done here:** no deploy; see the closing note below.
 
 From the spec and standards review:
 - your own preview's empty-picture icon now matches the stage's;
@@ -69,4 +69,6 @@ From the spec and standards review:
 
 ### 2026-11-18: closed
 
-The owner closed it at the 15px scale as built in `a83b3ba`. Nothing was deployed to `graeae-test`. Follow-ups stay with their own tickets: 35 (the bar and the owner navigation widths), 36 and 37 (the owner page's alignment and layouts), 40 (the Watch row), 41 (the key hint in buttons) and 42 (the empty stage).
+The owner closed it at the 15px scale as built in `a83b3ba`. Follow-ups stay with their own tickets: 35 (the bar and the owner navigation widths), 36 and 37 (the owner page's alignment and layouts), 40 (the Watch row), 41 (the key hint in buttons) and 42 (the empty stage).
+
+**Deployed to `graeae-test`** on 2026-11-18, from `485c223` (version `2a1bc4e0`), for the owner to try. The live stylesheet carries the scale (`--body: 15px`, `--bar: 316px`, `--caption: 32px`). Its secrets were left as they were, since no `.secrets` file was uploaded.
