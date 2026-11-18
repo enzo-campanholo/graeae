@@ -28,3 +28,9 @@ By the time this was picked up, ticket 34's scale had made the two 316px (the ba
 **Left for 36 and 37.** The navigation's extra 60px comes out of the owner content panel. At 1366px wide, the content gets about 962px of its 1000px maximum, which it used to fill. The owner page's alignment and layouts should be checked with that in mind.
 
 **Review.** The standards and spec reviews found no defects. The test's names and `moves.spec.ts`'s header comment were tidied after the review.
+
+### 2026-11-18: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-18, from `5429d0f` (version `88fa8c81`). The live stylesheet carries `--bar: 316px` and no `w-nav`. Its secrets were left as they were, since no `.secrets` file was uploaded.
+
+The app's page took about five minutes after the deploy to name the new build's files. Until then it named the previous build's stylesheet and script, which the new version no longer has. A page loaded in that gap would have been unstyled. This comes from the deploy, not from this ticket: the instance fetches the page through its own `ASSETS` binding, and it went on serving the old one for a while.
