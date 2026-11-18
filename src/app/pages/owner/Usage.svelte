@@ -93,7 +93,7 @@
 {#if !current || !figures}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else}
-  <div class="grid max-w-[calc(var(--owner)-320px)] gap-12">
+  <div class="owner-columns">
     <section class="grid gap-4" aria-labelledby="usage-month">
       <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span id="usage-month">This month</span>
@@ -158,96 +158,98 @@
       </div>
     </section>
 
-    <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
-      <h2 class="flex h-control-sm items-center text-sm font-medium">Usage budget</h2>
-      <div class="grid gap-1.5">
-        <label for="usage-budget-gb" class="text-muted-foreground text-xs">GB a month</label>
-        <div class="flex items-center gap-1.5">
-          <Input
-            id="usage-budget-gb"
-            type="number"
-            inputmode="numeric"
-            min={1}
-            step={1}
-            value={budgetShown}
-            aria-invalid={budgetProblem === BUDGET_PROBLEM ? true : undefined}
-            aria-describedby="usage-budget-cost"
-            class="w-28 [appearance:textfield] text-right tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            oninput={(event) => {
-              budgetDraft = event.currentTarget.value;
-              budgetProblem = null;
-            }}
-          />
-          <Button type="submit" variant="secondary" disabled={budgetDraft === null || budgetSaving}>Save</Button>
-          <!-- The dollar equivalent of what is typed, beside it. -->
-          <p id="usage-budget-cost" class="text-soft ml-3 text-xs tabular-nums" aria-live="polite">
-            {#if budgetTyped === null}
-              &nbsp;
-            {:else if budgetCost(budgetTyped) === 0}
-              {dollars(0)} a month
-            {:else}
-              Up to {dollars(budgetCost(budgetTyped))} a month
-            {/if}
+    <div class="grid gap-12">
+      <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
+        <h2 class="flex h-control-sm items-center text-sm font-medium">Usage budget</h2>
+        <div class="grid gap-1.5">
+          <label for="usage-budget-gb" class="text-muted-foreground text-xs">GB a month</label>
+          <div class="flex items-center gap-1.5">
+            <Input
+              id="usage-budget-gb"
+              type="number"
+              inputmode="numeric"
+              min={1}
+              step={1}
+              value={budgetShown}
+              aria-invalid={budgetProblem === BUDGET_PROBLEM ? true : undefined}
+              aria-describedby="usage-budget-cost"
+              class="w-28 [appearance:textfield] text-right tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              oninput={(event) => {
+                budgetDraft = event.currentTarget.value;
+                budgetProblem = null;
+              }}
+            />
+            <Button type="submit" variant="secondary" disabled={budgetDraft === null || budgetSaving}>Save</Button>
+            <!-- The dollar equivalent of what is typed, beside it. -->
+            <p id="usage-budget-cost" class="text-soft ml-3 text-xs tabular-nums" aria-live="polite">
+              {#if budgetTyped === null}
+                &nbsp;
+              {:else if budgetCost(budgetTyped) === 0}
+                {dollars(0)} a month
+              {:else}
+                Up to {dollars(budgetCost(budgetTyped))} a month
+              {/if}
+            </p>
+          </div>
+        </div>
+        <div class="grid gap-1 text-xs">
+          {#if budgetProblem}
+            <p class="text-muted-foreground" role="alert">{budgetProblem}</p>
+          {:else if stopsWatching}
+            <p class="text-warn flex items-center gap-2" role="status">
+              <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
+              for everyone once it is saved.
+            </p>
+          {/if}
+          <p class="text-dim">
+            Cloudflare includes {INCLUDED_GIGABYTES.toLocaleString("en")} GB a month; watched media past that costs $0.05 per GB.
+            When the month reaches the budget, watching stops and shares stay live.
           </p>
         </div>
-      </div>
-      <div class="grid gap-1 text-xs">
-        {#if budgetProblem}
-          <p class="text-muted-foreground" role="alert">{budgetProblem}</p>
-        {:else if stopsWatching}
-          <p class="text-warn flex items-center gap-2" role="status">
-            <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
-            for everyone once it is saved.
-          </p>
-        {/if}
-        <p class="text-dim">
-          Cloudflare includes {INCLUDED_GIGABYTES.toLocaleString("en")} GB a month; watched media past that costs $0.05 per GB.
-          When the month reaches the budget, watching stops and shares stay live.
-        </p>
-      </div>
-    </form>
+      </form>
 
-    <RaiseConfirm
-      bind:open={confirming}
-      from={budgetNow}
-      to={budgetTyped ?? budgetNow}
-      saving={budgetSaving}
-      onconfirm={() => budgetTyped !== null && storeBudget(budgetTyped)}
-    />
+      <RaiseConfirm
+        bind:open={confirming}
+        from={budgetNow}
+        to={budgetTyped ?? budgetNow}
+        saving={budgetSaving}
+        onconfirm={() => budgetTyped !== null && storeBudget(budgetTyped)}
+      />
 
-    <form class="grid gap-3" aria-label="Reset day" onsubmit={save} novalidate>
-      <h2 class="flex h-control-sm items-center text-sm font-medium">Reset day</h2>
-      <div class="grid gap-1.5">
-        <label for="usage-reset-day" class="text-muted-foreground text-xs">Day of the month</label>
-        <div class="flex items-center gap-1.5">
-          <Input
-            id="usage-reset-day"
-            type="number"
-            inputmode="numeric"
-            min={1}
-            max={31}
-            step={1}
-            value={shown}
-            aria-invalid={problem === "Pick a day from 1 to 31." ? true : undefined}
-            class="w-16 [appearance:textfield] text-center tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            oninput={(event) => {
-              draft = event.currentTarget.value;
-              problem = null;
-            }}
-          />
-          <Button type="submit" variant="secondary" disabled={draft === null || saving}>Save</Button>
+      <form class="grid gap-3" aria-label="Reset day" onsubmit={save} novalidate>
+        <h2 class="flex h-control-sm items-center text-sm font-medium">Reset day</h2>
+        <div class="grid gap-1.5">
+          <label for="usage-reset-day" class="text-muted-foreground text-xs">Day of the month</label>
+          <div class="flex items-center gap-1.5">
+            <Input
+              id="usage-reset-day"
+              type="number"
+              inputmode="numeric"
+              min={1}
+              max={31}
+              step={1}
+              value={shown}
+              aria-invalid={problem === "Pick a day from 1 to 31." ? true : undefined}
+              class="w-16 [appearance:textfield] text-center tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              oninput={(event) => {
+                draft = event.currentTarget.value;
+                problem = null;
+              }}
+            />
+            <Button type="submit" variant="secondary" disabled={draft === null || saving}>Save</Button>
+          </div>
         </div>
-      </div>
-      <div class="grid gap-1 text-xs">
-        {#if problem}
-          <p class="text-muted-foreground" role="alert">{problem}</p>
-        {:else}
-          <p class="text-soft tabular-nums">Next reset {day(current.until)}, at midnight UTC.</p>
-        {/if}
-        <p class="text-dim">
-          Match it to your Cloudflare billing date. A month without that day resets on its last day.
-        </p>
-      </div>
-    </form>
+        <div class="grid gap-1 text-xs">
+          {#if problem}
+            <p class="text-muted-foreground" role="alert">{problem}</p>
+          {:else}
+            <p class="text-soft tabular-nums">Next reset {day(current.until)}, at midnight UTC.</p>
+          {/if}
+          <p class="text-dim">
+            Match it to your Cloudflare billing date. A month without that day resets on its last day.
+          </p>
+        </div>
+      </form>
+    </div>
   </div>
 {/if}

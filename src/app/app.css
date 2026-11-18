@@ -102,6 +102,7 @@
   --caption: 32px; /* under a share's picture: its line and the gap above it */
   --plain: 720px; /* the plain pages' column */
   --owner: 1000px; /* the owner page's content */
+  --owner-side: 360px; /* an owner section's side column: the chosen member, a form, the settings */
 }
 
 /* The names shadcn-svelte's components read, mapped onto the theme. */
@@ -206,6 +207,17 @@
   --shadow-lift: var(--lift);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+ * An owner section's two columns: what there is on the left, and on the right a side
+ * column at one place in every section, so moving between them moves nothing (ticket 36).
+ */
+@utility owner-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--owner-side));
+  align-items: start;
+  gap: calc(var(--spacing) * 12);
 }
 
 @layer base {

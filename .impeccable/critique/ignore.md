@@ -7,7 +7,7 @@ The owner ruled on these on 2026-11-18, in a grilling before the second critique
 - **The dim "Watch" label before Webcams / Everything / Nothing.** The row reads as one sentence ("Watch nothing"), names the group for screen readers, and adds no click.
 - **A short last row of tiles centred under the rows above.** A short row centred under packed rows reads as one group of pictures; the stage is not a table, so column alignment gives way.
 - **"Screen live" resting as a secondary (raised, muted, not dimmed), like "Webcam live".** A live share is a state, not an action. Both live states rest alike, and "one filled button per surface" means at most one, so a room with none is fine.
-- **The owner page's content column (`--owner`, 1000px since ticket 34) centred in its panel.** The owner page reads as a centred settings column, like the plain pages and Linear's preferences. (Whether the member panel's weight balances the list at 1920 is still open to critique.)
+- **The owner page's content column (`--owner`, 1000px since ticket 34) centred in its panel.** The owner page reads as a centred settings column, like the plain pages and Linear's preferences. Reconfirmed in ticket 36, shown beside a column by the navigation and one that fills the panel. (Whether the member panel's weight balances the list at 1920 is still open to critique.)
 
 ## The stage's tiles
 

@@ -118,29 +118,7 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
-  <div class="grid grid-cols-[minmax(0,360px)_minmax(0,1fr)] items-start gap-12">
-    <form class="grid gap-5" onsubmit={create} aria-label="New room">
-      <label class="grid gap-1.5">
-        <span class="text-muted-foreground text-xs">Room name</span>
-        <Input
-          bind:value={name}
-          maxlength={NAME_MAX}
-          placeholder="What everyone will call it"
-          autocomplete="off"
-          spellcheck={false}
-          oninput={() => (createFailed = false)}
-        />
-      </label>
-      <div class="grid gap-2">
-        <Button type="submit" class="w-fit" disabled={!ready}>Create room</Button>
-        {#if createFailed}
-          <p class="text-muted-foreground text-xs" role="alert">The room was not made. Check its name, then try again.</p>
-        {:else}
-          <p class="text-dim text-xs">Only you have access to a new room at first.</p>
-        {/if}
-      </div>
-    </form>
-
+  <div class="owner-columns">
     <section class="grid gap-1" aria-label="Every room">
       <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span>Every room</span>
@@ -202,5 +180,27 @@
         {/each}
       </ul>
     </section>
+
+    <form class="grid gap-5" onsubmit={create} aria-label="New room">
+      <label class="grid gap-1.5">
+        <span class="text-muted-foreground text-xs">Room name</span>
+        <Input
+          bind:value={name}
+          maxlength={NAME_MAX}
+          placeholder="What everyone will call it"
+          autocomplete="off"
+          spellcheck={false}
+          oninput={() => (createFailed = false)}
+        />
+      </label>
+      <div class="grid gap-2">
+        <Button type="submit" class="w-fit" disabled={!ready}>Create room</Button>
+        {#if createFailed}
+          <p class="text-muted-foreground text-xs" role="alert">The room was not made. Check its name, then try again.</p>
+        {:else}
+          <p class="text-dim text-xs">Only you have access to a new room at first.</p>
+        {/if}
+      </div>
+    </form>
   </div>
 {/if}

@@ -291,7 +291,7 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
-  <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,360px)] items-start gap-12">
+  <div class="owner-columns">
     <section class="grid gap-1" aria-label="Members">
       <div class="text-muted-foreground -mx-3 grid h-control-sm grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 px-3 text-xs" aria-hidden="true">
         <span>Member</span>

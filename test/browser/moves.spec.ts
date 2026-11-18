@@ -2,7 +2,8 @@
 // staying until it can or the hold-back runs out, and the home links skip the list of
 // rooms for a member with one room. `pnpm perf` times every move; these hold the rules
 // in place. A move also keeps the side column one width, from the room's bar to the owner
-// page's navigation (ticket 35).
+// page's navigation (ticket 35), and every owner section puts its side column in one
+// place (ticket 36).
 
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { SETUP_SECRET } from "./app.ts";
@@ -123,4 +124,27 @@ test("the side bar is one width from the room to the owner page", async ({ brows
   await expect(ownerSide).toBeVisible();
 
   expect((await ownerSide.boundingBox())!.width).toBe(bar.width);
+});
+
+test("every owner section puts its side column at the same place", async ({ browser, baseURL }) => {
+  const { owner } = await asOwner(browser, baseURL);
+  await owner.setViewportSize({ width: 1920, height: 953 });
+  // What each section's side column holds as it opens; People opens with nobody chosen.
+  const sides = {
+    people: owner.getByRole("complementary", { name: "Member" }),
+    invites: owner.getByRole("form", { name: "New invite" }),
+    rooms: owner.getByRole("form", { name: "New room" }),
+    usage: owner.getByRole("form", { name: "Usage budget" }),
+  };
+
+  const placed = new Map<string, { x: number; width: number }>();
+  for (const [section, side] of Object.entries(sides)) {
+    await owner.goto(`/owner/${section}`);
+    await expect(side).toBeVisible();
+    const { x, width } = (await side.boundingBox())!;
+    placed.set(section, { x, width });
+  }
+
+  const people = placed.get("people");
+  for (const [section, box] of placed) expect(box, section).toEqual(people);
 });
