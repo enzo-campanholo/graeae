@@ -6,7 +6,7 @@
 
 **Blocked by:** 17, 18, 19, 21, 22, 25
 
-**Status:** ready-for-human
+**Status:** resolved
 
 Most boxes were already met by the owner's checks on tickets 15, 17 and 18, or by an agent on `graeae-test` (see the comments). What is left for the owner is under "The owner's last sitting" in the comments.
 
@@ -38,7 +38,7 @@ Windows 11, Firefox:
 
 Cloudflare's billing:
 
-- [ ] Relayed watching billed once: in Cloudflare's Billable Usage for 2026-11-17, see whether ticket 23's relayed session (23:25–23:49 UTC) was billed at the relay's figure (about 1.39 GB) or the media server's (about 1.59 GB). If it was billed at the relay's figure, set `RELAYED_COUNTS_TWICE` in `src/instance/usage.ts` to `false`, as the spec's usage comparison says; if at the media server's, it stays `true` (see ticket 23's last comment)
+- [x] ~~Relayed watching billed once~~ Not answerable from the billing page; `RELAYED_COUNTS_TWICE` stays `true` (below): in Cloudflare's Billable Usage for 2026-11-17, see whether ticket 23's relayed session (23:25–23:49 UTC) was billed at the relay's figure (about 1.39 GB) or the media server's (about 1.59 GB). If it was billed at the relay's figure, set `RELAYED_COUNTS_TWICE` in `src/instance/usage.ts` to `false`, as the spec's usage comparison says; if at the media server's, it stays `true` (see ticket 23's last comment)
 
 Anything that fails is fixed on the integration branch before this ticket is resolved.
 
@@ -88,3 +88,7 @@ Anything that fails is fixed on the integration branch before this ticket is res
 - **Step 4 (a Firefox webcam):** with `media.navigator.streams.fake` standing in for a camera, the share went out and played on Chromium. That is Firefox encoding H.264 baseline in software, which ticket 17 left to this box.
 
 Left: the billing box (step 5).
+
+**2026-11-18, step 5 (the billing box): closed without an answer, by the owner's decision.** Cloudflare's Billable Usage (Manage Account › Billing › Billable usage) shows one row for Realtime, "Realtime - Bandwidth in Real-Time GBs (First 1,000GB included)". That row reads 9.93 GB total and $0.00 for the billing period labelled "Dec 2026". The media server and the relay are not split. The [page's documentation](https://developers.cloudflare.com/billing/manage/billable-usage/) says quantities are given only for a whole billing period, with daily bars showing cost alone, so 17 November's $0 says nothing. Telling 1.39 GB from 1.59 GB would need the analytics totals for the whole period, worked out both ways, against that two-decimal total. The Wrangler login cannot read analytics, and the gap may sit inside the rounding. **Decision (the owner):** `RELAYED_COUNTS_TWICE` stays `true`. It only makes a viewer on the relay count double on the meter, which errs high, the safe side for a budget. The spec's Relayed watching and Usage comparison lines and the README's Cost section say so. If an API token with Account Analytics read is ever at hand, the period's figures can settle it.
+
+**Resolved** on 2026-11-18. Every box is ticked or struck, and the one failure found (the owner page ending a share) is fixed on `v1-build` and deployed to `graeae-test`. Ticket 28's second pass on real media is now unblocked.
