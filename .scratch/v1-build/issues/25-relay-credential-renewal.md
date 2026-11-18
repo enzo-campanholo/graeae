@@ -40,7 +40,7 @@ Spec: [Relay](../spec.md#relay).
 **Found by ticket 31** on 2026-11-17, on `graeae-test`: Cloudflare refused the restart as first built. With the offer alone on `tracks/new` it answered `400 Body JSON validation error`; with `tracks: []`, `406 Expecting at least 1 track in the request`. Ticket 31 now has the offer carry an empty transceiver, pushed as a track that sends nothing, and Cloudflare takes that. Restarts after "failed" are proven on Cloudflare; the renewal's own restart has not been watched at its mark yet.
 
 **Checked on Cloudflare by an agent** on 2026-11-18, at the owner's request, since the owner has no webcam.
-- **The deploy.** `1734e68` went to `graeae-test` (version `7fbf71b9`) with `RELAY_CREDENTIAL_TTL_SECONDS` at `12 * 60` and `RELAY_RENEWAL_AFTER_MS` at `11 * 60 * 1000`. The constants were never committed. `graeae-test` still runs with them, and the next deploy from the branch puts the 12 and 11 hours back.
+- **The deploy.** `1734e68` went to `graeae-test` (version `7fbf71b9`) with `RELAY_CREDENTIAL_TTL_SECONDS` at `12 * 60` and `RELAY_RENEWAL_AFTER_MS` at `11 * 60 * 1000`. The constants were never committed. Afterwards `f51e4b3` was deployed to `graeae-test` (version `d2866a53`), back on the 12 and 11 hours.
 - **The harness.** It was ticket 22's harness, which is not in the repo, signed in as its two members:
   - Two headless Chromium 157 on Linux, each with Chromium's synthetic camera, in a network namespace of its own.
   - **A** (`bot`): all UDP blocked by the namespace's firewall, so its pair was `relay/tcp` through `turn.cloudflare.com:3478`.
