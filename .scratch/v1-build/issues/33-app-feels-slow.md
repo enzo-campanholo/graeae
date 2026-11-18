@@ -46,6 +46,7 @@ The owner chose the hold-back and the home link going straight to their room. Ke
   - 150ms: 13 of 15 clean. On setup → room, the room is ready about 150ms after the hold-back ends, so its placeholders show faintly (up to about 0.4 opacity) for about 100ms. On a new `/owner` tab, a skeleton shows for 13ms at near-zero opacity. That edge belongs to any delay threshold. A minimum time on screen would remove it only by holding back content that is ready.
 - **Not verified here:** how it feels on the owner's dev server over Tailscale, and on `graeae-test`. Nothing was deployed. On the dev server, the first load of a tab is still slow (hundreds of unbundled modules); the tab stays blank meanwhile, as before.
 - **Deployed to `graeae-test`** on 2026-11-18, from `4b78fa4` (version `f38d5a62`), for the owner to try.
+- **Whole pages deployed to `graeae-test`** on 2026-11-18, from `c029f87` (version `04bdea04`), for the owner to try.
 
 ### 2026-11-18: pages appear whole
 
