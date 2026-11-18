@@ -33,8 +33,8 @@ Windows 11, Firefox:
 - [x] Watch a Chromium screen share: the picture (ticket 17)
 - [x] Watch a Chromium screen share: the screen audio (the owner)
 - [x] Share a screen: a Chromium viewer sees it (ticket 17, in VP9)
-- [ ] Share a screen: the first-time notice gives the Firefox line, and the share is video only
-- [ ] Share a webcam
+- [x] Share a screen: the first-time notice gives the Firefox line, and the share is video only (the owner)
+- [x] Share a webcam (the owner, with Firefox's fake camera)
 
 Cloudflare's billing:
 
@@ -80,3 +80,11 @@ Anything that fails is fixed on the integration branch before this ticket is res
 **2026-11-18, the owner's sitting, steps 1 and 2:** passed. Firefox played a Chrome tab's music. Chrome's whole-screen share showed "Video only", and its text was sharp enough with the "motion" content hint. Steps 3 to 5 are still to come.
 
 **Found by the owner during the sitting, and fixed:** opening the owner page from a room, to invite the Firefox browser, ended the screen share. The app's router moved that tab to `/owner`, and leaving the room page is a clean leave, which ends the tab's shares (spec, Presence). Now the room's gear, the member's own row (to "You"), and the owner's two links to Usage (on the 80% and 95% strip, and "Raise it in Usage" on the stopped stage, which says "Shares stay live") open their page in a new tab (`target="_blank"`; the router already leaves such links to the browser), so the room keeps its shares and watching. The code review found the two Usage links. The home link still leaves the room, since going to the list of rooms means leaving. The spec's Bar header, Bar body and Seam 2 lines, and `DESIGN.md`'s room layout and Person Row, say so. Tests: a new Seam 2 journey in `screen.spec.ts` (the owner shares a screen to Uma, opens the owner page, and Uma opens "You", each in a new tab, with the share still live and still watched). The budget journey checks both Usage links open a new tab. The invite, presence and "You" journeys follow their links into the new tab. The presence journey keeps its in-app clean leave through the browser's history.
+
+**2026-11-18, the owner's sitting, steps 3 and 4:** passed in Firefox, with two things seen on the way.
+- **Step 3 (a Firefox screen share):** it started, showed the "video only" line, and played on Helium. The notice's Firefox wording depends only on "Firefox/" in the user agent, which Seam 2 covers.
+  - **Seen once: a black picture.** The first time Helium watched the Firefox share (VP9), the tile stayed black until the owner reloaded the watching tab; after that it played. Not reproduced. One likely reading is a first key frame the viewer never got: a reload makes a new pull, and the media server asks the sharer for a fresh key frame. If it comes back, the dumps to take are the viewer's `chrome://webrtc-internals` (`framesDecoded`, `keyFramesDecoded`, `pliCount` on the inbound video) and Firefox's `about:webrtc`.
+  - **LibreWolf** (a hardened Firefox fork, not a target browser) ended its screen share moments after it started. Stock Firefox on the same machine worked. Not looked into. LibreWolf changes WebRTC defaults for privacy, which may keep the media connection from forming. graeae blocks no browser, so this is best effort.
+- **Step 4 (a Firefox webcam):** with `media.navigator.streams.fake` standing in for a camera, the share went out and played on Chromium. That is Firefox encoding H.264 baseline in software, which ticket 17 left to this box.
+
+Left: the billing box (step 5).
