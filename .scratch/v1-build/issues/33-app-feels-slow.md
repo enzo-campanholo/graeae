@@ -6,7 +6,7 @@ Owner's note (2026-11-18, on the dev server over Tailscale): "The whole app is n
 
 **Blocked by:** none
 
-**Status:** ready-for-human
+**Status:** resolved
 
 ## Open questions
 
@@ -67,3 +67,12 @@ Owner, after trying it: "I still don't like that part of the UI appears instantl
   - the room's keyboard shortcuts.
 
   Each address is now its own view, so a move between two rooms or two invites swaps whole too. The owner page's two routes share one view (`Route.view`). A room left behind stays connected until the next page swaps in, at most 300ms. The first test in `moves.spec.ts` asks that People is still there right after the click, so a runner that takes 300ms between the click and that check would fail it.
+
+### 2026-11-18: closed
+
+Owner, on `graeae-test`: "It still doesn't feel great because it is not instant, but better than not having the finished state I guess. Let's close this for now."
+
+Pages no longer flash and appear whole, but a move still waits a round trip or two for its data. What could make moves feel instant, left for later:
+- **Kept data** (hypothesis 2): a page seen before in the tab shows its last answer at once and refreshes it.
+- **No waterfalls** (hypothesis 3): `/owner` asks `/api/me` and its section's list together.
+- **Asking ahead:** a link starts its page's requests on hover or press, before the click lands.
