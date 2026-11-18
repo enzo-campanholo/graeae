@@ -44,7 +44,7 @@ A private instance per friend group, deployed by one of them to their own Cloudf
 - The theme is the Graeae myth: three sisters who share one eye between them. The design may use it, and the owner has an idea for a loading animation built on it.
 - The current icon (a pink rounded square with a "G") is a placeholder and may be replaced.
 - Dark mode first; a light mode is offered too.
-- Craft references named by the owner: Linear and Vercel set the bar for precision. Bold expression is welcome when it does not break familiar UI conventions.
+- Craft references named by the owner: Linear and Vercel set the bar for precision. Graphite, Cursor, Resend, Raycast, Railway, Things, Flighty and Readwise Reader are references for craft too, as principles and not looks (`.impeccable/reference/craft/`). Bold expression is welcome when it does not break familiar UI conventions.
 - The loading animation (a left hand passes an eye to a right hand, which moves to the left, and the loop repeats) is made by a friend of the owner in Blender or After Effects. The app leaves a slot for it and does not draw its own version.
 - Voice: plain with some warmth. Labels are short and literal ("Forget", "Let back in", "Nothing here"). An empty state or notice can have a friendly or wry line. No marketing tone and no exclamation marks.
 
@@ -52,7 +52,8 @@ A private instance per friend group, deployed by one of them to their own Cloudf
 
 - The spec and decisions: `.scratch/v1-build/spec.md`, `.scratch/v1/map.md`.
 - Throwaway prototypes of the layout: branches `prototype/room-experience` (variant D) and `prototype/owners-admin-surface` (variant B).
-- No real screenshots, users, testimonials or metrics exist. Do not invent them.
+- Craft references from other apps, with what each one teaches and what graeae refuses from it: `.impeccable/reference/craft/` (start with `lens.md`).
+- Screenshots of every surface and state on the fakes: `pnpm capture`, into `.impeccable/review/captures/<label>/` (not committed). There are no screenshots on real media, of real users or with real metrics. Do not invent them.
 
 ## Product Principles
 
