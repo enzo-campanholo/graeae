@@ -60,7 +60,7 @@ describe("a remembered device", () => {
   it("is recorded with its browser, operating system and last use", async () => {
     const instance = await startInstance();
     const laptop = instance.browser({ userAgent: FIREFOX_ON_LINUX });
-    await setUpOwner(laptop);
+    const room = await setUpOwner(laptop);
 
     await instance.clock.advance(3 * DAY);
     const lastVisit = instance.clock.now();
@@ -74,6 +74,7 @@ describe("a remembered device", () => {
       devices: [
         { id: expect.any(String), browser: "Firefox", os: "Linux", lastUsed: lastVisit + DAY, current: true },
       ],
+      home: room,
     });
   });
 

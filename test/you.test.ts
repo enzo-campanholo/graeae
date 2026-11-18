@@ -317,6 +317,25 @@ describe("the \"You\" page", () => {
   });
 });
 
+describe("where home is", () => {
+  it("is the member's one room, so the home link skips the list, and the list once they have two", async () => {
+    const instance = await startInstance();
+    const owner = instance.browser();
+    const first = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+
+    expect((await me(owner)).home).toBe(first);
+    expect((await me(bia)).home).toBe(first);
+
+    const second = await createRoom(owner, "Late shift");
+
+    // The owner has every room; Bia still has only the first.
+    expect((await me(owner)).home).toBe("/");
+    expect((await me(bia)).home).toBe(first);
+    expect(second).not.toBe(first);
+  });
+});
+
 describe("the display name in the list of rooms", () => {
   it("changes live in the line of each room where the member is present", async () => {
     const instance = await startInstance();

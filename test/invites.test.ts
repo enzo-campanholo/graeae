@@ -67,6 +67,7 @@ describe("an owner's invite", () => {
       name: "Bia",
       owner: false,
       devices: [expect.objectContaining({ browser: "Chrome", os: "Windows", current: true })],
+      home: room,
     });
   });
 

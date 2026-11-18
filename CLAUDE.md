@@ -22,6 +22,7 @@ Node and pnpm come from `shell.nix`: run commands as `nix-shell --run '<command>
 - `pnpm test`: builds the front end with `--mode fake-media`, then runs the tests in the Workers runtime. `pnpm exec vitest run <file>` runs one file once a build exists. Every test runs on the fakes; nothing automated may call Cloudflare.
 - `pnpm typecheck`, `pnpm lint`.
 - `pnpm capture`: screenshots of every surface and state on the fakes, at 1920x953 and 1366x768, dark and light, into `.impeccable/review/captures/<label>/` with a contact sheet (`GRAEAE_CAPTURE=<label>`, and `GRAEAE_CAPTURE_AGAINST=<label>` to compare with an earlier set). It is not a test; see `scripts/capture/`.
+- `pnpm perf`: times each move around the app on the fakes and fails when one flashes a loading state (painted for under 300ms). `GRAEAE_PERF_RTT=60` adds a round trip to HTTP and the sockets. Not a test; see `scripts/perf/`.
 - `pnpm run deploy`: see `scripts/deploy.mjs`.
 
 Seam 1 tests use the harness in `test/harness.ts`: HTTP, sockets, the test's clock, and the fake media server's controls (`instance.media`) only. `test/harness.test.ts`, the harness's own test, may reach inside the instance.

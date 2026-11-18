@@ -17,9 +17,10 @@
   import IconButton from "$lib/components/IconButton.svelte";
   import UsageMeter from "$lib/components/UsageMeter.svelte";
   import Loading from "$lib/components/Loading.svelte";
-  import { load, type Load } from "$lib/api.js";
+  import { getJson, load, type Load } from "$lib/api.js";
+  import { heldBack } from "$lib/hold-back.js";
   import { OwnerUsage } from "$lib/owner-usage.svelte.js";
-  import type { Me } from "../../shared/api.ts";
+  import type { MeAnswer } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
   import Invites from "./owner/Invites.svelte";
   import People from "./owner/People.svelte";
@@ -55,9 +56,22 @@
 
   // The instance refuses the owner page to anyone else, but a page reached inside the
   // app was never fetched, so it asks who this is before showing anything.
-  let me = $state<Load<Me>>(sample ? { state: "loaded", data: { name: "", owner: true } } : { state: "loading" });
-  if (!sample) load<Me>("/api/me", (value) => (me = value));
+  let me = $state<Load<MeAnswer>>(
+    sample ? { state: "loaded", data: { name: "", owner: true, devices: [], home: "/" } } : { state: "loading" },
+  );
+  if (!sample) load<MeAnswer>("/api/me", (value) => (me = value));
   const owner = $derived(me.state === "loaded" && me.data.owner);
+  // The house goes straight to the owner's one room, not through the list's redirect.
+  // A new room can make it the list, so the answer is asked again after one is made. A
+  // refresh that fails leaves the page as it is: the house is then at worst one redirect off.
+  const home = $derived(me.state === "loaded" ? me.data.home : "/");
+  function refreshHome() {
+    getJson<MeAnswer>("/api/me")
+      .then((data) => {
+        if (data) me = { state: "loaded", data };
+      })
+      .catch(() => {});
+  }
 
   // Asked for only once the instance has said this is the owner.
   const usage = new OwnerUsage();
@@ -79,7 +93,7 @@
   <div class="flex h-dvh py-2 pr-2">
     <aside class="flex w-56 shrink-0 flex-col px-2">
       <header class="grid h-11 grid-cols-[28px_1fr_28px] items-center">
-        <IconButton label="Rooms" href="/"><House /></IconButton>
+        <IconButton label="Rooms" href={home}><House /></IconButton>
         <span class="text-center text-sm font-medium">Owner</span>
       </header>
       <nav class="grid gap-0.5 pt-3" aria-label="Owner page">
@@ -104,7 +118,7 @@
         {#if meter}
           <UsageMeter used={meter.used} budget={meter.budget} />
         {:else}
-          <div class="grid gap-2" aria-hidden="true">
+          <div class="grid gap-2" aria-hidden="true" {@attach heldBack}>
             <span class="bg-raised h-2.5 w-24 rounded-sm"></span>
             <span class="bg-raised h-1 rounded-full"></span>
           </div>
@@ -120,7 +134,7 @@
         </div>
         {#if section === "people" && !sample}<People />{/if}
         {#if section === "invites" && !sample}<Invites />{/if}
-        {#if section === "rooms" && !sample}<OwnerRooms />{/if}
+        {#if section === "rooms" && !sample}<OwnerRooms oncreated={refreshHome} />{/if}
         {#if section === "usage" && !sample}<Usage {usage} />{/if}
       </div>
     </main>

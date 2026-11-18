@@ -14,6 +14,8 @@
   import { load, patchJson, postJson, type Load } from "$lib/api.js";
   import { copy } from "$lib/clipboard.js";
 
+  let { oncreated }: { oncreated?: () => void } = $props();
+
   const NAME_MAX = 40;
 
   let known = $state<Load<OwnerRoomsAnswer>>({ state: "loading" });
@@ -55,6 +57,7 @@
     // Whatever was typed while the room was being made stays.
     if (name === sent) name = "";
     if (known.state === "loaded") known.data.rooms = [...known.data.rooms, answer.room];
+    oncreated?.();
   }
 
   // Renaming one room at a time, in its own row.

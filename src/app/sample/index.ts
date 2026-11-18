@@ -79,6 +79,7 @@ function build(): Sample {
         { id: "b", browser: "Helium", os: "Windows", lastUsed: Date.now() - 2 * DAY, current: false },
         { id: "c", browser: "Firefox", os: "Linux", lastUsed: Date.now() - 21 * DAY, current: false },
       ],
+      home: "/",
     },
     invite: { name: "Bia" },
     owner: { used: 312, budget: 1000 },

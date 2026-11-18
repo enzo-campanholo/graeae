@@ -11,6 +11,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { getJson, load, postJson, type Load } from "$lib/api.js";
   import { copy } from "$lib/clipboard.js";
+  import { heldBack } from "$lib/hold-back.js";
   import { theme, type Theme } from "$lib/theme.svelte.js";
   import { deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
   import type { DeviceInvite, DeviceInviteAnswer, DeviceSummary, Me, MeAnswer } from "../../shared/api.ts";
@@ -151,7 +152,7 @@
 {#if known.state === "refused"}
   <NothingHere />
 {:else}
-  <PlainPage title="You" you={false} gear={!!you?.owner}>
+  <PlainPage title="You" you={false} gear={!!you?.owner} home={you?.home}>
     <Section title="Display name" description="The name everyone in your rooms sees.">
       <form class="grid gap-2" onsubmit={saveName}>
         <div class="flex gap-1.5">
@@ -182,7 +183,7 @@
       <ul class="-mx-3 grid gap-0.5" aria-label="Your devices">
         {#if !you}
           {#each [0, 1] as i (i)}
-            <li class="flex h-12 flex-col justify-center gap-2 px-3" aria-hidden="true">
+            <li class="flex h-12 flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
               <span class="bg-raised h-3 w-32 rounded-sm"></span>
               <span class="bg-raised h-2.5 w-20 rounded-sm opacity-60"></span>
             </li>

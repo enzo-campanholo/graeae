@@ -10,6 +10,7 @@
     title,
     you = true,
     gear = false,
+    home = "/",
     children,
   }: {
     /** The page's heading, also its tab title. */
@@ -17,6 +18,8 @@
     /** Show the link to the "You" page (the "You" page itself leaves it out). */
     you?: boolean;
     gear?: boolean;
+    /** Where the mark goes: the member's one room when they have one, otherwise the list of rooms. */
+    home?: string;
     children: Snippet;
   } = $props();
 </script>
@@ -28,7 +31,7 @@
 <div class="mx-auto grid w-full max-w-[600px] gap-10 px-6 pt-5 pb-24">
   <header class="flex h-8 items-center justify-between">
     <a
-      href="/"
+      href={home}
       class="text-soft hover:text-fg -ml-2 flex h-8 items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Mark />graeae

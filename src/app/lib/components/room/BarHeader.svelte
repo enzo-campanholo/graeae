@@ -6,6 +6,7 @@
   import House from "@lucide/svelte/icons/house";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import Settings from "@lucide/svelte/icons/settings";
+  import { heldBack } from "../../hold-back.js";
   import IconButton from "../IconButton.svelte";
 
   let {
@@ -30,7 +31,7 @@
     {/if}
   </div>
   {#if name === null}
-    <span class="bg-raised mx-auto h-3 w-20 rounded-sm" aria-hidden="true"></span>
+    <span class="bg-raised mx-auto h-3 w-20 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
   {:else}
     <h1 class="truncate px-1 text-center text-sm font-medium" title={name}>{name}</h1>
   {/if}

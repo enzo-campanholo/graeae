@@ -6,6 +6,7 @@
   import PlainPage from "$lib/components/plain/PlainPage.svelte";
   import { ListClient } from "$lib/list-client.svelte.js";
   import { andList } from "$lib/words.js";
+  import { heldBack } from "$lib/hold-back.js";
   import { navigate } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -41,7 +42,7 @@
     <ul class="-mx-3 grid gap-0.5">
       {#if rooms === null}
         {#each [0, 1, 2] as i (i)}
-          <li class="flex h-14 flex-col justify-center gap-2 px-3" aria-hidden="true">
+          <li class="flex h-14 flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
             <span class="bg-raised h-3 w-28 rounded-sm"></span>
             <span class="bg-raised h-2.5 w-44 rounded-sm opacity-60"></span>
           </li>

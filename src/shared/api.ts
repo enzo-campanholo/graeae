@@ -44,6 +44,8 @@ export interface DeviceSummary {
 /** `GET /api/me`: the member, with their devices, most recently used first. */
 export interface MeAnswer extends Me {
   devices: DeviceSummary[];
+  /** Where the home link goes: the member's one room, or the list of rooms (`/`) when they have more. */
+  home: string;
 }
 
 /** An owner's invite nobody has used or cancelled, and that has not expired. */

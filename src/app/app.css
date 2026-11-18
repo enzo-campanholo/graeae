@@ -170,3 +170,20 @@
     text-wrap: balance;
   }
 }
+
+/* A loading state on its hold-back (see $lib/hold-back.ts): out of sight for the delay
+   it is given, then a fade in that ends on the element's own opacity. The fade eases in,
+   so a wait that ends just after the hold-back shows only a faint placeholder. */
+.held-back {
+  animation: held-back-in 250ms ease-in both;
+}
+@keyframes held-back-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .held-back {
+    animation-duration: 1ms;
+  }
+}

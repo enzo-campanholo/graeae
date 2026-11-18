@@ -256,7 +256,7 @@ export class Instance extends DurableObject<Env> {
         ...device,
         current: device.id === visitor.deviceId,
       }));
-      return json({ name: member.name, owner: member.owner, devices } satisfies MeAnswer);
+      return json({ name: member.name, owner: member.owner, devices, home: this.landing(member) } satisfies MeAnswer);
     }
     if (pathname === "/api/me/name" && method === "POST") {
       const body = await request.json<{ name?: unknown }>().catch(() => null);
