@@ -1,7 +1,8 @@
 // Moving around the app feels instant (ticket 33): a page appears whole, the last one
 // staying until it can or the hold-back runs out, and the home links skip the list of
 // rooms for a member with one room. `pnpm perf` times every move; these hold the rules
-// in place.
+// in place. A move also keeps the side column one width, from the room's bar to the owner
+// page's navigation (ticket 35).
 
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { SETUP_SECRET } from "./app.ts";
@@ -116,11 +117,10 @@ test("the side bar is one width from the room to the owner page", async ({ brows
   const bar = (await owner.getByRole("complementary", { name: "People" }).boundingBox())!;
 
   await owner.goto("/owner/invites");
-  const navigation = owner
+  const ownerSide = owner
     .getByRole("complementary")
     .filter({ has: owner.getByRole("navigation", { name: "Owner page" }) });
-  await expect(navigation).toBeVisible();
-  const side = (await navigation.boundingBox())!;
+  await expect(ownerSide).toBeVisible();
 
-  expect(side.width).toBe(bar.width);
+  expect((await ownerSide.boundingBox())!.width).toBe(bar.width);
 });
