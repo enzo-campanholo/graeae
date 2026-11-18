@@ -66,3 +66,7 @@ From the spec and standards review:
 - the One Scale Rule lists the sizes still set by hand;
 - `ignore.md`'s locked owner column names `--owner` (1000px) instead of 880px. Removing that line is still 36's job;
 - the bar header's and the stage note's calcs say what they add up.
+
+### 2026-11-18: closed
+
+The owner closed it at the 15px scale as built in `a83b3ba`. Nothing was deployed to `graeae-test`. Follow-ups stay with their own tickets: 35 (the bar and the owner navigation widths), 36 and 37 (the owner page's alignment and layouts), 40 (the Watch row), 41 (the key hint in buttons) and 42 (the empty stage).
