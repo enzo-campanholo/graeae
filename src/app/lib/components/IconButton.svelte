@@ -9,6 +9,7 @@
     label,
     key,
     href,
+    target,
     onclick,
     variant = "ghost",
     size = "icon-sm",
@@ -22,6 +23,8 @@
     /** The keyboard shortcut, shown in the tooltip. */
     key?: string;
     href?: string;
+    /** Where a link opens, such as "_blank" for a new tab. */
+    target?: string;
     onclick?: (event: MouseEvent) => void;
     variant?: ButtonVariant;
     size?: ButtonSize;
@@ -39,6 +42,7 @@
       <Button
         {...props}
         {href}
+        {target}
         {onclick}
         {variant}
         {size}

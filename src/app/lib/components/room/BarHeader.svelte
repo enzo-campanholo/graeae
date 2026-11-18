@@ -36,7 +36,8 @@
   {/if}
   <div class="flex justify-end">
     {#if gear}
-      <IconButton label="Owner page" href="/owner"><Settings /></IconButton>
+      <!-- A new tab, so the room, its shares and its watching carry on meanwhile. -->
+      <IconButton label="Owner page" href="/owner" target="_blank"><Settings /></IconButton>
     {/if}
   </div>
 </header>

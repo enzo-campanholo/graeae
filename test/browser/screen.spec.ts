@@ -187,3 +187,37 @@ test("on Firefox the notice says a screen share is video only, and the collapsed
   await expect(oli.getByText("Video only. No one hears this share.")).toBeVisible();
   await expect(oli.getByRole("button", { name: "Screen live" })).toBeDisabled();
 });
+
+test("the gear and your own name open their pages in a new tab, so a live share and watching carry on", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner, join } = await ownerInRoom(browser, baseURL);
+  const uma = await join("Uma");
+  const room = owner.url();
+
+  // The owner shares a screen, and Uma watches it.
+  await owner.getByRole("button", { name: "Share screen" }).click();
+  const notice = owner.getByRole("dialog", { name: "Before you pick" });
+  await notice.getByRole("button", { name: "Choose what to share" }).click();
+  await expect(owner.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await uma.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's screen" }).click();
+  const watched = uma.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Owner's screen, with no picture" });
+  await expect(watched).toBeVisible();
+
+  // The gear opens the owner page beside the room, which stays as it was.
+  const [ownerPage] = await Promise.all([
+    owner.context().waitForEvent("page"),
+    owner.getByRole("link", { name: "Owner page" }).click(),
+  ]);
+  await expect(ownerPage).toHaveURL(/\/owner\/people$/);
+  await expect(owner).toHaveURL(room);
+  await expect(owner.getByRole("button", { name: "Screen live" })).toBeDisabled();
+
+  // So does Uma's own name, for the "You" page, with her watching kept.
+  const [you] = await Promise.all([uma.context().waitForEvent("page"), uma.getByRole("link", { name: "Uma · you" }).click()]);
+  await expect(you).toHaveURL(/\/you$/);
+  await expect(you.getByRole("heading", { name: "You" })).toBeVisible();
+  await expect(watched).toBeVisible();
+  await expect(uma.getByRole("region", { name: "Here" }).getByRole("button", { name: "Stop watching Owner's screen" })).toBeVisible();
+});

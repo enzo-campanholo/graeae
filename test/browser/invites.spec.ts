@@ -16,14 +16,18 @@ async function newBrowser(browser: Browser, baseURL: string | undefined): Promis
 }
 
 test("an invite, from the owner page to the new member standing in the room", async ({ browser, baseURL }) => {
-  const owner = await newBrowser(browser, baseURL);
-  await owner.goto(`/setup#${SETUP_SECRET}`);
-  await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
-  const room = owner.url();
+  const inRoom = await newBrowser(browser, baseURL);
+  await inRoom.goto(`/setup#${SETUP_SECRET}`);
+  await expect(inRoom.getByRole("heading", { name: "First room" })).toBeVisible();
+  const room = inRoom.url();
 
-  // The gear opens the owner page; its Invites section holds the form.
-  await owner.getByRole("link", { name: "Owner page" }).click();
+  // The gear opens the owner page in a new tab, beside the room; its Invites section holds the form.
+  const [owner] = await Promise.all([
+    inRoom.context().waitForEvent("page"),
+    inRoom.getByRole("link", { name: "Owner page" }).click(),
+  ]);
   await expect(owner).toHaveURL(/\/owner\/people$/);
+  await expect(inRoom).toHaveURL(room);
   await owner.getByRole("link", { name: "Invites" }).click();
   await expect(owner.getByRole("heading", { name: "Invites" })).toBeVisible();
 

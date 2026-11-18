@@ -87,6 +87,8 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
     const ownerStrip = ownerStage.getByRole("status").filter({ hasText: "usage budget" });
     await expect(ownerStrip).toHaveText(/Usage is past 80% of this month's usage budget\./, { timeout: 15_000 });
     await expect(ownerStrip.getByRole("link", { name: "Usage" })).toHaveAttribute("href", "/owner/usage");
+    // In a new tab, as the gear is, so the owner's shares and watching carry on.
+    await expect(ownerStrip.getByRole("link", { name: "Usage" })).toHaveAttribute("target", "_blank");
     await expect(rui.getByText(/usage/i)).toHaveCount(0);
     await expect(picture).toBeVisible();
     await screenshot(owner, "budget-80");
@@ -109,6 +111,7 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
     await expect(picture).toHaveCount(0);
     await expect(ownerStage.getByText("Watching stops until the month resets or you raise it. Shares stay live.")).toBeVisible();
     await expect(ownerStage.getByRole("link", { name: "Raise it in Usage" })).toHaveAttribute("href", "/owner/usage");
+    await expect(ownerStage.getByRole("link", { name: "Raise it in Usage" })).toHaveAttribute("target", "_blank");
     await expect(ruiStage.getByText("This month's usage budget is used up.")).toBeVisible();
     await expect(
       ruiStage.getByText("Watching stops until the month resets or the owner raises it. Shares stay live."),

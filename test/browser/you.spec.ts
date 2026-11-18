@@ -30,14 +30,18 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   expect(made.status(), "the invite was refused").toBe(200);
   const { invite } = (await made.json()) as CreateInviteAnswer;
 
-  const fia = await newBrowser(browser, baseURL);
-  await fia.goto(`/invite/${invite.code}`);
-  await fia.getByRole("button", { name: "Join as Fia" }).click();
-  await expect(fia).toHaveURL(room);
+  const fiaRoom = await newBrowser(browser, baseURL);
+  await fiaRoom.goto(`/invite/${invite.code}`);
+  await fiaRoom.getByRole("button", { name: "Join as Fia" }).click();
+  await expect(fiaRoom).toHaveURL(room);
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Fia" })).toBeVisible();
 
-  // Fia's own row leads to "You", where the new name reaches the owner's bar at once.
-  await fia.getByRole("region", { name: "Here" }).getByRole("link", { name: /Fia/ }).click();
+  // Fia's own row opens "You" in a new tab, where the new name reaches the owner's bar at once.
+  const [fia] = await Promise.all([
+    fiaRoom.context().waitForEvent("page"),
+    fiaRoom.getByRole("region", { name: "Here" }).getByRole("link", { name: /Fia/ }).click(),
+  ]);
+  await fiaRoom.close();
   await expect(fia.getByRole("heading", { name: "You" })).toBeVisible();
   await expect(fia.getByLabel("Your devices").getByRole("listitem")).toHaveCount(1);
   await expect(fia.getByLabel("Your devices")).toContainText("This device");
@@ -45,7 +49,7 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   await fia.getByRole("button", { name: "Save" }).click();
   await expect(fia.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(owner.getByText("Fia R.", { exact: true })).toBeVisible();
-  // Fia left the room for "You", so the owner sees them under "Not here".
+  // Fia closed the room's tab, so the owner sees them under "Not here".
   await expect(owner.getByRole("region", { name: "Not here" })).toContainText("Fia R.");
 
   // Add a device: the link is on the clipboard and shown, and opens the same one-button page.

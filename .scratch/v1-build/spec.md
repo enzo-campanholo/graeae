@@ -335,8 +335,8 @@ One routine serves every case:
 ### The room's screen
 
 - **Layout.** A bar on the left, up to about 200px wide, and the stage filling the rest. The bar collapses to a rail of initials with a toggle button and a key.
-- **Bar header.** The room's name, the link back to the list of rooms (only for a member with more than one room), and the gear (only for the owner).
-- **Bar body.** One list of people: present members first, each row with icons for their live shares; then members with access who are not present, dimmed. A member's own row leads to the "You" page. Shortcuts for all webcams, everything and nothing. No separate list of shares, and nothing owner-only.
+- **Bar header.** The room's name, the link back to the list of rooms (only for a member with more than one room), and the gear (only for the owner). The gear opens the owner page in a new tab, so the room, its shares and its watching carry on.
+- **Bar body.** One list of people: present members first, each row with icons for their live shares; then members with access who are not present, dimmed. A member's own row opens the "You" page in a new tab, for the same reason. Shortcuts for all webcams, everything and nothing. No separate list of shares, and nothing owner-only.
 - **Bar foot.** The member's own shares as small previews, each with the names of the members watching and a stop button, plus the share buttons.
 - **Following a member.** Clicking a name watches everything that member shares and keeps doing so: a share they start later joins the stage by itself. Following ends when the viewer changes what they watch in any other way (a single icon, a shortcut, stop watching, another name). The shortcuts are one-off and follow nobody.
 - **Stage grid.** 1 column for one share, 2 for up to four, 3 for up to six, 4 beyond. Focusing a share makes it large and drops the others to a strip beneath.
@@ -433,7 +433,7 @@ Covered here:
 
 A small number of journeys run in a real Chromium against the whole app running locally, asserting on what a member sees. Media is faked at the media layer on both sides (the fake media server behind the instance, and a fake media client in the page that captures and connects nothing), so these tests cover behaviour on the page and not pictures.
 
-Covered here: open an invite, press the button, land in the room; the bar's order and icons; click a name, click an icon, the shortcuts, the stage's grid and focus; the first-time notice appearing once; sharing and the sharer's preview with viewers' names; hand-over's message; the removed member's page becoming "nothing here"; the owner page's invite flow and removal modal; the usage strips and the stopped stage; the list of rooms and the "You" page.
+Covered here: open an invite, press the button, land in the room; the bar's order and icons; click a name, click an icon, the shortcuts, the stage's grid and focus; the first-time notice appearing once; sharing and the sharer's preview with viewers' names; hand-over's message; the removed member's page becoming "nothing here"; a live share and watching kept while the gear and your own row open their pages in a new tab; the owner page's invite flow and removal modal; the usage strips and the stopped stage; the list of rooms and the "You" page.
 
 ### Not automated: real media
 

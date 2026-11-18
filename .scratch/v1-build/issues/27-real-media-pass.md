@@ -15,14 +15,14 @@ Windows 11, a supported Chromium browser, a game running, monitor at 120 Hz:
 - [x] Share the game's window: a viewer gets 1080p at about 60 fps and hears only the game (tickets 17 and 15)
 - [x] The sharer's statistics name a hardware H.264 encoder (ticket 17)
 - [x] Share a tab playing sound: the viewer hears it (ticket 15)
-- [ ] Share the whole screen: the sharer sees the "video only" line
+- [x] Share the whole screen: the sharer sees the "video only" line (the owner)
 - [x] With graeae itself in the shared window, viewers do not hear their own shares back (ticket 15)
 - [x] The audio on and off control silences and restores the sound for the viewer (an agent, below)
 - [x] The browser's own "stop sharing" bar ends the share for the viewer (ticket 15)
 - ~~A viewer sets "720p" and the mark appears; "Auto" returns to 1080p~~ Switched off by ticket 17; ticket 29
 - [x] At 144 Hz the 48 fps note appears; at 120 Hz it does not (ticket 18)
 - [x] With the sharer's upload throttled, the share is not ended (ticket 18's capped run, and an agent, below)
-- [ ] Share a desktop or a document: text is sharp enough with the "motion" content hint (ticket 18's open judgement)
+- [x] Share a desktop or a document: text is sharp enough with the "motion" content hint (ticket 18's open judgement; the owner)
 - [x] Hand a screen share over to a second device: the viewer is carried over after a short gap (an agent, below)
 - [x] Remove a member who is sharing and watching: both stop within about 2 seconds (an agent, below)
 - [x] Deploy while a share is being watched: at most a "reconnecting" flicker (an agent, below)
@@ -31,7 +31,7 @@ Windows 11, a supported Chromium browser, a game running, monitor at 120 Hz:
 Windows 11, Firefox:
 
 - [x] Watch a Chromium screen share: the picture (ticket 17)
-- [ ] Watch a Chromium screen share: the screen audio
+- [x] Watch a Chromium screen share: the screen audio (the owner)
 - [x] Share a screen: a Chromium viewer sees it (ticket 17, in VP9)
 - [ ] Share a screen: the first-time notice gives the Firefox line, and the share is video only
 - [ ] Share a webcam
@@ -76,3 +76,7 @@ Anything that fails is fixed on the integration branch before this ticket is res
 3. *Firefox:* "Share screen". The notice should read "In Firefox a screen share is video only…". It shows once per browser, so if it does not come (ticket 17 may have used it up), delete `graeae:screen-notice` under DevTools, Storage, Local Storage, and press again. Go on, pick a window, and check Firefox's preview reads "Video only…". *Chrome:* it plays. Stop it. (Firefox: notice and video only)
 4. *Firefox:* in `about:config`, set `media.navigator.streams.fake` to `true` (it stands in for a webcam), then "Share webcam". *Chrome:* it plays (H.264 baseline, encoded in software by Firefox). Set the preference back. (Firefox: webcam)
 5. *Cloudflare dashboard:* the billing box above (one figure to read).
+
+**2026-11-18, the owner's sitting, steps 1 and 2:** passed. Firefox played a Chrome tab's music. Chrome's whole-screen share showed "Video only", and its text was sharp enough with the "motion" content hint. Steps 3 to 5 are still to come.
+
+**Found by the owner during the sitting, and fixed:** opening the owner page from a room, to invite the Firefox browser, ended the screen share. The app's router moved that tab to `/owner`, and leaving the room page is a clean leave, which ends the tab's shares (spec, Presence). Now the room's gear, the member's own row (to "You"), and the owner's two links to Usage (on the 80% and 95% strip, and "Raise it in Usage" on the stopped stage, which says "Shares stay live") open their page in a new tab (`target="_blank"`; the router already leaves such links to the browser), so the room keeps its shares and watching. The code review found the two Usage links. The home link still leaves the room, since going to the list of rooms means leaving. The spec's Bar header, Bar body and Seam 2 lines, and `DESIGN.md`'s room layout and Person Row, say so. Tests: a new Seam 2 journey in `screen.spec.ts` (the owner shares a screen to Uma, opens the owner page, and Uma opens "You", each in a new tab, with the share still live and still watched). The budget journey checks both Usage links open a new tab. The invite, presence and "You" journeys follow their links into the new tab. The presence journey keeps its in-app clean leave through the browser's history.

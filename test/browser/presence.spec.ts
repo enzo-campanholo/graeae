@@ -60,8 +60,15 @@ test("two members see each other arrive, leave and come back in the bar", async 
   await back.goto(room);
   await expect(ownerHere.getByRole("button", { name: "Edu" })).toBeVisible();
 
-  // Navigating away within the app is a clean leave too.
-  await back.getByRole("link", { name: /Edu/ }).click();
+  // Edu's own name opens "You" in a new tab, so Edu stays here.
+  const [you] = await Promise.all([eduContext.waitForEvent("page"), back.getByRole("link", { name: /Edu/ }).click()]);
+  await expect(you).toHaveURL(/\/you$/);
+  await you.close();
+  await expect(ownerHere.getByRole("button", { name: "Edu" })).toBeVisible();
+
+  // Navigating away within the app is a clean leave too: here, the browser's Back and
+  // Forward moving the page to "You", since Edu's links out of the room open new tabs.
+  await back.evaluate("history.pushState(null, '', '/you'); dispatchEvent(new PopStateEvent('popstate'))");
   await expect(back).toHaveURL(/\/you$/);
   await expect(ownerAway.getByText("Edu", { exact: true })).toBeVisible();
   await back.goBack();
