@@ -1,6 +1,7 @@
-// Moving around the app feels instant (ticket 33): a short wait shows no loading state,
-// and the home links skip the list of rooms for a member with one room. `pnpm perf` times
-// every move; these hold the two rules in place.
+// Moving around the app feels instant (ticket 33): a page appears whole, the last one
+// staying until it can or the hold-back runs out, and the home links skip the list of
+// rooms for a member with one room. `pnpm perf` times every move; these hold the rules
+// in place.
 
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { SETUP_SECRET } from "./app.ts";
@@ -23,30 +24,65 @@ async function asOwner(browser: Browser, baseURL: string | undefined): Promise<{
   return { owner, room: owner.url() };
 }
 
-test("a loading state stays out of sight for the first 300ms of a move, then fades in", async ({
-  browser,
-  baseURL,
-}) => {
-  const { owner } = await asOwner(browser, baseURL);
+/** Opens the owner page on People, with the Invites section's list held until `release`. */
+async function heldInvites(owner: Page) {
   await owner.goto("/owner/people");
   await expect(owner.getByRole("heading", { name: "People", level: 1 })).toBeVisible();
-
-  // The Invites section's list is held back until the test lets it through.
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
   await owner.route("**/api/owner/invites", async (route) => {
     await held;
     await route.continue();
   });
+  return {
+    release,
+    go: () => owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Invites" }).click(),
+    people: owner.getByRole("heading", { name: "People", level: 1 }),
+    invites: owner.getByRole("heading", { name: "Invites", level: 1 }),
+    form: owner.getByRole("form", { name: "New invite" }),
+    mark: owner.getByRole("status", { name: "Loading" }),
+  };
+}
 
-  await owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Invites" }).click();
-  const mark = owner.getByRole("status", { name: "Loading" });
-  // At first the mark is there for assistive technology, but not painted.
-  await expect(mark).toHaveCSS("opacity", "0");
-  // A wait that outlasts the hold-back shows it.
+test("a move keeps the page as it is until the next one is whole, then shows it at once", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner } = await asOwner(browser, baseURL);
+  const { release, go, people, invites, form, mark } = await heldInvites(owner);
+
+  await go();
+  // While the list is on its way, People stays as it was: its link still the current one,
+  // and the tab's title still its own.
+  await expect(people).toBeVisible();
+  await expect(invites).toBeHidden();
+  await expect(owner.getByRole("link", { name: "People" })).toHaveAttribute("aria-current", "page");
+  await expect(owner).toHaveTitle("People · Owner · graeae");
+
+  release();
+  // Heading and list arrive in the same frame, with no loading state between them.
+  await expect(invites).toBeVisible();
+  expect(await form.isVisible(), "the list arrived after its heading").toBe(true);
+  expect(await mark.count(), "a loading state showed").toBe(0);
+  await expect(people).toBeHidden();
+  await expect(owner.getByRole("link", { name: "Invites" })).toHaveAttribute("aria-current", "page");
+  await expect(owner).toHaveTitle("Invites · Owner · graeae");
+});
+
+test("a move that outlasts the hold-back shows the next page with its loading mark fading in", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner } = await asOwner(browser, baseURL);
+  const { release, go, people, invites, form, mark } = await heldInvites(owner);
+
+  await go();
+  await expect(invites).toBeVisible();
+  await expect(people).toBeHidden();
   await expect(mark).toHaveCSS("opacity", "1");
 
   release();
+  await expect(form).toBeVisible();
   await expect(mark).toHaveCount(0);
 });
 

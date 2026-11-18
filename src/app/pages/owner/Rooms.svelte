@@ -12,6 +12,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { load, patchJson, postJson, type Load } from "$lib/api.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { copy } from "$lib/clipboard.js";
 
   let { oncreated }: { oncreated?: () => void } = $props();
@@ -20,6 +21,7 @@
 
   let known = $state<Load<OwnerRoomsAnswer>>({ state: "loading" });
   load<OwnerRoomsAnswer>("/api/owner/rooms", (value) => (known = value));
+  holdUntil(() => known.state !== "loading");
   const rooms = $derived(known.state === "loaded" ? known.data.rooms : []);
 
   function linkTo(room: RoomSummary): string {

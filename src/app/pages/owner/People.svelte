@@ -28,12 +28,14 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { getJson, load, postJson, type Load } from "$lib/api.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { copy } from "$lib/clipboard.js";
   import { andList, deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
   import RemovalConfirm from "./RemovalConfirm.svelte";
 
   let known = $state<Load<PeopleAnswer>>({ state: "loading" });
   load<PeopleAnswer>("/api/owner/people", (value) => (known = value));
+  holdUntil(() => known.state !== "loading");
 
   const rooms = $derived(known.state === "loaded" ? known.data.rooms : []);
   const people = $derived(known.state === "loaded" ? known.data.people : []);

@@ -7,6 +7,7 @@
   import { ListClient } from "$lib/list-client.svelte.js";
   import { andList } from "$lib/words.js";
   import { heldBack } from "$lib/hold-back.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { navigate } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -33,6 +34,9 @@
       (list && list.rooms.length !== 1 ? list.rooms : null),
   );
   const gear = $derived(!!sample || !!list?.you.owner);
+
+  // A member with one room never sees this page: the move goes on into the room.
+  holdUntil(() => !!sample || refused || (list !== null && list.rooms.length !== 1));
 </script>
 
 {#if refused}

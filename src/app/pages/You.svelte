@@ -12,6 +12,7 @@
   import { getJson, load, postJson, type Load } from "$lib/api.js";
   import { copy } from "$lib/clipboard.js";
   import { heldBack } from "$lib/hold-back.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { theme, type Theme } from "$lib/theme.svelte.js";
   import { deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
   import type { DeviceInvite, DeviceInviteAnswer, DeviceSummary, Me, MeAnswer } from "../../shared/api.ts";
@@ -28,6 +29,7 @@
   }
 
   const you = $derived(known.state === "loaded" ? known.data : null);
+  holdUntil(() => known.state !== "loading");
 
   // Last use is shown in whole minutes at best, so the clock moves every few seconds,
   // often enough for an Add a device link's expiry too.

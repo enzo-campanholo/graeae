@@ -4,8 +4,10 @@
   import { sample } from "$sample";
   import Loading from "$lib/components/Loading.svelte";
   import Mark from "$lib/components/Mark.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { load, postJson, type Load } from "$lib/api.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import type { InviteAnswer, JoinAnswer } from "../../shared/api.ts";
   import { navigate, type Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
@@ -16,6 +18,7 @@
 
   let known = $state<Load<InviteAnswer>>(sample ? { state: "loaded", data: sample.invite } : { state: "loading" });
   let joining = $state(false);
+  holdUntil(() => known.state !== "loading");
 
   $effect(() => {
     if (sample) return;
@@ -38,9 +41,7 @@
   }
 </script>
 
-<svelte:head>
-  {#if known.state !== "refused"}<title>graeae</title>{/if}
-</svelte:head>
+{#if known.state !== "refused"}<PageTitle title="graeae" />{/if}
 
 {#if known.state === "refused"}
   <NothingHere />

@@ -18,8 +18,9 @@
     { path: "/setup", component: Setup },
     { path: "/you", component: You },
     { path: "/invite/:invite", component: Invite },
-    { path: "/owner", component: OwnerAddress },
-    { path: "/owner/:section", component: OwnerAddress },
+    // One view: the owner page swaps its sections itself.
+    { path: "/owner", component: OwnerAddress, view: () => "owner" },
+    { path: "/owner/:section", component: OwnerAddress, view: () => "owner" },
   ];
 </script>
 

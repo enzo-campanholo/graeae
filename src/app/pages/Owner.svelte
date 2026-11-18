@@ -19,6 +19,9 @@
   import Loading from "$lib/components/Loading.svelte";
   import { getJson, load, type Load } from "$lib/api.js";
   import { heldBack } from "$lib/hold-back.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
+  import PageTitle from "$lib/components/PageTitle.svelte";
+  import Swap from "$lib/components/Swap.svelte";
   import { OwnerUsage } from "$lib/owner-usage.svelte.js";
   import type { MeAnswer } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
@@ -52,7 +55,10 @@
     },
   };
 
-  const current = $derived(sections[section]);
+  // The section on screen. A move to another one keeps this one, the navigation's mark
+  // included, until the next one has its list, then swaps all of it in one frame.
+  // svelte-ignore state_referenced_locally
+  let shown = $state(section);
 
   // The instance refuses the owner page to anyone else, but a page reached inside the
   // app was never fetched, so it asks who this is before showing anything.
@@ -79,11 +85,12 @@
     if (owner && !sample) return usage.watch();
   });
   const meter = $derived(sample?.owner ?? usage.figures);
+
+  // The page appears with the owner known and the meter's figures in; its section holds it too.
+  holdUntil(() => me.state !== "loading" && (!owner || !!meter));
 </script>
 
-<svelte:head>
-  {#if owner}<title>{current.label} · Owner · graeae</title>{/if}
-</svelte:head>
+{#if owner}<PageTitle title="{sections[shown].label} · Owner · graeae" />{/if}
 
 {#if me.state === "loading"}
   <main class="grid min-h-dvh place-items-center p-6"><Loading /></main>
@@ -101,10 +108,10 @@
           {@const Icon = item.icon}
           <a
             href="/owner/{key}"
-            aria-current={key === section ? "page" : undefined}
+            aria-current={key === shown ? "page" : undefined}
             class={[
               "flex h-8 items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[15px] [&_svg]:stroke-[1.75]",
-              key === section ? "bg-raised text-fg" : "text-muted-foreground hover:bg-raised hover:text-fg",
+              key === shown ? "bg-raised text-fg" : "text-muted-foreground hover:bg-raised hover:text-fg",
             ]}
           >
             <Icon />{item.label}
@@ -127,15 +134,21 @@
     </aside>
 
     <main class="bg-stage min-w-0 flex-1 overflow-y-auto rounded-xl">
-      <div class="mx-auto grid max-w-[880px] gap-8 px-10 pt-9 pb-16">
-        <div class="grid gap-1">
-          <h1 class="text-xl font-medium tracking-[-0.01em]">{current.label}</h1>
-          <p class="text-muted-foreground">{current.description}</p>
-        </div>
-        {#if section === "people" && !sample}<People />{/if}
-        {#if section === "invites" && !sample}<Invites />{/if}
-        {#if section === "rooms" && !sample}<OwnerRooms oncreated={refreshHome} />{/if}
-        {#if section === "usage" && !sample}<Usage {usage} />{/if}
+      <div class="mx-auto max-w-[880px] px-10 pt-9 pb-16">
+        <Swap key={section} value={section} onshow={(key) => (shown = key)}>
+          {#snippet children(key)}
+            <div class="grid gap-8">
+              <div class="grid gap-1">
+                <h1 class="text-xl font-medium tracking-[-0.01em]">{sections[key].label}</h1>
+                <p class="text-muted-foreground">{sections[key].description}</p>
+              </div>
+              {#if key === "people" && !sample}<People />{/if}
+              {#if key === "invites" && !sample}<Invites />{/if}
+              {#if key === "rooms" && !sample}<OwnerRooms oncreated={refreshHome} />{/if}
+              {#if key === "usage" && !sample}<Usage {usage} />{/if}
+            </div>
+          {/snippet}
+        </Swap>
       </div>
     </main>
   </div>

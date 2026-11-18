@@ -5,6 +5,7 @@
   import type { Snippet } from "svelte";
   import IconButton from "../IconButton.svelte";
   import Mark from "../Mark.svelte";
+  import PageTitle from "../PageTitle.svelte";
 
   let {
     title,
@@ -24,9 +25,7 @@
   } = $props();
 </script>
 
-<svelte:head>
-  <title>{title} · graeae</title>
-</svelte:head>
+<PageTitle title="{title} · graeae" />
 
 <div class="mx-auto grid w-full max-w-[600px] gap-10 px-6 pt-5 pb-24">
   <header class="flex h-8 items-center justify-between">

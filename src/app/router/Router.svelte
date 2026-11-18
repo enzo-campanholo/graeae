@@ -1,17 +1,25 @@
 <script lang="ts">
   import type { Component } from "svelte";
+  import Swap from "$lib/components/Swap.svelte";
   import { location, match, type Params, type Route } from "./router.svelte.ts";
 
   let { routes, fallback }: { routes: readonly Route[]; fallback: Component } = $props();
 
-  const current = $derived(match(routes, location.pathname));
+  // The page, its params, and which view of it this address is (see `Route.view`).
+  const current = $derived.by(() => {
+    const found = match(routes, location.pathname);
+    const params = found?.params ?? {};
+    return {
+      Page: (found?.route.component ?? fallback) as Component<{ params: Params }>,
+      params,
+      view: found?.route.view?.(params) ?? location.pathname,
+    };
+  });
 </script>
 
-{#if current}
-  <!-- A page that takes no props ignores the params it is given. -->
-  {@const Page = current.route.component as Component<{ params: Params }>}
-  <Page params={current.params} />
-{:else}
-  {@const Fallback = fallback}
-  <Fallback />
-{/if}
+<Swap key={current.view} value={current}>
+  {#snippet children({ Page, params })}
+    <!-- A page that takes no props ignores the params it is given. -->
+    <Page {params} />
+  {/snippet}
+</Swap>

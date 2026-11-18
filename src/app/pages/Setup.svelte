@@ -5,7 +5,9 @@
   import type { SetupAnswer } from "../../shared/api.ts";
   import Loading from "$lib/components/Loading.svelte";
   import Mark from "$lib/components/Mark.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
   import { postJson } from "$lib/api.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { navigate } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
@@ -13,6 +15,8 @@
   type State = { state: "working" } | { state: "refused" } | { state: "missing"; answer: SetupAnswer };
 
   let current = $state<State>({ state: "working" });
+  // While it works there is nothing to see: the move goes on into the room.
+  holdUntil(() => current.state !== "working");
 
   const secret = readSecret();
   history.replaceState(null, "", window.location.pathname);
@@ -38,13 +42,11 @@
   }
 </script>
 
-<svelte:head>
-  {#if current.state === "missing"}
-    <title>Missing secrets · graeae</title>
-  {:else if current.state === "working"}
-    <title>graeae</title>
-  {/if}
-</svelte:head>
+{#if current.state === "missing"}
+  <PageTitle title="Missing secrets · graeae" />
+{:else if current.state === "working"}
+  <PageTitle title="graeae" />
+{/if}
 
 {#if current.state === "refused"}
   <NothingHere />

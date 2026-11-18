@@ -2,11 +2,10 @@
   // The one page for every address a visitor is not let into. It says the same thing
   // whatever the reason, so it reveals nothing.
   import Mark from "$lib/components/Mark.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
 </script>
 
-<svelte:head>
-  <title>Nothing here · graeae</title>
-</svelte:head>
+<PageTitle title="Nothing here · graeae" />
 
 <main class="grid min-h-dvh place-items-center p-6">
   <div class="grid justify-items-center gap-5 text-center">

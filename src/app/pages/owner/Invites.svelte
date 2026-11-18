@@ -13,6 +13,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { load, postJson, type Load } from "$lib/api.js";
   import { copy } from "$lib/clipboard.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import { andList, timeLeft } from "$lib/words.js";
 
   const NAME_MAX = 40;
@@ -23,6 +24,8 @@
     // New members get the first room unless the owner ticks otherwise.
     if (value.state === "loaded") ticked = value.data.rooms.slice(0, 1).map((room) => room.address);
   });
+
+  holdUntil(() => known.state !== "loading");
 
   const rooms = $derived(known.state === "loaded" ? known.data.rooms : []);
   const invites = $derived(known.state === "loaded" ? known.data.invites : []);

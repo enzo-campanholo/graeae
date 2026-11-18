@@ -8,12 +8,14 @@
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { budgetCost, INCLUDED_GIGABYTES, type OwnerUsage } from "$lib/owner-usage.svelte.js";
   import { dollars, gigabytes } from "$lib/words.js";
+  import { holdUntil } from "$lib/swap.svelte.js";
   import RaiseConfirm from "./RaiseConfirm.svelte";
 
   let { usage }: { usage: OwnerUsage } = $props();
 
   const current = $derived(usage.current);
   const figures = $derived(usage.figures);
+  holdUntil(() => figures !== null);
 
   const fraction = (value: number) => (figures && figures.budget > 0 ? Math.min(value / figures.budget, 1) : 1);
   const usedShare = $derived(figures ? fraction(figures.used) : 0);

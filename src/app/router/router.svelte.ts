@@ -6,6 +6,12 @@ export type Params = Record<string, string>;
 export interface Route {
   path: string;
   component: Component<{ params: Params }> | Component<Record<string, never>>;
+  /**
+   * Which view of the page an address is. A move to another view swaps the page in whole
+   * (see `$lib/swap.svelte.ts`); a move within one gives the same page its new params.
+   * Each address is its own view unless this says otherwise.
+   */
+  view?: (params: Params) => string;
 }
 
 export interface Match {

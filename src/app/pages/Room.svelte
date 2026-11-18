@@ -22,10 +22,12 @@
   import StageTile from "$lib/components/room/StageTile.svelte";
   import WatchedPicture from "$lib/components/room/WatchedPicture.svelte";
   import Loading from "$lib/components/Loading.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
   import { Hearing } from "$lib/hearing.js";
   import { isShortcut } from "$lib/keys.js";
   import { RoomClient } from "$lib/room-client.svelte.js";
   import { readStored, writeStored } from "$lib/stored.js";
+  import { holdUntil, viewShown } from "$lib/swap.svelte.js";
   import type { LiveShare, Person, ShareKind } from "../../shared/socket/index.ts";
   import { sameShare } from "../../shared/socket/watching.ts";
   import type { Params } from "../router/router.svelte.ts";
@@ -35,8 +37,9 @@
 
   const room = sample?.room ?? null;
 
-  // The tab's one connection to the room, for as long as the page shows it. Leaving the
-  // page closes it, which ends this tab's presence at once.
+  // The tab's one connection to the room, for as long as the page is mounted. Leaving the
+  // page closes it once the next page swaps in, at most 300ms later (see
+  // `$lib/swap.svelte.ts`), which ends this tab's presence.
   let client = $state<RoomClient | null>(null);
 
   $effect(() => {
@@ -49,6 +52,7 @@
   const view = $derived(client?.view ?? null);
   const refused = $derived(client?.refused ?? false);
   const name = $derived(room?.name ?? view?.room.name ?? null);
+  holdUntil(() => !!sample || refused || view !== null);
 
   // The bar's people: those present first, then, dimmed, those with access who are not.
   // Each group is in alphabetical order, and your own row closes the present ones.
@@ -236,7 +240,10 @@
     writeStored(FOLDED_KEY, value ? "1" : "0");
   }
 
+  // A room still on its way to the screen leaves keys to the page that is.
+  const shown = viewShown();
   function onkeydown(event: KeyboardEvent) {
+    if (!shown()) return;
     if (event.key === "[" && isShortcut(event)) {
       event.preventDefault();
       fold(!folded);
@@ -259,9 +266,7 @@
   );
 </script>
 
-<svelte:head>
-  {#if !refused}<title>{name ? `${name} · graeae` : "graeae"}</title>{/if}
-</svelte:head>
+{#if !refused}<PageTitle title={name ? `${name} · graeae` : "graeae"} />{/if}
 
 <svelte:window {onkeydown} />
 

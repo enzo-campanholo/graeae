@@ -46,3 +46,23 @@ The owner chose the hold-back and the home link going straight to their room. Ke
   - 150ms: 13 of 15 clean. On setup → room, the room is ready about 150ms after the hold-back ends, so its placeholders show faintly (up to about 0.4 opacity) for about 100ms. On a new `/owner` tab, a skeleton shows for 13ms at near-zero opacity. That edge belongs to any delay threshold. A minimum time on screen would remove it only by holding back content that is ready.
 - **Not verified here:** how it feels on the owner's dev server over Tailscale, and on `graeae-test`. Nothing was deployed. On the dev server, the first load of a tab is still slow (hundreds of unbundled modules); the tab stays blank meanwhile, as before.
 - **Deployed to `graeae-test`** on 2026-11-18, from `4b78fa4` (version `f38d5a62`), for the owner to try.
+
+### 2026-11-18: pages appear whole
+
+Owner, after trying it: "I still don't like that part of the UI appears instantly and some of it appears later." The owner chose to keep the old page on screen until the next one is whole.
+
+- **How.** `$lib/swap.svelte.ts` and `Swap.svelte`: a move mounts the next view out of sight while the current one stays, and swaps it in, in one frame, once nothing in it holds it back, or once the move's 300ms hold-back is over, whichever comes first. Past the hold-back the next page shows with its placeholders fading in, as before. The router swaps pages (keyed by page, so the same page at a new address keeps its view), and the owner page swaps sections: heading, list, the navigation's mark and the tab's title change together. Each page says what it waits for with `holdUntil`:
+  - the room: its socket's first state;
+  - the list of rooms: the list, and a member with one room never sees it, since the move goes on into the room;
+  - the owner page: `/api/me`, the meter's figures and its section's list;
+  - "You", an invite, each owner section: their one answer;
+  - setup: its answer.
+  A new tab is blank until its page is whole, or the hold-back ends.
+- **Tests.** `test/browser/moves.spec.ts`: with the Invites list held, People stays, its link still current, and once the list comes the heading and list arrive in one frame with no loading state. Held past the hold-back, Invites shows with the mark. The first went red before the swap. `pnpm test` (428 tests and 42 journeys), `pnpm typecheck` and `pnpm lint` pass, and the `?sample` pages render on the dev server.
+- **`pnpm perf`:** clean at 0 and 60ms; at 150ms the same two faint edges as before. A section's "ready" now counts until its list is in, since the heading waits for it.
+- **Not tested:** a hand-over between two pages on their way (setup → room, the list → the one room), which `pnpm perf` covers.
+- **From the spec and standards review.** A page on its way is mounted but out of sight, so what reaches past it now waits until it swaps in:
+  - the tab's title (`PageTitle`, which the test checks);
+  - the room's keyboard shortcuts.
+
+  Each address is now its own view, so a move between two rooms or two invites swaps whole too. The owner page's two routes share one view (`Route.view`). A room left behind stays connected until the next page swaps in, at most 300ms. The first test in `moves.spec.ts` asks that People is still there right after the click, so a runner that takes 300ms between the click and that check would fail it.
