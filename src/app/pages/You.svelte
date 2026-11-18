@@ -185,9 +185,9 @@
       <ul class="-mx-3 grid gap-0.5" aria-label="Your devices">
         {#if !you}
           {#each [0, 1] as i (i)}
-            <li class="flex h-12 flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
-              <span class="bg-raised h-3 w-32 rounded-sm"></span>
-              <span class="bg-raised h-2.5 w-20 rounded-sm opacity-60"></span>
+            <li class="flex h-item-row flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
+              <span class="bg-raised h-3.5 w-36 rounded-sm"></span>
+              <span class="bg-raised h-3 w-24 rounded-sm opacity-60"></span>
             </li>
           {/each}
         {:else}
@@ -196,7 +196,7 @@
             {@const asking = device.current && confirmingThis}
             <li
               class={[
-                "flex h-12 items-center gap-4 rounded-md pr-2 pl-3 transition-colors duration-150",
+                "flex h-item-row items-center gap-4 rounded-md pr-2 pl-3 transition-colors duration-150",
                 asking ? "bg-raised" : "hover:bg-raised",
               ]}
               aria-label={label}
@@ -284,7 +284,7 @@
             role="radio"
             aria-checked={theme.current === option.value}
             class={[
-              "h-7 rounded-sm px-3 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "h-control-sm rounded-sm px-3 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
               theme.current === option.value ? "bg-raised-2 text-fg" : "text-muted-foreground hover:text-fg",
             ]}
             onclick={() => theme.set(option.value)}

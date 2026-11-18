@@ -46,12 +46,12 @@
 </script>
 
 {#if away}
-  <div class="text-dim flex h-8 items-center gap-2.5 px-2">
+  <div class="text-dim flex h-row items-center gap-2.5 px-2">
     <Avatar {name} away />
     <span class="truncate">{name}</span>
   </div>
 {:else if you}
-  <div class="text-soft hover:bg-raised flex h-8 items-center rounded-md pr-0.5 transition-colors duration-150">
+  <div class="text-soft hover:bg-raised flex h-row items-center rounded-md pr-0.5 transition-colors duration-150">
     <!-- A new tab, so the room, its shares and its watching carry on meanwhile. -->
     <a
       href="/you"
@@ -72,7 +72,7 @@
 {:else}
   <div
     class={[
-      "group flex h-8 items-center rounded-md pr-0.5 transition-colors duration-150",
+      "group flex h-row items-center rounded-md pr-0.5 transition-colors duration-150",
       followed ? "bg-raised text-fg" : "text-soft hover:bg-raised hover:text-fg",
     ]}
   >

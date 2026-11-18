@@ -14,7 +14,7 @@
 	bind:this={ref}
 	data-slot="kbd"
 	class={cn(
-		"text-muted-foreground in-data-[slot=button]:text-current in-data-[slot=button]:opacity-60 h-4 w-fit min-w-4 gap-1 rounded-sm px-0.5 font-mono text-[10px] leading-none font-medium [&_svg:not([class*='size-'])]:size-3 pointer-events-none inline-flex items-center justify-center select-none",
+		"text-muted-foreground in-data-[slot=button]:text-current in-data-[slot=button]:opacity-60 h-4 w-fit min-w-4 gap-1 rounded-sm px-0.5 font-mono text-key leading-none font-medium [&_svg:not([class*='size-'])]:size-3 pointer-events-none inline-flex items-center justify-center select-none",
 		className
 	)}
 	{...restProps}

@@ -46,7 +46,7 @@
   aria-modal="false"
   aria-labelledby={id}
   tabindex="-1"
-  class={["panel grid gap-3 rounded-lg p-3", "bg-raised", floating ? "floating absolute bottom-1 left-16 z-20 w-[272px]" : "mb-2"]}
+  class={["panel grid gap-3 rounded-lg p-3", "bg-raised", floating ? "floating absolute bottom-1 left-[calc(var(--rail)+0.5rem)] z-20 w-[calc(var(--bar)-1rem)]" : "mb-2"]}
   {onkeydown}
 >
   <div class="grid gap-1">

@@ -59,7 +59,7 @@
     {@render children?.()}
   </div>
   <figcaption class="text-muted-foreground grid px-0.5 text-xs">
-    <div class="flex h-9 items-center justify-between gap-2">
+    <div class="flex h-control-lg items-center justify-between gap-2">
       <span class="truncate" title={line.map((part) => part.text).join("")}>
         {#each line as part, i (i)}{#if part.name}<span class="text-soft font-medium">{part.text}</span>{:else}{part.text}{/if}{/each}
       </span>

@@ -51,7 +51,7 @@
       aria-checked={checked}
       tabindex={checked ? 0 : -1}
       class={[
-        "h-7 rounded-sm px-2 text-xs font-medium tabular-nums transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "h-control-sm rounded-sm px-2 text-xs font-medium tabular-nums transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
         checked ? "bg-raised-2 text-fg" : "text-muted-foreground hover:text-fg",
       ]}
       onclick={() => onchoose(option.value)}

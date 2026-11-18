@@ -20,7 +20,7 @@
 
 {#if ondismiss}
   <div class="note bg-raised mb-2 flex items-start gap-1 rounded-lg py-1.5 pr-1 pl-2.5">
-    <p class="text-soft flex-1 py-[3px] text-xs text-pretty">{@render children()}</p>
+    <p class="text-soft flex-1 py-[calc((var(--control-xs)-var(--label-lh))/2)] text-xs text-pretty">{@render children()}</p>
     <IconButton label={label ?? "Dismiss"} size="icon-xs" side="top" class="hover:bg-raised-2 shrink-0" onclick={ondismiss}>
       <X />
     </IconButton>

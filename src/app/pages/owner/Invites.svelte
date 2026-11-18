@@ -103,7 +103,7 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
-  <div class="grid grid-cols-[minmax(0,320px)_minmax(0,1fr)] items-start gap-12">
+  <div class="grid grid-cols-[minmax(0,360px)_minmax(0,1fr)] items-start gap-12">
     <div class="grid gap-6">
       <form class="grid gap-5" onsubmit={create} aria-label="New invite">
         <label class="grid gap-1.5">
@@ -124,7 +124,7 @@
             {#each rooms as room (room.address)}
               <li>
                 <label
-                  class="hover:bg-raised flex h-8 cursor-pointer items-center gap-2.5 rounded-md px-2 transition-colors duration-150"
+                  class="hover:bg-raised flex h-row cursor-pointer items-center gap-2.5 rounded-md px-2 transition-colors duration-150"
                 >
                   <Checkbox
                     checked={ticked.includes(room.address)}
@@ -173,7 +173,7 @@
     </div>
 
     <section class="grid gap-1" aria-label="Pending invites">
-      <h2 class="text-muted-foreground flex h-7 items-center justify-between text-xs font-normal">
+      <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span>Waiting to be used</span>
         <span class="text-dim tabular-nums">{invites.length}</span>
       </h2>
@@ -185,7 +185,7 @@
         <ul class="-mx-3 grid gap-0.5">
           {#each invites as invite (invite.code)}
             <li
-              class="hover:bg-raised group flex h-12 items-center gap-3 rounded-md pr-2 pl-3 transition-colors duration-150"
+              class="hover:bg-raised group flex h-item-row items-center gap-3 rounded-md pr-2 pl-3 transition-colors duration-150"
               aria-label={invite.name}
             >
               <span class="grid min-w-0 flex-1 gap-0.5">

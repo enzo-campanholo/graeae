@@ -54,7 +54,7 @@
   {@const { answer } = current}
   {@const one = answer.missing.length === 1}
   <main class="grid min-h-dvh place-items-center p-6">
-    <div class="grid max-w-[340px] justify-items-center gap-6 text-center">
+    <div class="grid max-w-[380px] justify-items-center gap-6 text-center">
       <Mark size="lg" />
       <div class="grid justify-items-center gap-1.5">
         <h1 class="text-base font-medium text-balance">This browser is yours, but secrets are missing</h1>

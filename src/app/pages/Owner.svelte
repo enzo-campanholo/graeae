@@ -98,8 +98,8 @@
   <NothingHere />
 {:else}
   <div class="flex h-dvh py-2 pr-2">
-    <aside class="flex w-56 shrink-0 flex-col px-2">
-      <header class="grid h-11 grid-cols-[28px_1fr_28px] items-center">
+    <aside class="flex w-nav shrink-0 flex-col px-2">
+      <header class="grid h-header grid-cols-[var(--control-sm)_1fr_var(--control-sm)] items-center">
         <IconButton label="Rooms" href={home}><House /></IconButton>
         <span class="text-center text-sm font-medium">Owner</span>
       </header>
@@ -110,7 +110,7 @@
             href="/owner/{key}"
             aria-current={key === shown ? "page" : undefined}
             class={[
-              "flex h-8 items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[15px] [&_svg]:stroke-[1.75]",
+              "flex h-row items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-icon [&_svg]:stroke-[1.75]",
               key === shown ? "bg-raised text-fg" : "text-muted-foreground hover:bg-raised hover:text-fg",
             ]}
           >
@@ -126,7 +126,7 @@
           <UsageMeter used={meter.used} budget={meter.budget} />
         {:else}
           <div class="grid gap-2" aria-hidden="true" {@attach heldBack}>
-            <span class="bg-raised h-2.5 w-24 rounded-sm"></span>
+            <span class="bg-raised h-3 w-28 rounded-sm"></span>
             <span class="bg-raised h-1 rounded-full"></span>
           </div>
         {/if}
@@ -134,7 +134,7 @@
     </aside>
 
     <main class="bg-stage min-w-0 flex-1 overflow-y-auto rounded-xl">
-      <div class="mx-auto max-w-[880px] px-10 pt-9 pb-16">
+      <div class="mx-auto max-w-owner px-10 pt-9 pb-16">
         <Swap key={section} value={section} onshow={(key) => (shown = key)}>
           {#snippet children(key)}
             <div class="grid gap-8">

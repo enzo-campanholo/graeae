@@ -23,7 +23,8 @@
   } = $props();
 </script>
 
-<header class="grid h-11 grid-cols-[60px_1fr_60px] items-center">
+<!-- Each side is as wide as two icon buttons and their gap, so the name sits in the middle. -->
+<header class="grid h-header grid-cols-[calc(2*var(--control-sm)+0.25rem)_1fr_calc(2*var(--control-sm)+0.25rem)] items-center">
   <div class="flex items-center gap-1">
     <IconButton label="Hide the bar" key="[" onclick={oncollapse}><PanelLeftClose /></IconButton>
     {#if home}
@@ -31,7 +32,7 @@
     {/if}
   </div>
   {#if name === null}
-    <span class="bg-raised mx-auto h-3 w-20 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
+    <span class="bg-raised mx-auto h-3.5 w-24 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
   {:else}
     <h1 class="truncate px-1 text-center text-sm font-medium" title={name}>{name}</h1>
   {/if}

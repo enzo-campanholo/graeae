@@ -130,11 +130,11 @@
       {/if}
     </div>
   </div>
-  <figcaption class="flex h-5 min-w-0 items-baseline gap-1.5 px-0.5">
+  <figcaption class="flex h-[calc(var(--caption)-0.375rem)] min-w-0 items-baseline gap-1.5 px-0.5">
     <span class="text-soft truncate font-medium">{name}</span>
     <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{:else if audio?.muted}<span aria-hidden="true">&nbsp;·</span> muted{/if}</span>
     {#if lower}
-      <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-sm px-1 text-[11px] leading-4 font-medium tabular-nums"
+      <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-sm px-1 text-tag font-medium tabular-nums"
         ><span class="sr-only">Received at&nbsp;</span>720p</span
       >
     {/if}
@@ -142,11 +142,11 @@
 </figure>
 
 <style>
-  /* In the grid and focused: 12px between tiles, and 26px of caption under each picture. */
+  /* In the grid and focused: 12px between tiles, and the caption (`--caption`) under each picture. */
   .tile {
     width: min(
       (100cqw - (var(--cols) - 1) * 12px) / var(--cols),
-      ((100cqh - (var(--rows) - 1) * 12px) / var(--rows) - 26px) * var(--aspect)
+      ((100cqh - (var(--rows) - 1) * 12px) / var(--rows) - var(--caption)) * var(--aspect)
     );
     animation: arrive 240ms var(--ease-out);
   }

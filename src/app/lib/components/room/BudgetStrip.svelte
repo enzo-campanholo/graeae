@@ -9,8 +9,8 @@
   let { level, owner = false }: { level: Exclude<BudgetLevel, "used up">; owner?: boolean } = $props();
 </script>
 
-<div class="strip bg-warn/8 flex h-8 shrink-0 items-center gap-2 rounded-lg pr-1 pl-3 text-xs">
-  <CircleAlert class="text-warn size-3.5 shrink-0" aria-hidden="true" />
+<div class="strip bg-warn/8 flex h-control shrink-0 items-center gap-2 rounded-lg pr-1 pl-3 text-xs">
+  <CircleAlert class="text-warn size-icon-sm shrink-0" aria-hidden="true" />
   <p class="text-soft min-w-0 flex-1 truncate">
     Usage is past {level} of this month's usage budget.
     {#if level === "95%"}<span class="text-muted-foreground">Watching stops for everyone when it runs out.</span>{/if}
@@ -20,7 +20,7 @@
     <a
       href="/owner/usage"
       target="_blank"
-      class="text-muted-foreground hover:bg-raised hover:text-fg focus-visible:ring-ring inline-flex h-6 shrink-0 items-center rounded-md px-1.5 font-medium transition-colors duration-150 outline-none focus-visible:ring-2"
+      class="text-muted-foreground hover:bg-raised hover:text-fg focus-visible:ring-ring inline-flex h-control-xs shrink-0 items-center rounded-md px-1.5 font-medium transition-colors duration-150 outline-none focus-visible:ring-2"
     >
       Usage
     </a>

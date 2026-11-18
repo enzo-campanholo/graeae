@@ -93,9 +93,9 @@
 {#if !current || !figures}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else}
-  <div class="grid max-w-[560px] gap-12">
+  <div class="grid max-w-[calc(var(--owner)-320px)] gap-12">
     <section class="grid gap-4" aria-labelledby="usage-month">
-      <h2 class="text-muted-foreground flex h-7 items-center justify-between text-xs font-normal">
+      <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span id="usage-month">This month</span>
         <span class="text-dim tabular-nums">Since {day(current.since)}</span>
       </h2>
@@ -159,7 +159,7 @@
     </section>
 
     <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
-      <h2 class="flex h-7 items-center text-sm font-medium">Usage budget</h2>
+      <h2 class="flex h-control-sm items-center text-sm font-medium">Usage budget</h2>
       <div class="grid gap-1.5">
         <label for="usage-budget-gb" class="text-muted-foreground text-xs">GB a month</label>
         <div class="flex items-center gap-1.5">
@@ -196,7 +196,7 @@
           <p class="text-muted-foreground" role="alert">{budgetProblem}</p>
         {:else if stopsWatching}
           <p class="text-warn flex items-center gap-2" role="status">
-            <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
+            <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
             for everyone once it is saved.
           </p>
         {/if}
@@ -216,7 +216,7 @@
     />
 
     <form class="grid gap-3" aria-label="Reset day" onsubmit={save} novalidate>
-      <h2 class="flex h-7 items-center text-sm font-medium">Reset day</h2>
+      <h2 class="flex h-control-sm items-center text-sm font-medium">Reset day</h2>
       <div class="grid gap-1.5">
         <label for="usage-reset-day" class="text-muted-foreground text-xs">Day of the month</label>
         <div class="flex items-center gap-1.5">

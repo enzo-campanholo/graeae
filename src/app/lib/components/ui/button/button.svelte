@@ -4,7 +4,7 @@
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
 
 	export const buttonVariants = tv({
-		base: "focus-visible:ring-ring focus-visible:ring-offset-background rounded-md text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 aria-invalid:ring-2 aria-invalid:ring-destructive [&_svg:not([class*='size-'])]:size-[15px] [&_svg]:stroke-[1.75] group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap select-none disabled:pointer-events-none disabled:opacity-40 aria-disabled:pointer-events-none aria-disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		base: "focus-visible:ring-ring focus-visible:ring-offset-background rounded-md text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 aria-invalid:ring-2 aria-invalid:ring-destructive [&_svg:not([class*='size-'])]:size-icon [&_svg]:stroke-[1.75] group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap select-none disabled:pointer-events-none disabled:opacity-40 aria-disabled:pointer-events-none aria-disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				// The one filled button on a surface: near-white on dark, near-black on light.
@@ -16,14 +16,14 @@
 				link: "text-fg underline-offset-4 hover:underline",
 			},
 			size: {
-				default: "h-8 gap-1.5 px-3",
-				xs: "h-6 gap-1 px-1.5 text-xs [&_svg:not([class*='size-'])]:size-3",
-				sm: "h-7 gap-1.5 px-2.5 text-xs [&_svg:not([class*='size-'])]:size-3.5",
-				lg: "h-9 gap-2 px-4",
-				icon: "size-8",
-				"icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
-				"icon-sm": "size-7",
-				"icon-lg": "size-9",
+				default: "h-control gap-1.5 px-3",
+				xs: "h-control-xs gap-1 px-1.5 text-xs [&_svg:not([class*='size-'])]:size-icon-xs",
+				sm: "h-control-sm gap-1.5 px-2.5 text-xs [&_svg:not([class*='size-'])]:size-icon-sm",
+				lg: "h-control-lg gap-2 px-4",
+				icon: "size-control",
+				"icon-xs": "size-control-xs [&_svg:not([class*='size-'])]:size-icon-sm",
+				"icon-sm": "size-control-sm",
+				"icon-lg": "size-control-lg",
 			},
 		},
 		defaultVariants: {

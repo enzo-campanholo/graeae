@@ -46,9 +46,9 @@
     <ul class="-mx-3 grid gap-0.5">
       {#if rooms === null}
         {#each [0, 1, 2] as i (i)}
-          <li class="flex h-14 flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
-            <span class="bg-raised h-3 w-28 rounded-sm"></span>
-            <span class="bg-raised h-2.5 w-44 rounded-sm opacity-60"></span>
+          <li class="flex h-list-row flex-col justify-center gap-2 px-3" aria-hidden="true" {@attach heldBack}>
+            <span class="bg-raised h-3.5 w-32 rounded-sm"></span>
+            <span class="bg-raised h-3 w-52 rounded-sm opacity-60"></span>
           </li>
         {/each}
       {:else}
@@ -56,7 +56,7 @@
           <li>
             <a
               href="/r/{room.address}"
-              class="hover:bg-raised flex h-14 items-center gap-4 rounded-md px-3 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="hover:bg-raised flex h-list-row items-center gap-4 rounded-md px-3 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span class="grid min-w-0 flex-1 gap-0.5">
                 <span class="truncate font-medium">{room.name}</span>

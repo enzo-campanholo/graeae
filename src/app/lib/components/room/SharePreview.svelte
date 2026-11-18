@@ -26,6 +26,6 @@
   ></video>
 {:else}
   <div class="text-faint grid size-full place-items-center" role="img" aria-label="Your {kind}, with no picture">
-    {#if kind === "screen"}<Monitor aria-hidden="true" />{:else}<Video aria-hidden="true" />{/if}
+    {#if kind === "screen"}<Monitor class="size-7" aria-hidden="true" />{:else}<Video class="size-7" aria-hidden="true" />{/if}
   </div>
 {/if}

@@ -291,9 +291,9 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
-  <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,320px)] items-start gap-12">
+  <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,360px)] items-start gap-12">
     <section class="grid gap-1" aria-label="Members">
-      <div class="text-muted-foreground -mx-3 grid h-7 grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 px-3 text-xs" aria-hidden="true">
+      <div class="text-muted-foreground -mx-3 grid h-control-sm grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 px-3 text-xs" aria-hidden="true">
         <span>Member</span>
         <span class="text-right">Devices</span>
         <span class="text-right">Last visit</span>
@@ -305,14 +305,14 @@
             <button
               type="button"
               class={[
-                "grid h-12 w-full grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 rounded-md px-3 text-left transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "grid h-item-row w-full grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 rounded-md px-3 text-left transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 chosen ? "bg-raised" : "hover:bg-raised",
               ]}
               aria-current={chosen ? "true" : undefined}
               onclick={() => pick(entry)}
             >
               <span class="flex min-w-0 items-center gap-3">
-                <Avatar name={entry.name} size={28} away={entry.present.length === 0} ring="var(--stage)" />
+                <Avatar name={entry.name} large away={entry.present.length === 0} ring="var(--stage)" />
                 <span class="grid min-w-0 gap-0.5">
                   <span class="truncate font-medium">
                     {entry.name}{#if entry.owner}<span class="text-dim ml-1 font-normal">· owner</span>{/if}
@@ -332,7 +332,7 @@
       <div class={["grid gap-1", unconfirmed.length > 0 && "pt-2"]} role="status">
         {#each unconfirmed as cutOff (cutOff.member)}
           <p class="text-warn flex items-center gap-2 text-xs">
-            <CircleAlert class="size-3.5 shrink-0" aria-hidden="true" />
+            <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />
             <span>Couldn't confirm that {cutOff.name} was cut off. Still trying.</span>
           </p>
         {/each}
@@ -362,7 +362,7 @@
               <li>
                 <label
                   class={[
-                    "flex h-8 items-center gap-2.5 rounded-md px-2 transition-colors duration-150",
+                    "flex h-row items-center gap-2.5 rounded-md px-2 transition-colors duration-150",
                     entry.owner ? "" : "hover:bg-raised cursor-pointer",
                   ]}
                 >
@@ -389,7 +389,7 @@
                 {@const asking = device.current && confirmingThis}
                 <li
                   class={[
-                    "flex h-12 items-center gap-3 rounded-md pr-1 pl-2 transition-colors duration-150",
+                    "flex h-item-row items-center gap-3 rounded-md pr-1 pl-2 transition-colors duration-150",
                     asking ? "bg-raised" : "hover:bg-raised",
                   ]}
                   aria-label={label}

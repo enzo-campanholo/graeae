@@ -43,13 +43,14 @@
 <main class="bg-stage relative flex min-w-0 flex-1 flex-col gap-3 rounded-xl p-3" aria-label="Stage">
   <!-- Always in the page, so a screen reader hears the warning when it appears. -->
   <div class="grid shrink-0 empty:hidden" role="status">{@render warning?.()}</div>
-  <!-- Always in the page, so a screen reader hears the note appear. -->
+  <!-- Always in the page, so a screen reader hears the note appear. Under a warning it sits
+       below the budget strip: the stage's padding, the strip (`h-control`) and the gap. -->
   <div
-    class={["pointer-events-none absolute inset-x-0 z-10 flex justify-center", warning ? "top-14" : "top-3"]}
+    class={["pointer-events-none absolute inset-x-0 z-10 flex justify-center", warning ? "top-[calc(var(--control)+1.5rem)]" : "top-3"]}
     role="status"
   >
     {#if reconnecting}
-      <p class="note bg-raised/90 text-soft flex h-7 items-center gap-2 rounded-md px-2.5 text-xs">
+      <p class="note bg-raised/90 text-soft flex h-control-sm items-center gap-2 rounded-md px-2.5 text-xs">
         <Mark size="sm" loading />Reconnecting…
       </p>
     {/if}
@@ -93,7 +94,7 @@
       var(--cols) *
         min(
           (100cqw - (var(--cols) - 1) * 12px) / var(--cols),
-          ((100cqh - (var(--rows) - 1) * 12px) / var(--rows) - 26px) * 16 / 9
+          ((100cqh - (var(--rows) - 1) * 12px) / var(--rows) - var(--caption)) * 16 / 9
         ) +
         (var(--cols) - 1) * 12px + 1px
     );

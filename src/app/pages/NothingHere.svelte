@@ -12,7 +12,7 @@
     <Mark size="lg" />
     <div class="grid justify-items-center gap-1.5">
       <h1 class="text-base font-medium">Nothing here</h1>
-      <p class="text-muted-foreground max-w-[300px] text-balance">If someone sent you a link, ask them for a fresh one.</p>
+      <p class="text-muted-foreground max-w-[340px] text-balance">If someone sent you a link, ask them for a fresh one.</p>
     </div>
   </div>
 </main>

@@ -5,7 +5,7 @@
 
   let {
     name,
-    size = 20,
+    large = false,
     followed = false,
     away = false,
     reconnecting = false,
@@ -14,7 +14,8 @@
     class: className,
   }: {
     name: string;
-    size?: 20 | 28;
+    /** The rail's and the owner page's size, rather than a row's. */
+    large?: boolean;
     followed?: boolean;
     away?: boolean;
     /** Present, but not heard for about 10 seconds: the avatar fades in and out while they reconnect. */
@@ -32,7 +33,7 @@
 </script>
 
 <span
-  class={cn("avatar", size === 28 && "large", away && "away", reconnecting && "reconnecting", sharing && "sharing", className)}
+  class={cn("avatar", large && "large", away && "away", reconnecting && "reconnecting", sharing && "sharing", className)}
   style:--cutout={ring}
   aria-hidden="true"
 >
@@ -46,19 +47,19 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 20px;
-    height: 20px;
+    width: var(--avatar);
+    height: var(--avatar);
     border-radius: 50%;
     background: var(--raised-2);
     color: var(--soft);
-    font-size: 10px;
+    font-size: var(--avatar-text);
     font-weight: 600;
     line-height: 1;
   }
   .large {
-    width: 28px;
-    height: 28px;
-    font-size: 12px;
+    width: var(--avatar-lg);
+    height: var(--avatar-lg);
+    font-size: var(--avatar-lg-text);
   }
   .sharing {
     color: var(--fg);
@@ -81,16 +82,16 @@
     position: absolute;
     right: -2px;
     bottom: -2px;
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     background: var(--eye);
     box-shadow: 0 0 0 2px var(--cutout);
     animation: light 220ms var(--ease-out);
   }
   .large .eye {
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 11px;
   }
   @keyframes light {
     from {

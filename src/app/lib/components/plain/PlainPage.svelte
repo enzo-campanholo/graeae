@@ -27,11 +27,11 @@
 
 <PageTitle title="{title} · graeae" />
 
-<div class="mx-auto grid w-full max-w-[600px] gap-10 px-6 pt-5 pb-24">
-  <header class="flex h-8 items-center justify-between">
+<div class="mx-auto grid w-full max-w-plain gap-10 px-6 pt-5 pb-24">
+  <header class="flex h-control items-center justify-between">
     <a
       href={home}
-      class="text-soft hover:text-fg -ml-2 flex h-8 items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      class="text-soft hover:text-fg -ml-2 flex h-control items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Mark />graeae
     </a>
@@ -39,7 +39,7 @@
       {#if you}
         <a
           href="/you"
-          class="text-muted-foreground hover:bg-raised hover:text-fg flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="text-muted-foreground hover:bg-raised hover:text-fg flex h-control-sm items-center rounded-md px-2.5 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           You
         </a>

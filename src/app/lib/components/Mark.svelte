@@ -19,16 +19,16 @@
     display: inline-flex;
     align-items: center;
     flex: none;
-    --dot: 6px;
-    gap: 4px;
+    --dot: 7px;
+    gap: 5px;
   }
   .sm {
-    --dot: 4px;
+    --dot: 5px;
     gap: 3px;
   }
   .lg {
-    --dot: 12px;
-    gap: 10px;
+    --dot: 14px;
+    gap: 11px;
   }
   i {
     width: var(--dot);

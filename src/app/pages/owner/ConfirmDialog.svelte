@@ -33,7 +33,7 @@
   <AlertDialog.Portal>
     <AlertDialog.Overlay class="bg-letterbox/60 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50" />
     <AlertDialog.Content
-      class="bg-raised data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.985] fixed top-1/2 left-1/2 z-50 grid w-[min(400px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl p-5 shadow-lift outline-none motion-reduce:animate-none"
+      class="bg-raised data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.985] fixed top-1/2 left-1/2 z-50 grid w-[min(440px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl p-5 shadow-lift outline-none motion-reduce:animate-none"
     >
       <div class="grid gap-2">
         <AlertDialog.Title class="text-fg text-base font-medium text-balance">{title}</AlertDialog.Title>

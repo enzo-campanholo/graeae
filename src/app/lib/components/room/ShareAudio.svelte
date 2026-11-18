@@ -76,14 +76,15 @@
 </div>
 
 <style>
-  /* A 4px pill track on raised-2 filled in soft up to the volume, with a 12px knob, in a
-     28px-high target. Muted, the fill and the knob go dim, which still reads over a bright picture. */
+  /* A 4px pill track on raised-2 filled in soft up to the volume, with a 14px knob, in a
+     target as high as an icon button (`--control-sm`). Muted, the fill and the knob go
+     dim, which still reads over a bright picture. */
   .volume {
     --fill: var(--soft);
     --knob: var(--fg);
     appearance: none;
-    width: 64px;
-    height: 28px;
+    width: 72px;
+    height: var(--control-sm);
     background: transparent;
     cursor: pointer;
     border-radius: 6px;
@@ -91,7 +92,7 @@
   /* On a small picture the pill would outgrow it: the volume shortens. */
   @container (width < 400px) {
     .volume {
-      width: 40px;
+      width: 48px;
     }
   }
   .volume.muted {
@@ -105,9 +106,9 @@
   }
   .volume::-webkit-slider-thumb {
     appearance: none;
-    width: 12px;
-    height: 12px;
-    margin-top: -4px;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
     border-radius: 9999px;
     background: var(--knob);
     transition: transform 150ms var(--ease-out);
@@ -127,8 +128,8 @@
     background: var(--fill);
   }
   .volume::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border: none;
     border-radius: 9999px;
     background: var(--knob);

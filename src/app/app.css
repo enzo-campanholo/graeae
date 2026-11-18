@@ -54,6 +54,57 @@
   color-scheme: dark;
 }
 
+/*
+ * The type and size scale: one block of sizes by role, as a theme is one block of
+ * colours. Spacing between things stays on the 16px rem; what grows with the scale is
+ * what is read and pressed: type, rows, controls, avatars, icons, and the columns that
+ * hold them.
+ *
+ * The room's bar is held by the 1080p promise: on a maximised 1080p window (1920x953)
+ * a single share is limited by the stage's height, not by the bar. The stage leaves
+ * 1920 - bar - 8 - 24 for the picture's width and 953 - 16 - 24 - caption for its
+ * height, so the bar may be at most 1888 - (913 - caption) * 16 / 9 wide: 321px under
+ * the 32px caption, which leaves the 316px bar 5px to spare.
+ */
+:root {
+  --body: 15px; /* the app's body size: descriptions, names, buttons */
+  --body-lh: 22px;
+  --label: 13px; /* list headings, counts, captions' kinds, small buttons, tooltips */
+  --label-lh: 18px;
+  --title: 17px; /* "Nothing here", a dialog's title, the chosen member */
+  --title-lh: 24px;
+  --headline: 24px; /* a page's heading */
+  --headline-lh: 32px;
+  --figure: 30px; /* the Usage section's three figures */
+  --figure-lh: 38px;
+  --tag: 12px; /* the "720p" mark */
+  --tag-lh: 16px;
+  --key: 11px; /* a keyboard hint */
+
+  --row: 40px; /* a person in the bar, a link in the owner navigation, a room to tick */
+  --list-row: 64px; /* a room on the list of rooms or on the owner page */
+  --item-row: 56px; /* a device, an invite, a member on the owner page */
+  --control: 36px; /* a button, an input */
+  --control-sm: 32px; /* an icon button, a small button, a list's heading */
+  --control-xs: 28px; /* the smallest buttons: Watch's shortcuts, a share icon in a row */
+  --control-lg: 44px; /* the invite's Join, a rail button */
+  --icon: 18px;
+  --icon-sm: 16px;
+  --icon-xs: 14px;
+  --avatar: 26px;
+  --avatar-text: 12px;
+  --avatar-lg: 32px; /* the rail, the owner page's members */
+  --avatar-lg-text: 14px;
+
+  --header: 52px; /* the bar's and the owner navigation's header */
+  --bar: 316px; /* the room's bar */
+  --rail: 64px; /* the folded bar */
+  --nav: 256px; /* the owner page's navigation */
+  --caption: 32px; /* under a share's picture: its line and the gap above it */
+  --plain: 720px; /* the plain pages' column */
+  --owner: 1000px; /* the owner page's content */
+}
+
 /* The names shadcn-svelte's components read, mapped onto the theme. */
 :root,
 .dark {
@@ -84,14 +135,38 @@
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 
-  --text-xs: 12px;
-  --text-xs--line-height: 16px;
-  --text-sm: 13px;
-  --text-sm--line-height: 19px;
-  --text-base: 15px;
-  --text-base--line-height: 22px;
-  --text-xl: 20px;
-  --text-xl--line-height: 28px;
+  /* The type and size scale (the block of `--body` and the rest above), by role. */
+  --text-xs: var(--label);
+  --text-xs--line-height: var(--label-lh);
+  --text-sm: var(--body);
+  --text-sm--line-height: var(--body-lh);
+  --text-base: var(--title);
+  --text-base--line-height: var(--title-lh);
+  --text-xl: var(--headline);
+  --text-xl--line-height: var(--headline-lh);
+  --text-2xl: var(--figure);
+  --text-2xl--line-height: var(--figure-lh);
+  --text-tag: var(--tag);
+  --text-tag--line-height: var(--tag-lh);
+  --text-key: var(--key);
+  --text-key--line-height: 1;
+
+  --spacing-row: var(--row);
+  --spacing-list-row: var(--list-row);
+  --spacing-item-row: var(--item-row);
+  --spacing-control: var(--control);
+  --spacing-control-sm: var(--control-sm);
+  --spacing-control-xs: var(--control-xs);
+  --spacing-control-lg: var(--control-lg);
+  --spacing-icon: var(--icon);
+  --spacing-icon-sm: var(--icon-sm);
+  --spacing-icon-xs: var(--icon-xs);
+  --spacing-header: var(--header);
+  --spacing-bar: var(--bar);
+  --spacing-rail: var(--rail);
+  --spacing-nav: var(--nav);
+  --container-plain: var(--plain);
+  --container-owner: var(--owner);
 
   --radius-sm: 4px;
   --radius-md: 6px; /* controls */
@@ -145,8 +220,8 @@
     scrollbar-width: thin;
   }
   body {
-    font-size: 13px; /* the app's body size; spacing stays on the 16px rem */
-    line-height: 19px;
+    font-size: var(--body); /* spacing stays on the 16px rem */
+    line-height: var(--body-lh);
     min-height: 100dvh;
     background: var(--ground);
   }

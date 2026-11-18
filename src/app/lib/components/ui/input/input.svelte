@@ -25,7 +25,7 @@
 		bind:this={ref}
 		data-slot={dataSlot}
 		class={cn(
-			"bg-input text-fg h-8 w-full min-w-0 rounded-md px-2.5 text-sm transition-colors duration-150 outline-none placeholder:text-dim hover:bg-raised-2 focus-visible:bg-raised-2 focus-visible:ring-2 focus-visible:ring-ring aria-invalid:ring-2 aria-invalid:ring-destructive disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+			"bg-input text-fg h-control w-full min-w-0 rounded-md px-2.5 text-sm transition-colors duration-150 outline-none placeholder:text-dim hover:bg-raised-2 focus-visible:bg-raised-2 focus-visible:ring-2 focus-visible:ring-ring aria-invalid:ring-2 aria-invalid:ring-destructive disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
 			className
 		)}
 		type="file"
@@ -38,7 +38,7 @@
 		bind:this={ref}
 		data-slot={dataSlot}
 		class={cn(
-			"bg-input text-fg h-8 w-full min-w-0 rounded-md px-2.5 text-sm transition-colors duration-150 outline-none placeholder:text-dim hover:bg-raised-2 focus-visible:bg-raised-2 focus-visible:ring-2 focus-visible:ring-ring aria-invalid:ring-2 aria-invalid:ring-destructive disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+			"bg-input text-fg h-control w-full min-w-0 rounded-md px-2.5 text-sm transition-colors duration-150 outline-none placeholder:text-dim hover:bg-raised-2 focus-visible:bg-raised-2 focus-visible:ring-2 focus-visible:ring-ring aria-invalid:ring-2 aria-invalid:ring-destructive disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
 			className
 		)}
 		{type}

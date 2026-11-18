@@ -17,12 +17,12 @@
 	bind:checked
 	data-slot="checkbox"
 	class={cn(
-		"bg-raised-2 data-[state=checked]:bg-fg data-[state=checked]:text-ground focus-visible:ring-ring focus-visible:ring-offset-stage grid size-4 shrink-0 place-items-center rounded-[4px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
+		"bg-raised-2 data-[state=checked]:bg-fg data-[state=checked]:text-ground focus-visible:ring-ring focus-visible:ring-offset-stage grid size-[18px] shrink-0 place-items-center rounded-[4px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
 		className
 	)}
 	{...restProps}
 >
 	{#snippet children({ checked })}
-		{#if checked}<Check class="size-3 stroke-[2.5]" aria-hidden="true" />{/if}
+		{#if checked}<Check class="size-3.5 stroke-[2.5]" aria-hidden="true" />{/if}
 	{/snippet}
 </CheckboxPrimitive.Root>

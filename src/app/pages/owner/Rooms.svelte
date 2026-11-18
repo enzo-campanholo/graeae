@@ -118,7 +118,7 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
-  <div class="grid grid-cols-[minmax(0,320px)_minmax(0,1fr)] items-start gap-12">
+  <div class="grid grid-cols-[minmax(0,360px)_minmax(0,1fr)] items-start gap-12">
     <form class="grid gap-5" onsubmit={create} aria-label="New room">
       <label class="grid gap-1.5">
         <span class="text-muted-foreground text-xs">Room name</span>
@@ -142,7 +142,7 @@
     </form>
 
     <section class="grid gap-1" aria-label="Every room">
-      <h2 class="text-muted-foreground flex h-7 items-center justify-between text-xs font-normal">
+      <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span>Every room</span>
         <span class="text-dim tabular-nums">{rooms.length}</span>
       </h2>
@@ -150,7 +150,7 @@
         {#each rooms as room (room.address)}
           <li
             class={[
-              "group flex min-h-14 items-center gap-3 rounded-md pr-2 pl-3 transition-colors duration-150",
+              "group flex min-h-list-row items-center gap-3 rounded-md pr-2 pl-3 transition-colors duration-150",
               renaming?.address === room.address ? "bg-raised" : "hover:bg-raised",
             ]}
             aria-label={room.name}

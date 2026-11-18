@@ -79,19 +79,19 @@
     <button
       type="button"
       class={[
-        "sound bg-raised/90 text-soft hover:text-fg absolute bottom-2 left-2 flex h-7 items-center gap-1.5 rounded-md text-xs transition-colors duration-150",
-        small ? "w-7 justify-center" : "px-2.5",
+        "sound bg-raised/90 text-soft hover:text-fg absolute bottom-2 left-2 flex h-control-sm items-center gap-1.5 rounded-md text-xs transition-colors duration-150",
+        small ? "w-control-sm justify-center" : "px-2.5",
       ]}
       aria-label={small ? `Click for the sound of ${name}'s ${kind}` : undefined}
       onclick={retry}
     >
-      <VolumeOff class="size-3.5 stroke-[1.75]" aria-hidden="true" />
+      <VolumeOff class="size-icon-sm stroke-[1.75]" aria-hidden="true" />
       {#if !small}Click for sound{/if}
     </button>
   {/if}
 {:else}
   <div class="text-faint grid size-full place-items-center" role="img" aria-label="{name}'s {kind}, with no picture">
-    {#if kind === "screen"}<Monitor class="size-6" aria-hidden="true" />{:else}<Video class="size-6" aria-hidden="true" />{/if}
+    {#if kind === "screen"}<Monitor class="size-7" aria-hidden="true" />{:else}<Video class="size-7" aria-hidden="true" />{/if}
   </div>
 {/if}
 

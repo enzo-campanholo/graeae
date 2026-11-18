@@ -33,8 +33,8 @@
   } = $props();
 </script>
 
-<aside class="relative flex w-14 shrink-0 flex-col items-center pb-1" aria-label="People">
-  <div class="grid h-11 place-items-center">
+<aside class="relative flex w-rail shrink-0 flex-col items-center pb-1" aria-label="People">
+  <div class="grid h-header place-items-center">
     <IconButton label="Show the bar" key="[" side="right" onclick={onexpand}><PanelLeftOpen /></IconButton>
   </div>
   <ul class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-3">
@@ -47,7 +47,7 @@
                 {...props}
                 type="button"
                 class={[
-                  "grid size-9 place-items-center rounded-md transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "grid size-control-lg place-items-center rounded-md transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   person.followed ? "bg-raised" : "hover:bg-raised",
                 ]}
                 aria-label={person.reconnecting ? `Follow ${person.name}, reconnecting` : `Follow ${person.name}`}
@@ -56,7 +56,7 @@
               >
                 <Avatar
                   name={person.name}
-                  size={28}
+                  large
                   followed={person.followed}
                   sharing={person.sharing}
                   reconnecting={person.reconnecting}

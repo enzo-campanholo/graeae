@@ -246,8 +246,13 @@ test("watched shares fill an even grid, one can be focused over a strip of the r
   await settled(owner);
   const area = (await stage.boundingBox())!;
   const one = (await picture("Vera").boundingBox())!;
+  // The caption under each picture is part of the scale (`--caption` in app.css).
+  const caption = Number.parseFloat(
+    await owner.evaluate<string>(`getComputedStyle(document.documentElement).getPropertyValue("--caption")`),
+  );
+  expect(caption, "the scale sets a caption height").toBeGreaterThan(0);
   expect(one.width, "the share is limited by the stage's width").toBeLessThan(area.width - 24 - 4);
-  expect(one.height, "the share does not fill the stage's height").toBeGreaterThan(area.height - 24 - 26 - 4);
+  expect(one.height, "the share does not fill the stage's height").toBeGreaterThan(area.height - 24 - caption - 4);
 
   // Two columns up to four shares, three up to six, four beyond.
   await watch("Wil", "Xia");
