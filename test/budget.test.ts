@@ -22,8 +22,11 @@ async function report(tab: Tab, received: number) {
   await tab.heartbeat();
 }
 
-/** The bytes a tab reports for `charged` bytes of usage, the 5% margin being added on top. */
-const reportedFor = (charged: number) => Math.ceil(charged / 1.05);
+/**
+ * The bytes a tab reports for `charged` bytes of usage: the same in whole bytes while the
+ * safety margin is 0%, and the one place to change should it be set again.
+ */
+const reportedFor = (charged: number) => Math.ceil(charged);
 
 async function usage(owner: TestBrowser): Promise<UsageAnswer> {
   const response = await owner.fetch("/api/owner/usage");

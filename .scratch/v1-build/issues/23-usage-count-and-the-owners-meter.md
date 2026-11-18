@@ -8,14 +8,14 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 
 **Blocked by:** 12, 17
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Each tab with a media connection reports, every few seconds over the signaling connection, the running total of bytes its media connection's transport has received since it opened
 - [x] The backend charges the difference between reports, so a lost report is made up by the next and nothing is skipped at the start
 - [x] A tab sends a final total before a connection restart, and the total starting again from zero is handled
-- [x] The backend adds a fixed 5% to every reported byte; it is a constant, not a setting
+- [x] The backend adds a fixed 5% to every reported byte; it is a constant, not a setting (0% since the usage comparison below)
 - [x] Where no later total arrives, the backend charges each watched share's maximum bitrate (12, 6 or 1.5 Mbps) from the last report until it records the watch as ended
-- [ ] A tab reports whether its media connection is on the relay, and relayed watching is counted twice; the doubling can be switched off in one place
+- [x] A tab reports whether its media connection is on the relay, and relayed watching is counted twice; the doubling can be switched off in one place
 - [x] A sharer's upload is not counted
 - [x] The month resets on the owner's day of the month, in UTC, default 1
 - [x] Usage section: the meter with GB used, the usage budget (1,000 GB until ticket 24 makes it settable) and the projected month-end figure (the month so far, extended at the same daily rate), and the reset-day setting
@@ -36,3 +36,19 @@ UI: build with the impeccable skill, following `DESIGN.md`.
 **Needs the owner:** after ticket 13's deploy, on Windows 11 with current Chrome or Helium.
 1. *Relayed watching* (box 6): watch from a browser forced onto the relay (block UDP to Cloudflare, or set Chrome's WebRTC IP policy to "disable non-proxied UDP" so it takes TURN over TCP or TLS). In `chrome://webrtc-internals` the selected pair's local candidate should be `relay`, and the usage frames on the socket (DevTools, Network, the room's WebSocket) should say `"relayed":true`. The fakes cannot prove `transport.ts` finds the relay on a real connection.
 2. *The usage comparison* (spec, Verification): one real session of at least 2 GB, then Cloudflare's Analytics for the media server's egress over the same period. graeae's figure should read 0 to 10% above. Outside that, change `SAFETY_MARGIN_PERCENT` in `src/instance/usage.ts`. In the same sitting, read the relay's analytics with one viewer on it: if relayed watching is billed once, set `RELAYED_COUNTS_TWICE` to `false`.
+
+**Checked on Cloudflare by the owner** on 2026-11-17, on `graeae-test` (version `2d907b70`). The owner used Windows 11, sharing a 1080p video as a screen share from Helium and watching it in Chrome. graeae's figures are `used` from `/api/owner/usage`. Cloudflare's are per minute and per media session from its GraphQL analytics (`callsUsageAdaptiveGroups`, `callsTurnUsageAdaptiveGroups`), for the same windows, read once the late minutes had come in.
+
+| | Direct, 22:41:51–23:11:30 UTC | TCP relay, 23:25:59–23:49:05 UTC |
+|---|---|---|
+| Sharer's upload (media server ingress) | 2.053 GB | 1.616 GB |
+| Media server egress to the viewer | 1.946 GB | 1.593 GB |
+| Relay egress to the viewer | – | 1.393 GB |
+| The viewer's transport received | 2.099 GB (graeae's count ÷ 1.05) | about 1.375 GB (1.354 GB in the dump at 23:48:44) |
+| graeae counted (5%, relayed doubled) | 2,204,443,968 B: **+13.3%** | 2,848,829,487 B |
+
+- *The usage comparison* failed with 5%: +13.3%, outside 0 to 10%. The browser's own total already reads +7.9% above the media server's egress, since its transport counts SRTP, RTCP and ICE overhead that Cloudflare's per-track figure leaves out. **Decision (owner):** `SAFETY_MARGIN_PERCENT` is 0, which puts the same session at +7.9%. The margin applies linearly to the same reports, so no second session was run. The tests, the Usage section's line, the README's Cost section (ticket 26's open point) and the spec now say so.
+- *Relayed watching* (box 6) holds. With UDP from Chrome blocked by a Windows firewall rule, the dump's selected pair had a local candidate with `candidateType: relay`, through `turn.cloudflare.com:3478` over TCP. graeae's count rose by 2.1 × 1.3566 GB, which matches the transport's total, so `transport.ts` saw the relay on a real connection and the report said `relayed: true`. Packet loss was 0.1%.
+- *Doubling.* Cloudflare's pricing page says traffic between the relay and the media server "is not charged twice". On this TCP relay, though, the media server's egress read 16% above what the browser received, while the relay's read about 1% above. So counting relayed watching once would read below the bill if Cloudflare bills the media server's figure. **Decision (owner):** `RELAYED_COUNTS_TWICE` stays `true` for now. **Still open, as a box on ticket 27:** read Cloudflare's Billable Usage for 2026-11-17 once it posts. If the relayed session was billed at the relay's figure (about 1.39 GB rather than 1.59 GB), counting once is safe and the switch can go to `false`. The spec's Verification paragraph records the outcome.
+
+**Code review** (Standards and Spec, two sub-agents): no hard violations. Fixed afterwards: the spec's Seam 1 list still said "the 5% margin"; the README and the Usage section's line now allow for relayed watching reading well above Cloudflare's figure; the spec's Verification paragraph records why no second session was run (the margin multiplies every report); story 99 says what the margin is for; the open billing check moved to ticket 27, so nothing open is left on this one.

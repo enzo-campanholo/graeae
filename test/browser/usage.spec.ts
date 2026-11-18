@@ -118,11 +118,11 @@ test("the owner's meter shows what members have watched, members see nothing of 
   await admin.goto("/owner/people");
   const before = await meterReading(admin);
 
-  // The owner watches Nell's webcam, and receives 40 GB: 42 GB is counted, with the 5% margin.
+  // The owner watches Nell's webcam, and receives 40 GB: 40 GB is counted, with no margin on top.
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Nell's webcam" }).click();
   await expect(owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Nell's webcam, with no picture" })).toBeVisible();
   await received(owner, 40_000_000_000);
-  await expect.poll(async () => (await meterReading(admin)) - before, { timeout: 20_000 }).toBeCloseTo(42, 0);
+  await expect.poll(async () => (await meterReading(admin)) - before, { timeout: 20_000 }).toBeCloseTo(40, 0);
 
   // Members see nothing about usage: not in the room, and not the owner page.
   await expect(nell.getByRole("meter")).toHaveCount(0);

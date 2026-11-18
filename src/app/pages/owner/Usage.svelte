@@ -150,8 +150,8 @@
           <p class="text-muted-foreground">At this rate the usage budget runs out before the month ends.</p>
         {/if}
         <p>
-          The usage budget bounds what members watch, not the whole Cloudflare bill. Every byte counted carries 5% on
-          top, so the count stays above Cloudflare's own.
+          The usage budget bounds what members watch, not the whole Cloudflare bill. Usage here reads a little above
+          Cloudflare's own figure, and well above it for watching through the relay.
         </p>
       </div>
     </section>

@@ -31,4 +31,8 @@ Windows 11, Firefox:
 - [ ] Share a screen: the first-time notice gives the Firefox line, the share is video only, and a Chromium viewer sees it
 - [ ] Share a webcam
 
+Cloudflare's billing:
+
+- [ ] Relayed watching billed once: in Cloudflare's Billable Usage for 2026-11-17, see whether ticket 23's relayed session (23:25–23:49 UTC) was billed at the relay's figure (about 1.39 GB) or the media server's (about 1.59 GB). If it was billed at the relay's figure, set `RELAYED_COUNTS_TWICE` in `src/instance/usage.ts` to `false`, as the spec's usage comparison says; if at the media server's, it stays `true` (see ticket 23's last comment)
+
 Anything that fails is fixed on the integration branch before this ticket is resolved.

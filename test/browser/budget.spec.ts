@@ -79,8 +79,8 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
     );
     await expect(admin.getByRole("alertdialog")).toHaveCount(0);
 
-    /** Has the owner's watching tab take the month to `share` of the budget, the 5% margin added on top. */
-    const reach = (share: number) => received(owner, Math.ceil((budget * share * GIGABYTE - before) / 1.05));
+    /** Has the owner's watching tab take the month to `share` of the budget, with no margin on top. */
+    const reach = (share: number) => received(owner, Math.ceil(budget * share * GIGABYTE - before));
 
     // 80%: the owner's strip, with the way to Usage; Rui hears nothing.
     await reach(0.82);

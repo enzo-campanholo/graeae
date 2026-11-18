@@ -142,7 +142,7 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 96. As a member, I want the stage to say that the month's usage budget is used up and that the owner can raise it, so that I know watching stopped on purpose.
 97. As a sharer, I want my shares to stay live through a usage budget stop, so that watching resumes the moment the owner raises the budget.
 98. As the owner, I want usage that goes unreported charged at the share's maximum bitrate, so that a crashed tab can never make the count read low.
-99. As the owner, I want the count to carry a 5% safety margin, so that it never reads below Cloudflare's own figure.
+99. As the owner, I want the count never to read below Cloudflare's own figure, with a safety margin on top if the browsers' totals alone would.
 
 ### Deploying
 
@@ -319,9 +319,9 @@ One routine serves every case:
 ### Usage and the usage budget
 
 - **What is counted.** Each tab reports, every few seconds over the signaling connection, the running total of bytes its media connection's transport has received since it opened. The backend charges the difference between reports, so nothing is skipped at the start and a lost report is made up by the next. A tab sends a final total before a connection restart, which resets the total.
-- **Safety margin.** The backend adds a fixed 5% to every reported byte. It is a constant, not a setting.
+- **Safety margin.** The backend adds a fixed margin to every reported byte. It is a constant, not a setting, and 0% since the usage comparison: the browser's own total read 7.9% above Cloudflare's media server egress, since it counts packet overhead that Cloudflare leaves out.
 - **Gaps.** Where no later total arrives (a closed or crashed tab), the backend charges each watched share's maximum bitrate from the last report until it records the watch as ended: 12 Mbps for a Chromium screen share, 6 for a Firefox one, 1.5 for a webcam.
-- **Relayed watching** is counted twice, pending the comparison under Verification.
+- **Relayed watching** is counted twice. Cloudflare bills the traffic between its relay and its media server once, but in the usage comparison, on a TCP relay, the media server's egress read 16% above what the browser received and the relay's 1% above, so counting it once could read below the bill. The doubling stays until Cloudflare's billable usage shows which figure it bills.
 - **Not counted.** A sharer's upload, which Cloudflare does not bill. Usage is per media connection; there is no per-share or per-member breakdown.
 - **The budget.** One number for the instance in GB per month, default 1,000, set by the owner in the app with the dollar equivalent beside it ($0.05 per GB past 1,000). No upper limit, no per-room or per-member quota.
 - **The month** resets on a day of the month the owner sets, in UTC, default 1.
@@ -425,7 +425,7 @@ Covered here:
 - Watching: every check on a watch request, who the sharer is told is watching, watching one's own share unlisted.
 - Cut-off: each row of the cut-off table, storage changed before any close, retry on a failed close, the 1-minute warning, the sweep closing an unrecorded track, the record written before the media server call.
 - Restart: live shares and watching surviving a restart of the instance.
-- Usage: charging the difference between running totals, the 5% margin, the maximum-bitrate charge after a last report, the final total before a restart, relayed watching doubled, the 80% and 95% warnings, the stop, raising and lowering the budget, the monthly reset on the owner's day.
+- Usage: charging the difference between running totals, the safety margin, the maximum-bitrate charge after a last report, the final total before a restart, relayed watching doubled, the 80% and 95% warnings, the stop, raising and lowering the budget, the monthly reset on the owner's day.
 - Relay credentials: one per media connection, the 12-hour life, the hand-out at 11 hours.
 - Migrations: an instance with an older schema starting on newer code with its members intact.
 
@@ -444,6 +444,8 @@ Nothing automated talks to Cloudflare's media server or relay, and nothing autom
 Done by the owner on the built app unless noted.
 
 **Usage comparison.** Run one real session of at least 2 GB, then read the media server's egress for the same period on Cloudflare's Analytics tab. graeae's figure reading 0 to 10% above Cloudflare's passes. Outside that, change the margin and run it again. In the same sitting read the relay's analytics with one viewer on the relay: if relayed watching is billed once, drop the doubling. Until it passes, the README says the count is unverified.
+
+Done in build ticket 23 with a 2.2 GB session: 5% read +13.3%, so the margin went to 0%. The margin multiplies every report, so the same session reads +7.9% at 0% with no second run. On the relay, Cloudflare's pricing says once, but its media server sent 16% more than the browser received, so the doubling stays until Cloudflare's billable usage shows which figure it billed (ticket 27).
 
 **macOS and Linux, one pass each in current stable Chromium.** Record the browser and operating system versions.
 
@@ -520,7 +522,7 @@ Not designed, and free for the implementer to settle without reopening a decisio
 - The borderless-mode tip from Platform promises and Room experience was dropped by Quality proof: exclusive fullscreen did not freeze in the capture.
 - The 24-hour per-device relay credential and its revocation, from Media layer records and relay credentials, were replaced by Relay and credential life.
 - The 8 Mbps screen bitrate behind the 385 GB estimate was replaced by 12 Mbps in Quality adaptation.
-- The "fixed overhead if graeae under-counts" in Usage budget was set at 5% by Usage count accuracy, and the reported figure became a running total per media connection.
+- The "fixed overhead if graeae under-counts" in Usage budget was set at 5% by Usage count accuracy, and the reported figure became a running total per media connection. Build ticket 23's usage comparison set it to 0%.
 - The friend's GPU in Quality proof is an RTX 5060 Ti, not a GTX 980.
 - H.264 high profile, then main, from Quality proof and Quality adaptation, was replaced by baseline profile (`42001f`) in build ticket 17. Quality proof sent one quality; with two, the media server answers main and high with VP8. The media server relabels baseline as constrained baseline to viewers, as it did high profile (under Unverified facts).
 - The two qualities for a Chromium screen share from Quality adaptation are switched off by build ticket 17, for the media server's freezes on the lower one; ticket 29 tries them as two tracks.

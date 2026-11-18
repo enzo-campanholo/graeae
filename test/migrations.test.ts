@@ -213,7 +213,7 @@ describe("the usage migration", () => {
     await ownerTab.heartbeat();
     await instance.clock.advance(2000);
     await ownerTab.close();
-    // 1 MB with 5% added, and 2 seconds at the webcam's 1.5 Mbps since.
-    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_050_000 + 375_000 });
+    // 1 MB as received, and 2 seconds at the webcam's 1.5 Mbps since.
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_000_000 + 375_000 });
   });
 });

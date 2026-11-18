@@ -169,7 +169,7 @@ export const GIGABYTE = 1_000_000_000;
 /**
  * `GET /api/owner/usage`, and `PUT /api/owner/usage/reset-day` with `{ day }`: the
  * month's usage as the owner page shows it. Bytes are counted by the instance's own
- * rules, the 5% margin and the rest already applied; a gigabyte is 10⁹ bytes.
+ * rules, the safety margin and the rest already applied; a gigabyte is 10⁹ bytes.
  */
 export interface UsageAnswer {
   /** Usage this month so far, in bytes. */

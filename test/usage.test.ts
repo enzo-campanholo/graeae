@@ -1,8 +1,8 @@
 // The usage count: what members' tabs receive over their media connections, as each tab
-// reports it over its socket, with the instance's own rules on top (the 5% margin, the
-// maximum bitrate where a tab fell silent, relayed watching twice), counted for the month
-// that resets on the owner's day. Tabs are driven only through their sockets; the owner
-// reads the count over HTTP, as the owner page does.
+// reports it over its socket, with the instance's own rules on top (the maximum bitrate
+// where a tab fell silent, relayed watching twice; the safety margin is 0%), counted for
+// the month that resets on the owner's day. Tabs are driven only through their sockets;
+// the owner reads the count over HTTP, as the owner page does.
 
 import { describe, expect, it } from "vitest";
 import type { UsageAnswer } from "../src/shared/api.ts";
@@ -51,12 +51,12 @@ async function ownerConnected() {
 }
 
 describe("the bytes a tab reports", () => {
-  it("are charged in full from the first report, with 5% added", async () => {
+  it("are charged in full from the first report, as received, with no margin on top", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 1_000_000);
 
-    expect((await usage(owner)).used).toBe(1_050_000);
+    expect((await usage(owner)).used).toBe(1_000_000);
   });
 });
 
@@ -85,7 +85,7 @@ describe("the bytes a tab reports", () => {
     await report(tab, 1_000_000);
     await report(tab, 3_000_000);
 
-    expect((await usage(owner)).used).toBe(3_150_000);
+    expect((await usage(owner)).used).toBe(3_000_000);
   });
 
   it("are made up by the next report when one is lost", async () => {
@@ -95,7 +95,7 @@ describe("the bytes a tab reports", () => {
     // The report of 2,000,000 never arrived.
     await report(tab, 5_000_000);
 
-    expect((await usage(owner)).used).toBe(5_250_000);
+    expect((await usage(owner)).used).toBe(5_000_000);
   });
 
   it("count from zero again on the tab's next media connection, after its final total", async () => {
@@ -106,7 +106,7 @@ describe("the bytes a tab reports", () => {
     await newConnection(tab);
     await report(tab, 1_000_000);
 
-    expect((await usage(owner)).used).toBe(7_350_000);
+    expect((await usage(owner)).used).toBe(7_000_000);
   });
 
   it("count from zero again after a restart of the media connection, after its final total", async () => {
@@ -117,7 +117,7 @@ describe("the bytes a tab reports", () => {
     await restartConnection(tab);
     await report(tab, 1_000_000);
 
-    expect((await usage(owner)).used).toBe(7_350_000);
+    expect((await usage(owner)).used).toBe(7_000_000);
   });
 
   it("count from zero again on a new media connection when the final total was lost", async () => {
@@ -127,7 +127,7 @@ describe("the bytes a tab reports", () => {
     await newConnection(tab);
     await report(tab, 1_000_000);
 
-    expect((await usage(owner)).used).toBe(5_250_000);
+    expect((await usage(owner)).used).toBe(5_000_000);
   });
 
   it("are never counted from zero by a lower total on the same media connection", async () => {
@@ -136,10 +136,10 @@ describe("the bytes a tab reports", () => {
     await report(tab, 4_000_000);
     await report(tab, 1_000_000);
     await report(tab, 4_000_000);
-    expect((await usage(owner)).used).toBe(4_200_000);
+    expect((await usage(owner)).used).toBe(4_000_000);
 
     await report(tab, 5_000_000);
-    expect((await usage(owner)).used).toBe(5_250_000);
+    expect((await usage(owner)).used).toBe(5_000_000);
   });
 
   it("are never counted from zero by a final total alone, with no new media connection", async () => {
@@ -149,17 +149,17 @@ describe("the bytes a tab reports", () => {
     await report(tab, 4_000_000, { final: true });
     await report(tab, 4_000_000);
 
-    expect((await usage(owner)).used).toBe(4_200_000);
+    expect((await usage(owner)).used).toBe(4_000_000);
   });
 
   it("are counted twice while the media connection is on the relay", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 1_000_000, { relayed: true });
-    expect((await usage(owner)).used).toBe(2_100_000);
+    expect((await usage(owner)).used).toBe(2_000_000);
 
     await report(tab, 2_000_000, { relayed: false });
-    expect((await usage(owner)).used).toBe(3_150_000);
+    expect((await usage(owner)).used).toBe(3_000_000);
   });
 
   it("are counted from each tab apart", async () => {
@@ -171,7 +171,7 @@ describe("the bytes a tab reports", () => {
     await report(second, 2_000_000);
     await report(tab, 1_500_000);
 
-    expect((await usage(owner)).used).toBe(3_675_000);
+    expect((await usage(owner)).used).toBe(3_500_000);
   });
 
   it("carry on from the last report through a restart of the instance", async () => {
@@ -183,7 +183,7 @@ describe("the bytes a tab reports", () => {
     const { tab: back } = await openRoom(owner, room, { tab: tab.id });
     await report(back, 3_000_000);
 
-    expect((await usage(owner)).used).toBe(3_150_000);
+    expect((await usage(owner)).used).toBe(3_000_000);
   });
 
   it("are ignored when they are not a whole number of bytes, or do not say whether they are relayed", async () => {
@@ -211,7 +211,7 @@ describe("where no later total arrives", () => {
     await instance.clock.advance(4 * SECOND);
     await tab.close();
 
-    expect((await usage(owner)).used).toBe(1_050_000 + gap);
+    expect((await usage(owner)).used).toBe(1_000_000 + gap);
   });
 
   it("a tab that falls silent is charged until its grace period runs out and the watch ends", async () => {
@@ -227,7 +227,7 @@ describe("where no later total arrives", () => {
     }
 
     // 30 seconds from the last report to the end of the grace period, at 1.5 Mbps.
-    expect((await usage(owner)).used).toBe(1_050_000 + 5_625_000);
+    expect((await usage(owner)).used).toBe(1_000_000 + 5_625_000);
   });
 
   it("a tab that reconnects in its grace period has the gap covered by its next report instead", async () => {
@@ -239,7 +239,7 @@ describe("where no later total arrives", () => {
     const { tab: back } = await openRoom(owner, room, { tab: tab.id });
     await report(back, 4_000_000);
 
-    expect((await usage(owner)).used).toBe(4_200_000);
+    expect((await usage(owner)).used).toBe(4_000_000);
   });
 
   it("a watch with no report at all is charged from its start", async () => {
@@ -263,7 +263,7 @@ describe("where no later total arrives", () => {
     await instance.clock.advance(3 * SECOND);
     await tab.close();
 
-    expect((await usage(owner)).used).toBe(2_100_000);
+    expect((await usage(owner)).used).toBe(2_000_000);
   });
 
   it("a watch that ended, with no report after it before the tab left, is charged until it ended", async () => {
@@ -277,7 +277,7 @@ describe("where no later total arrives", () => {
     await tab.close();
 
     // Two seconds at 1.5 Mbps, not five.
-    expect((await usage(owner)).used).toBe(1_050_000 + 375_000);
+    expect((await usage(owner)).used).toBe(1_000_000 + 375_000);
   });
 
   it("relayed watching is charged twice", async () => {
@@ -287,7 +287,7 @@ describe("where no later total arrives", () => {
     await instance.clock.advance(4 * SECOND);
     await tab.close();
 
-    expect((await usage(owner)).used).toBe(2_100_000 + 1_500_000);
+    expect((await usage(owner)).used).toBe(2_000_000 + 1_500_000);
   });
 
   it("a sharer's upload is not charged: a share adds only what its viewers receive", async () => {
@@ -302,7 +302,7 @@ describe("where no later total arrives", () => {
     await instance.clock.advance(60 * SECOND);
     await tab.close();
 
-    expect((await usage(owner)).used).toBe(10_500);
+    expect((await usage(owner)).used).toBe(10_000);
   });
 });
 
@@ -330,14 +330,14 @@ describe("the month", () => {
     await receivedToday(owner, room, 1_000_000);
 
     expect(await usage(owner)).toMatchObject({
-      used: 1_050_000,
+      used: 1_000_000,
       resetDay: 1,
       since: Date.parse("2037-01-01T00:00:00Z"),
       until: Date.parse("2037-02-01T00:00:00Z"),
     });
 
     await instance.clock.advance(Date.parse("2037-01-31T23:59:59Z") - instance.clock.now());
-    expect((await usage(owner)).used).toBe(1_050_000);
+    expect((await usage(owner)).used).toBe(1_000_000);
     await instance.clock.advance(SECOND);
     expect(await usage(owner)).toMatchObject({ used: 0, since: Date.parse("2037-02-01T00:00:00Z") });
   });
@@ -351,7 +351,7 @@ describe("the month", () => {
     const set = await setResetDay(owner, 15);
     expect(set.status).toBe(200);
     expect(await set.json<UsageAnswer>()).toMatchObject({
-      used: 1_050_000,
+      used: 1_000_000,
       resetDay: 15,
       since: Date.parse("2036-12-15T00:00:00Z"),
       until: Date.parse("2037-01-15T00:00:00Z"),
@@ -360,11 +360,11 @@ describe("the month", () => {
     await instance.clock.advance(Date.parse("2037-01-15T00:00:00Z") - instance.clock.now());
     expect((await usage(owner)).used).toBe(0);
     await receivedToday(owner, room, 2_000_000);
-    expect((await usage(owner)).used).toBe(2_100_000);
+    expect((await usage(owner)).used).toBe(2_000_000);
 
     // Back to the first: the month now holds both days.
     await setResetDay(owner, 1);
-    expect(await usage(owner)).toMatchObject({ used: 3_150_000, since: Date.parse("2037-01-01T00:00:00Z") });
+    expect(await usage(owner)).toMatchObject({ used: 3_000_000, since: Date.parse("2037-01-01T00:00:00Z") });
   });
 
   it("resets on the last day of a month too short for the owner's day", async () => {
@@ -402,12 +402,12 @@ describe("the month", () => {
     const room = await setUpOwner(owner);
     await receivedToday(owner, room, 10_000_000_000);
 
-    // The first day counts as a whole one: 10.5 GB a day for 31 days.
-    expect(await usage(owner)).toMatchObject({ used: 10_500_000_000, projected: 325_500_000_000 });
+    // The first day counts as a whole one: 10 GB a day for 31 days.
+    expect(await usage(owner)).toMatchObject({ used: 10_000_000_000, projected: 310_000_000_000 });
 
     await instance.clock.advance(Date.parse("2037-01-11T00:00:00Z") - instance.clock.now());
-    // 10.5 GB in 10 days, for 31 days.
-    expect(await usage(owner)).toMatchObject({ used: 10_500_000_000, projected: 32_550_000_000 });
+    // 10 GB in 10 days, for 31 days.
+    expect(await usage(owner)).toMatchObject({ used: 10_000_000_000, projected: 31_000_000_000 });
   });
 
   it("is held against a usage budget of 1,000 GB", async () => {

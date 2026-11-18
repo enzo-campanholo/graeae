@@ -11,10 +11,16 @@
 //   connection or restarted its old one (the tab sends its final total before either). A
 //   total lower than the last on the same connection is ignored, so a tab cannot have
 //   what it already reported charged again.
-// - Every reported byte has a fixed 5% added (`SAFETY_MARGIN_PERCENT`), so the count never reads
-//   below Cloudflare's own figure.
+// - Every reported byte has a fixed margin added (`SAFETY_MARGIN_PERCENT`), so the count
+//   never reads below Cloudflare's own figure. It is 0%: on a real session the browser's
+//   own total read 7.9% above Cloudflare's media server egress, since it counts packet
+//   overhead that Cloudflare leaves out, and 5% on top took the count past the 0 to 10%
+//   above it that the spec allows.
 // - Relayed watching is counted twice (`RELAYED_COUNTS_TWICE`): what a tab reports while
 //   its connection is on the relay, and any charge for a gap after such a report.
+//   Cloudflare bills traffic between its relay and its media server once, but on a TCP
+//   relay the media server's egress read 16% above what the browser received, so counting
+//   it once could read below the bill.
 // - Where no later total arrives, each share the tab watched is charged at its maximum
 //   bitrate from the tab's last report (or the watch's start, if later) until the instance
 //   recorded the watch as ended. A watch that ends while its tab can still report waits:
@@ -31,8 +37,11 @@
 import { GIGABYTE, type UsageAnswer } from "../shared/api.ts";
 import type { BudgetLevel } from "../shared/socket/usage.ts";
 
-/** The share of every reported byte added on top, in percent. A constant, not a setting. */
-export const SAFETY_MARGIN_PERCENT = 5;
+/**
+ * The share of every reported byte added on top, in percent. A constant, not a setting;
+ * see the top of this file for why it is 0.
+ */
+export const SAFETY_MARGIN_PERCENT = 0;
 
 /** Whether relayed watching is counted twice. The one place to switch the doubling off. */
 export const RELAYED_COUNTS_TWICE = true;
