@@ -15,7 +15,8 @@
     "types:generate": "wrangler types",
     "lint": "eslint .",
     "test": "vite build --mode fake-media && vitest run && playwright test",
-    "test:browser": "vite build --mode fake-media && playwright test"
+    "test:browser": "vite build --mode fake-media && playwright test",
+    "capture": "vite build --mode fake-media && playwright test -c scripts/capture/capture.config.ts"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",
