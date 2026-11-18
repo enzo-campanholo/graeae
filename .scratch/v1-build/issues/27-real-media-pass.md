@@ -23,7 +23,7 @@ Windows 11, a supported Chromium browser, a game running, monitor at 120 Hz:
 - [ ] Hand a screen share over to a second device: the viewer is carried over after a short gap
 - [ ] Remove a member who is sharing and watching: both stop within about 2 seconds
 - [ ] Deploy while a share is being watched: at most a "reconnecting" flicker
-- [ ] A tab on the relay passes the shortened renewal without losing its picture; so does a tab on a direct path
+- [x] A tab on the relay passes the shortened renewal without losing its picture; so does a tab on a direct path (checked by an agent on headless Chromium, ticket 25)
 
 Windows 11, Firefox:
 

@@ -466,7 +466,7 @@ A failure outside the named gaps is fixed or added to the platform table as a ga
 - Vivaldi and Brave each share at 1080p60 with hardware H.264. A browser that fails drops to Limited with its gap named.
 - Single-application audio for a game started through a launcher. A failure adds a caveat.
 - ~~Both qualities stay on the hardware encoder with the game's frame rate unchanged.~~ Passed in build ticket 17 (RTX 5070 Ti, Chrome on Windows 11, CS2), but two qualities are switched off for the media server's freezes, as set out under Encoding and quality.
-- An expired relay credential and a relay in use; a connection restart with a fresh credential without a visible blip. If the restart fails, a tab on the relay reconnects once at 11 hours.
+- ~~An expired relay credential and a relay in use; a connection restart with a fresh credential without a visible blip. If the restart fails, a tab on the relay reconnects once at 11 hours.~~ Passed in build ticket 25, with the lives shortened, on Cloudflare: two restarts on a TCP relay, each answered in under a second, with the picture held through both credentials running out.
 
 **Measured once something is built.**
 
