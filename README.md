@@ -153,6 +153,8 @@ pnpm run deploy
 
 Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first: a release that needs a step by hand says so there. You need no secrets file; the Worker keeps its secrets.
 
+You can deploy while people are watching. Cloudflare holds the new release back for up to 5 minutes while a room is busy, so pages already open can keep showing the old one until then. When the switch comes, open pages reconnect in under a second, and what people share and watch carries on.
+
 Changes to stored data are applied by the instance itself, the first time it starts after the deploy. Members, devices, rooms and settings are kept. **Going back to an older release is not supported** once a newer one has run: changes to stored data only go forward, and an older release is not made to read data a newer one has changed.
 
 ## Looking after an instance
