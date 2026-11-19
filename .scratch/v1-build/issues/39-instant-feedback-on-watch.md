@@ -53,3 +53,4 @@ Owner's note (2026-11-18), on real media: "Selecting which transmission to watch
   - Making the media connection when the room opens, so the first watch skips it. This costs a media connection per open tab.
   - Asking the sharer for a fresh keyframe on a new watch, if "first frame" turns out to be the long step.
 - **A second single click** (not a double-click) during the wait still takes the share off. That is now what the lit icon says it will do.
+- **Deployed to `graeae-test`** on 2026-11-19, from `9eb31e2` (version `fca44756`), for the owner to try on real media. The owner had already tried it on the fakes (`pnpm dev:fake-media`): "Looks good".
