@@ -73,3 +73,53 @@ In all three:
 **Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold in all three: none of them touches the stage or the bar's width. Only C changes a count outside those rules: the list of rooms goes from one click to two.
 
 **Waiting on the owner:** what you like and dislike in each. Round 2 combines those.
+
+### 2026-11-19: chosen and built, A
+
+**The owner's verdict on round 1.** A, a heading under the tools.
+- **A:** it fixes what the owner noticed, that the room's name did not stand apart from the names under it.
+- **B is out:** most members have one room and need not know rooms exist, so a path through "Rooms" says too much.
+- **C is out:** nobody needs to switch between rooms that fast.
+- **The gap between the tools** (nothing between the two ends of their row) looked odd to the owner, but likely only for being new. It stays as shown. If it still reads as odd once used, the next thing to try is a shorter tools row, on the room and the owner page alike, not a new round. `ignore.md` says so.
+
+**Built.**
+- **`BarHeader.svelte`:**
+  - A 52px row of tools: the fold toggle and home on the left, the gear and your avatar on the right.
+  - Under it, the room's name as the page's `h1` at the headline step (24px/32px, 500, -0.01em), the size of "Rooms", "You" and an owner section's heading. Its words start on the "Here" heading's line.
+  - A long name wraps, balanced, rather than being cut. Names are at most 40 characters, so that is two lines for most, and a word too long for the line breaks inside it.
+  - While the name loads, a placeholder bar holds the heading's line, so the people do not move when it arrives.
+- **The owner page (`Owner.svelte`):** the house on its own 52px row, then "Owner" at the headline step. "Owner" is a `p`, not a heading, since each section's own name is the page's heading.
+- **The headline's tracking is a token now:** `--headline-tracking` in the scale block, as `--text-xl--letter-spacing`. The four headings at that step (plain pages, owner sections, the room's name, "Owner") drop their `tracking-[-0.01em]` literal.
+- **The docs:**
+  - **DESIGN.md:** Headline names the room's name and "Owner", Body Strong no longer names the bar header, and the Layout paragraphs for the room and the owner page describe the two rows.
+  - **The sidecar:** the same in `design.json`'s typography.
+  - **`ignore.md`:** a line for this call and its cost.
+
+**Tests.** Test first, at Seam 2, in `moves.spec.ts`, beside the side column's other family rules (one width, one place):
+- **"The room's name heads the bar under its tools, as large as a page's heading, and the owner page's name heads its navigation the same way."**
+  - The name is under the tools' row and above "Here", its words on "Here"'s line.
+  - It is set as the People section's heading is (size, weight, tracking).
+  - On the owner page, "Owner" is under the house, on the same line, set the same.
+- **Red, then green.** It was red on the old header (the name beside the tools) and green once built.
+- **A hole the review found.** The review asked for `toBeCloseTo` in place of `toBe` for the words' start. That showed the first version's page helpers were passed as strings and returned `undefined`, so its checks on the words' line and on the type compared `undefined` with `undefined`. They now run as functions.
+- **Shown to bite.** For a check, the name was set back to the old 15px (on the right line, then 4px off it). The test went red on each: type `15px`/`normal` against `24px`/`-0.24px`, and the line 20 against 16.
+
+`pnpm typecheck` and `pnpm lint` are clean. The Workers tests (431) passed, and the browser journeys (53) passed in full twice. In an earlier full run, the audio journey once counted 3 shares on the stage where it waits for 4. It then passed alone three times and in the next two full runs, so it is a flake, not this ticket's. As in tickets 40 to 42, `dist/graeae/.dev.vars` was deleted between the build and `playwright test` (ticket 46).
+
+The shots after the build are in `.impeccable/review/captures/t43-after/` (not committed), set against `t42-after`. They were taken one project at a time (`--project=samples`, then `--project=journeys`). A first capture, run alongside a typecheck and lint, was killed for memory, as in ticket 32.
+
+**Review.**
+- **Standards:**
+  - DESIGN.md said a long name is never cut, but the heading was clamped at two lines: the clamp is gone and a long word breaks.
+  - The headline's `-0.01em` was written four times: now a token.
+  - Vague names in the test (`typeOf`, `room` for a box, `people` for a heading, `line`) became `typeSetting`, `nameBox`, `sectionHeading` and `peopleLine`.
+  - Exact comparison of fractional pixels became `toBeCloseTo`.
+  - All fixed.
+- **Spec:** this comment was missing, and the costs at 1366x768 were unshown. Both are covered here.
+- **Left as is:** the empty spacer in the tools row, rather than `ml-auto` on whichever of the gear or the avatar comes first.
+
+**What it costs, as round 1 said.** The people start 32px lower (64px under a two-line name). At 1366x768 with both of your shares live and a note showing (`room--sharer-notes`), one row fewer is in view before the list scrolls: your own row, which was half-cut before.
+
+**Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold. The bar's width and the stage are unchanged, and the journeys that measure them pass. Home and the gear are still one click.
+
+**Branch `t43-options`** (`f2c999d`) can be deleted once this is deployed. With it go `?option=`, `?sample=member` and `?sample=long`.

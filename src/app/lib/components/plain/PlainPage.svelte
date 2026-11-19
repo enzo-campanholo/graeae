@@ -50,7 +50,7 @@
     </nav>
   </header>
   <main class="grid gap-8">
-    <h1 class="text-xl font-medium tracking-[-0.01em]">{title}</h1>
+    <h1 class="text-xl font-medium">{title}</h1>
     {@render children()}
   </main>
 </div>

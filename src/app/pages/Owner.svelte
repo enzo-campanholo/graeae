@@ -103,7 +103,7 @@
            headline step. Not a heading: each section's own name is the page's heading. -->
       <header>
         <div class="flex h-header items-center"><IconButton label="Rooms" href={home}><House /></IconButton></div>
-        <p class="px-2 text-xl font-medium tracking-[-0.01em]">Owner</p>
+        <p class="px-2 text-xl font-medium">Owner</p>
       </header>
       <nav class="grid gap-0.5 pt-3" aria-label="Owner page">
         {#each Object.entries(sections) as [key, item] (key)}
@@ -141,7 +141,7 @@
           {#snippet children(key)}
             <div class="grid gap-8">
               <div class="grid gap-1">
-                <h1 class="text-xl font-medium tracking-[-0.01em]">{sections[key].label}</h1>
+                <h1 class="text-xl font-medium">{sections[key].label}</h1>
                 <p class="text-muted-foreground">{sections[key].description}</p>
               </div>
               {#if key === "people" && !sample}<People />{/if}

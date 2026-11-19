@@ -75,6 +75,7 @@
   --title-lh: 24px;
   --headline: 24px; /* a page's heading */
   --headline-lh: 32px;
+  --headline-tracking: -0.01em;
   --tag: 12px; /* the "720p" mark */
   --tag-lh: 16px;
   --key: 11px; /* a keyboard hint */
@@ -144,6 +145,7 @@
   --text-base--line-height: var(--title-lh);
   --text-xl: var(--headline);
   --text-xl--line-height: var(--headline-lh);
+  --text-xl--letter-spacing: var(--headline-tracking);
   --text-tag: var(--tag);
   --text-tag--line-height: var(--tag-lh);
   --text-key: var(--key);

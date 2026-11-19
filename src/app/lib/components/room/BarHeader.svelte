@@ -4,7 +4,8 @@
   // toggle that folds the bar into the rail at the far left, where the rail keeps it, and
   // the home icon (back to the list of rooms, for a member with more than one room); on the
   // right your avatar, a menu with the way to "You", beside the gear (the owner page, for
-  // the owner). A long name wraps to a second line rather than being cut.
+  // the owner). A long name wraps, balanced, rather than being cut (a name is at most 40
+  // characters), and a word too long for the line breaks inside it.
   import House from "@lucide/svelte/icons/house";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import Settings from "@lucide/svelte/icons/settings";
@@ -48,6 +49,6 @@
       <span class="bg-raised h-5 w-36 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
     </div>
   {:else}
-    <h1 class="line-clamp-2 px-2 text-xl font-medium tracking-[-0.01em]" title={name}>{name}</h1>
+    <h1 class="px-2 text-xl font-medium wrap-break-word">{name}</h1>
   {/if}
 </header>
