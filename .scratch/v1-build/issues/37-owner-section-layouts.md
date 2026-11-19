@@ -102,3 +102,15 @@ Each was red before its slice and green after. `pnpm test` passes in full: 428 W
 - **Left as is:** Rooms and People each keep their own small `send` and `refresh`, since what they refresh differs. Each control in the inspector names `bg-raised-2` itself, as the "Let back in" panel already did. The pace line shows the true share once usage passes the budget (say 104%), while the bar stops full.
 
 **Not done here.** Deploy to `graeae-test`. The round 1 and 2 option code stays on branch `t37-options`, which can be deleted.
+
+### 2026-11-18: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-18, from `2615bbf` (version `8527ac41`).
+- The live page names the new build straight away (`index-DCzo2pU2.css`, `index-V-HYaJs8.js`).
+- Its stylesheet has no `--figure`, and its script carries the inspector's "Usage settings" and the meter's pace line.
+- The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**Cleaned up.**
+- Branch `t37-options` is deleted, so `?option=` no longer exists anywhere.
+- The round 1 and 2 shots (`t37-r1`, `t37-r2`) are deleted, so the comments above that point to them describe what was shown, not files to open.
+- `t37-after` stays, beside `t36-after`.
