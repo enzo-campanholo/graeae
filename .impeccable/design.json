@@ -288,7 +288,7 @@
     "typographyMeta": {
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page heading of a plain page and the owner page."
+        "purpose": "Page heading of a plain page and the owner page; the room's name under the bar's tools, and \"Owner\" under the owner navigation's house."
       },
       "title": {
         "displayName": "Title",
@@ -300,7 +300,7 @@
       },
       "body-strong": {
         "displayName": "Body Strong",
-        "purpose": "Member and room names, section titles, button labels, the room name in the bar header."
+        "purpose": "Member names, room names in lists, section titles, button labels."
       },
       "label": {
         "displayName": "Label",

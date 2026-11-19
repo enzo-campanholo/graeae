@@ -3,9 +3,10 @@
 // rooms for a member with one room. `pnpm perf` times every move; these hold the rules
 // in place. A move also keeps the side column one width, from the room's bar to the owner
 // page's navigation (ticket 35), and every owner section puts its side column in one
-// place (ticket 36).
+// place (ticket 36). The room's name, and "Owner" on the owner page, head that column as
+// a page's heading does, under its tools (ticket 43).
 
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { SETUP_SECRET } from "./app.ts";
 
 // Journeys share one instance. This one only looks, as the owner, who has one room here:
@@ -124,6 +125,53 @@ test("the side bar is one width from the room to the owner page", async ({ brows
   await expect(ownerSide).toBeVisible();
 
   expect((await ownerSide.boundingBox())!.width).toBe(bar.width);
+});
+
+/** How `element` is set: its size, weight and tracking. */
+const typeOf = (element: Locator) =>
+  element.evaluate(
+    "(node) => { const s = getComputedStyle(node); return { size: s.fontSize, weight: s.fontWeight, tracking: s.letterSpacing }; }",
+  ) as Promise<{ size: string; weight: string; tracking: string }>;
+
+/** Where `element`'s words start, past any padding. */
+const wordsStart = (element: Locator) =>
+  element.evaluate(
+    "(node) => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().left; }",
+  ) as Promise<number>;
+
+test("the room's name heads the bar under its tools, as large as a page's heading, and the owner page's name heads its navigation the same way", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner } = await asOwner(browser, baseURL);
+  const bar = owner.getByRole("complementary", { name: "People" });
+  const name = bar.getByRole("heading", { name: "First room", level: 1 });
+  const here = bar.getByRole("heading", { name: /^Here/ });
+  const tools = (await bar.getByRole("button", { name: "Hide the bar" }).boundingBox())!;
+  const room = (await name.boundingBox())!;
+
+  // Under the tools, above the people, its words on the line the people's heading starts from.
+  expect(room.y).toBeGreaterThanOrEqual(tools.y + tools.height);
+  expect(room.y + room.height).toBeLessThanOrEqual((await here.boundingBox())!.y);
+  const line = await wordsStart(here);
+  expect(await wordsStart(name)).toBe(line);
+
+  // Set as the heading of an owner section is, so it reads as the page's own heading and
+  // not as one more name in the list under it.
+  const roomType = await typeOf(name);
+
+  await owner.goto("/owner/people");
+  const people = owner.getByRole("heading", { name: "People", level: 1 });
+  await expect(people).toBeVisible();
+  expect(roomType).toEqual(await typeOf(people));
+
+  // The owner page's navigation: "Owner" under the house, set the same and on the same line.
+  const side = owner.getByRole("complementary").filter({ has: owner.getByRole("navigation", { name: "Owner page" }) });
+  const house = (await side.locator("header").getByRole("link", { name: "Rooms" }).boundingBox())!;
+  const ownerName = side.getByText("Owner", { exact: true });
+  expect((await ownerName.boundingBox())!.y).toBeGreaterThanOrEqual(house.y + house.height);
+  expect(await wordsStart(ownerName)).toBe(line);
+  expect(await typeOf(ownerName)).toEqual(roomType);
 });
 
 test("every owner section puts its side column at the same place", async ({ browser, baseURL }) => {

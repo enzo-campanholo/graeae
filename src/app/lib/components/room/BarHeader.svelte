@@ -1,8 +1,10 @@
 <script lang="ts">
-  // The bar's header: the room's name centred between the home icon (back to the list
-  // of rooms, for a member with more than one room) on the left and your avatar on the
-  // right, a menu with the way to "You", beside the gear (the owner page, for the owner).
-  // The toggle that folds the bar into the rail sits at the far left, where the rail keeps it.
+  // The bar's header: a row of tools, then the room's name under it as the page's heading,
+  // at the headline step, as "Rooms", "You" and an owner section's are. The tools: the
+  // toggle that folds the bar into the rail at the far left, where the rail keeps it, and
+  // the home icon (back to the list of rooms, for a member with more than one room); on the
+  // right your avatar, a menu with the way to "You", beside the gear (the owner page, for
+  // the owner). A long name wraps to a second line rather than being cut.
   import House from "@lucide/svelte/icons/house";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import Settings from "@lucide/svelte/icons/settings";
@@ -27,24 +29,25 @@
   } = $props();
 </script>
 
-<!-- Each side is as wide as two icon buttons and their gap, so the name sits in the middle. -->
-<header class="grid h-header grid-cols-[calc(2*var(--control-sm)+0.25rem)_1fr_calc(2*var(--control-sm)+0.25rem)] items-center">
-  <div class="flex items-center gap-1">
+<header>
+  <div class="flex h-header items-center gap-1">
     <IconButton label="Hide the bar" key="[" onclick={oncollapse}><PanelLeftClose /></IconButton>
     {#if home}
       <IconButton label="Rooms" href="/"><House /></IconButton>
     {/if}
-  </div>
-  {#if name === null}
-    <span class="bg-raised mx-auto h-3.5 w-24 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
-  {:else}
-    <h1 class="truncate px-1 text-center text-sm font-medium" title={name}>{name}</h1>
-  {/if}
-  <div class="flex items-center justify-end gap-1">
+    <span class="flex-1"></span>
     <!-- New tabs, so the room, its shares and its watching carry on meanwhile. -->
     {#if gear}
       <IconButton label="Owner page" href="/owner" target="_blank"><Settings /></IconButton>
     {/if}
     <YouMenu name={me} owner={gear} newTab />
   </div>
+  {#if name === null}
+    <!-- The heading's own line height, so the people do not move when the name arrives. -->
+    <div class="flex h-[var(--headline-lh)] items-center px-2">
+      <span class="bg-raised h-5 w-36 rounded-sm" aria-hidden="true" {@attach heldBack}></span>
+    </div>
+  {:else}
+    <h1 class="line-clamp-2 px-2 text-xl font-medium tracking-[-0.01em]" title={name}>{name}</h1>
+  {/if}
 </header>

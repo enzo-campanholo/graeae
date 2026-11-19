@@ -99,9 +99,11 @@
 {:else}
   <div class="flex h-dvh py-2 pr-2">
     <aside class="flex w-bar shrink-0 flex-col px-2">
-      <header class="grid h-header grid-cols-[var(--control-sm)_1fr_var(--control-sm)] items-center">
-        <IconButton label="Rooms" href={home}><House /></IconButton>
-        <span class="text-center text-sm font-medium">Owner</span>
+      <!-- As the room's bar: the tools on a row, then the page's name under them at the
+           headline step. Not a heading: each section's own name is the page's heading. -->
+      <header>
+        <div class="flex h-header items-center"><IconButton label="Rooms" href={home}><House /></IconButton></div>
+        <p class="px-2 text-xl font-medium tracking-[-0.01em]">Owner</p>
       </header>
       <nav class="grid gap-0.5 pt-3" aria-label="Owner page">
         {#each Object.entries(sections) as [key, item] (key)}
