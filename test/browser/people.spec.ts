@@ -44,11 +44,10 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(jo.getByRole("heading", { name: "First room" })).toBeVisible();
   await expect(jo.getByRole("link", { name: "Rooms" })).toHaveCount(0);
 
-  // The People section lists Jo, present, with one room and one device.
+  // The People section lists Jo, present; picked, Jo shows one room and one device.
   await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "People" }).click();
   const members = admin.getByRole("region", { name: "Members" });
   const joRow = members.getByRole("button", { name: /^Jo\b/ });
-  await expect(joRow).toContainText("First room");
   await expect(joRow).toContainText("Here now");
   await joRow.click();
   const panel = admin.getByRole("complementary", { name: "Jo" });
@@ -94,7 +93,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(jo.getByRole("heading", { name: "Nothing here" })).toBeVisible({ timeout: CUT_OFF_MS });
   await expect(confirm).toBeHidden();
   await expect(first).not.toBeChecked();
-  await expect(joRow).toContainText("Late nights");
+  await expect(second).toBeChecked();
 
   // Jo goes to the room they kept. Removing them from graeae says what it means.
   await jo.goto("/");

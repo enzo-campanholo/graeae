@@ -48,13 +48,21 @@ export function andList(names: readonly string[]): string {
  * reads "in 7 days", and a larger unit is used once there are at least two of it.
  */
 export function timeLeft(until: number, now: number): string {
-  const left = until - now;
+  return `in ${span(until - now)}`;
+}
+
+/** The same, as an invite's line in a list puts it: "7 days left", "a minute left". */
+export function timeRemaining(until: number, now: number): string {
+  return `${span(until - now)} left`;
+}
+
+function span(left: number): string {
   const days = Math.round(left / 86_400_000);
-  if (days >= 2) return `in ${days} days`;
+  if (days >= 2) return `${days} days`;
   const hours = Math.round(left / 3_600_000);
-  if (hours >= 2) return `in ${hours} hours`;
+  if (hours >= 2) return `${hours} hours`;
   const minutes = Math.round(left / 60_000);
-  return minutes >= 2 ? `in ${minutes} minutes` : "in a minute";
+  return minutes >= 2 ? `${minutes} minutes` : "a minute";
 }
 
 /**

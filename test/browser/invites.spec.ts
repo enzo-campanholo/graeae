@@ -36,19 +36,27 @@ test("an invite, from the owner page to the new member standing in the room", as
   await form.getByLabel("Display name").fill("Bia");
   await form.getByRole("button", { name: "Create and copy link" }).click();
 
-  // The link is on the clipboard at the press, and shown with a way to copy it again.
-  await expect(owner.getByText("Bia's link is on your clipboard")).toBeVisible();
+  // The new invite takes the form's place beside the list: its link is on the clipboard
+  // at the press, and shown with a way to copy it again.
+  const made = owner.getByRole("complementary", { name: "Bia" });
+  await expect(made).toContainText("Bia's link is on your clipboard");
   const link = await clipboard(owner);
   expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{22}$/);
-  await expect(owner.getByLabel("Invite link")).toHaveText(link);
-  await expect(owner.getByRole("button", { name: "Copy again" })).toBeVisible();
-  await expect(form.getByLabel("Display name")).toHaveValue("");
+  await expect(made.getByLabel("Invite link")).toHaveText(link);
+  await expect(made.getByRole("button", { name: "Copy again" })).toBeVisible();
+  await expect(form).toHaveCount(0);
 
   const pending = owner.getByRole("region", { name: "Pending invites" });
   const row = pending.getByRole("listitem", { name: "Bia" });
-  await expect(row).toContainText("First room · expires in 7 days");
+  await expect(row).toContainText("First room");
+  await expect(row).toContainText("7 days left");
+
+  // "New invite" brings the form back, empty; picking the invite shows it again, to copy.
+  await pending.getByRole("button", { name: "New invite" }).click();
+  await expect(form.getByLabel("Display name")).toHaveValue("");
+  await row.getByRole("button").click();
   await owner.evaluate("navigator.clipboard.writeText('')");
-  await row.getByRole("button", { name: "Copy link" }).click();
+  await made.getByRole("button", { name: "Copy again" }).click();
   await expect.poll(() => clipboard(owner)).toBe(link);
 
   // The invited person sees one button, and the press takes them into the room.
@@ -84,10 +92,12 @@ test("the owner cancels an invite, and its link shows nothing here", async ({ br
   await owner.getByRole("button", { name: "Create and copy link" }).click();
   const link = (await owner.getByLabel("Invite link").textContent())!.trim();
   const pending = owner.getByRole("region", { name: "Pending invites" });
-  await pending.getByRole("listitem", { name: "Caio" }).getByRole("button", { name: "Cancel invite" }).click();
+  await owner.getByRole("complementary", { name: "Caio" }).getByRole("button", { name: "Cancel invite" }).click();
 
+  // Gone from the list, and the form is back beside it.
   await expect(pending.getByRole("listitem")).toHaveCount(0);
   await expect(owner.getByLabel("Invite link")).toHaveCount(0);
+  await expect(owner.getByRole("form", { name: "New invite" })).toBeVisible();
   const caio = await newBrowser(browser, baseURL);
   await caio.goto(link);
   await expect(caio.getByRole("heading", { name: "Nothing here" })).toBeVisible();

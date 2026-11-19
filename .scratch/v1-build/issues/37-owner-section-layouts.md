@@ -6,7 +6,7 @@ Owner's note (2026-11-18): "I like how the settings are divided, but I don't lik
 
 **Blocked by:** 34, 36 (options can be shown before then; building waits on them)
 
-**Status:** needs-info
+**Status:** resolved
 
 ## Options first
 
@@ -63,3 +63,42 @@ All three keep ticket 36's frame: the centred 1000px column, the headings at one
   - **Usage.** A tick on the meter marks today, with a line under it: "41% of the usage budget used, on day 19 of 30." The pace reads at a glance without a chart that implies a daily history. The statement beneath is unchanged.
 
 **Waiting on the owner:** C or C-plus, or either with changes.
+
+### 2026-11-18: chosen and built, C with C-plus's Usage
+
+**The owner's verdict on round 2.** C, with Usage from C-plus. People stays plain C: rooms on each member's line add nothing, since the same rooms are just to the right in the inspector. Usage keeps C-plus's tick for today and its line.
+
+**Built.** Every section is a short list on the left, one 40px line each, and in the side column the **inspector** (`Inspector.svelte`): a raised panel holding what is picked, in full. Ticket 36's frame is unchanged, so the inspector starts at one x in all four sections.
+- **People:** each line holds the avatar, the name and the last visit. The inspector holds the member picked: rooms as ticks, then devices, then under a rule "Let back in" (with its link) and "Remove from graeae". With nobody picked, it says how many members there are and how many are here.
+- **Invites:** "New invite" heads the list and is picked as the section opens, so the inspector holds the form. A new invite then takes the form's place, with its link on the clipboard. An invite picked shows its link, rooms, Copy and Cancel invite. Copying or cancelling an invite now takes a pick first (the list's line had them before); making one costs what it did.
+- **Rooms:** "New room" heads the list and is picked as the section opens; a new room then takes its place. A room picked shows its address, Copy link and Rename, and who has access, as ticks with "here" by whoever is in it.
+  - Access can now be changed from the room's side. A tick grants at the press; an untick asks in the removal confirm, in People's words. Those words moved into `removal.ts`, which both sections use.
+  - Rooms asks for everyone every 15 seconds while in view, as People does, so its "here" counts stay live.
+- **Usage:**
+  - **Meter:** the meter has a tick at today, with "N% of the usage budget used, on day D of M." under it.
+  - **Statement:** the month as a statement of lines: used so far, projected, the usage budget, the 1,000 GB Cloudflare includes, the cost so far, the projected cost (capped at the budget, where watching stops) and the next reset. The two settings are in the inspector.
+  - **Amber:** only the projection turns amber when it passes the budget. The mock also coloured the projected cost, which read wrong at $0.00.
+- **Design system:**
+  - **Figure step:** the 30px figure step is gone. It served only Usage's three big figures, which the statement replaces. It was removed from `app.css`, DESIGN.md and the sidecar.
+  - **DESIGN.md entries:** the owner page entry describes the inspector, and the Usage Meter entry describes the statement and the tick.
+  - **DESIGN.md rules:** the Tone Not Lines Rule now allows a rule inside one surface where reading goes in order (the statement's lines, the inspector's actions). The One Scale Rule lists the tick among the sizes set by hand.
+  - **app.css:** its scale comments say where `--row`, `--item-row` and `--title` are now used.
+- **Differences from the mocks:**
+  - The inspector is solid `raised` rather than raised at 60%, so it is a step of the scale and not a blend.
+  - An empty room's line reads "No one here", as on the list of rooms.
+
+**Tests.** Seam 2 journeys, test first, one slice at a time:
+- **`invites.spec.ts`:** the new invite takes the form's place with its link; "New invite" brings the form back; picking the invite shows it again; Cancel returns the form.
+- **`rooms.spec.ts`:** the section opens on the form; a room's address and Rename are in its inspector. New at the end: Gil's access from First room's side, where the untick asks first and the tick gives it back.
+- **`people.spec.ts`:** no longer reads rooms off the member's line.
+- **`usage.spec.ts`:** the pace line, "Included by Cloudflare" and "Cost so far".
+- **`moves.spec.ts`:** every section's inspector at People's x and width.
+
+Each was red before its slice and green after. `pnpm test` passes in full: 428 Workers tests and 44 browser tests, before the review's fixes. After them, the owner journeys pass again (invites, moves, rooms, people), and `pnpm typecheck` and `pnpm lint` are clean. The capture's owner shots, against ticket 36's, are in `.impeccable/review/captures/t37-after/` (not committed).
+
+**Review.**
+- **Spec:** nothing blocking. It noted that this verdict was not yet written here, which this comment does.
+- **Standards:** doc drift in DESIGN.md's rules and `app.css`'s comments, fixed as above. Of its smells, these are fixed: "focus" for what is picked (now `picked`, as in People), a forwarding `roomName`, and invites' "7 days left" built by trimming `timeLeft` (now `timeRemaining` in `$lib/words`).
+- **Left as is:** Rooms and People each keep their own small `send` and `refresh`, since what they refresh differs. Each control in the inspector names `bg-raised-2` itself, as the "Let back in" panel already did. The pace line shows the true share once usage passes the budget (say 104%), while the bar stops full.
+
+**Not done here.** Deploy to `graeae-test`. The round 1 and 2 option code stays on branch `t37-options`, which can be deleted.

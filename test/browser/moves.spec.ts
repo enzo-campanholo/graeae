@@ -129,12 +129,13 @@ test("the side bar is one width from the room to the owner page", async ({ brows
 test("every owner section puts its side column at the same place", async ({ browser, baseURL }) => {
   const { owner } = await asOwner(browser, baseURL);
   await owner.setViewportSize({ width: 1920, height: 953 });
-  // What each section's side column holds as it opens; People opens with nobody chosen.
+  // Each section's inspector as it opens: People with nobody picked, Invites and Rooms on
+  // their "New" forms.
   const sides = {
     people: owner.getByRole("complementary", { name: "Member" }),
-    invites: owner.getByRole("form", { name: "New invite" }),
-    rooms: owner.getByRole("form", { name: "New room" }),
-    usage: owner.getByRole("form", { name: "Usage budget" }),
+    invites: owner.getByRole("complementary", { name: "New invite" }),
+    rooms: owner.getByRole("complementary", { name: "New room" }),
+    usage: owner.getByRole("complementary", { name: "Usage settings" }),
   };
 
   const placed = new Map<string, { x: number; width: number }>();

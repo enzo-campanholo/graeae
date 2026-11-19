@@ -286,17 +286,13 @@
       }
     },
     "typographyMeta": {
-      "figure": {
-        "displayName": "Figure",
-        "purpose": "The owner Usage section's three figures, where the number is the point."
-      },
       "headline": {
         "displayName": "Headline",
         "purpose": "Page heading of a plain page and the owner page."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "The \"Nothing here\" heading."
+        "purpose": "The \"Nothing here\" heading, a confirm's title, the heading of an owner section's inspector."
       },
       "body": {
         "displayName": "Body",
@@ -509,7 +505,7 @@
       },
       {
         "name": "The Tone Not Lines Rule",
-        "body": "Surfaces separate by tone, never by borders. The two 1px inset rings in the build sit on controls, not surfaces: the outline of an absent member's avatar (absence drawn as an empty circle) and the eye dot's 2px cut-out ring in the colour behind it.",
+        "body": "Surfaces separate by tone, never by borders. The two 1px inset rings in the build sit on controls, not surfaces: the outline of an absent member's avatar (absence drawn as an empty circle) and the eye dot's 2px cut-out ring in the colour behind it. Inside one surface, a 1px raised-2 rule may divide what is read in order, never one surface from another: the lines of the Usage statement, and the inspector's actions from what they act on.",
         "section": "elevation"
       }
     ],

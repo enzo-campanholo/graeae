@@ -1,6 +1,6 @@
 <script lang="ts">
-  // The owner page's People section: every member with their rooms, devices and last
-  // visit, beside the member picked. Picking one shows their access as one tick per room,
+  // The owner page's People section: every member, one line each with their last visit,
+  // and beside them the one picked, in the inspector: their access as one tick per room,
   // their devices with Forget, "Let back in" and "Remove from graeae".
   //
   // Ticking a room grants it at the press. Unticking one, and "Remove from graeae", ask
@@ -31,7 +31,9 @@
   import { holdUntil } from "$lib/swap.svelte.js";
   import { copy } from "$lib/clipboard.js";
   import { andList, deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
+  import Inspector from "./Inspector.svelte";
   import RemovalConfirm from "./RemovalConfirm.svelte";
+  import { removalFromInstance, removalFromRoom, roomName } from "./removal.js";
 
   let known = $state<Load<PeopleAnswer>>({ state: "loading" });
   load<PeopleAnswer>("/api/owner/people", (value) => (known = value));
@@ -73,16 +75,6 @@
     known.data.people = known.data.people.map((other) => (other.id === entry.id ? entry : other));
   }
 
-  function roomName(address: string): string {
-    return rooms.find((room) => room.address === address)?.name ?? "a room";
-  }
-
-  function roomsLine(entry: MemberEntry): string {
-    if (entry.owner) return "Every room";
-    if (entry.rooms.length === 0) return "No room";
-    return andList(entry.rooms.map(roomName));
-  }
-
   function lastVisit(entry: MemberEntry): string {
     if (entry.present.length > 0) return "Here now";
     if (entry.lastVisit === null) return "No device";
@@ -91,28 +83,7 @@
 
   function presentLine(entry: MemberEntry): string {
     if (entry.present.length === 0) return "Not in any room now";
-    return `Present in ${andList(entry.present.map(roomName))}`;
-  }
-
-  /**
-   * What a removal ends of a present member's shares, for the confirm: in the room at
-   * `address`, or in every room without it. Shares end for their viewers too, so the
-   * owner hears that before the press.
-   */
-  function sharingLine(entry: MemberEntry, address?: string): string {
-    const shares = entry.sharing.filter((share) => address === undefined || share.room === address);
-    if (shares.length === 0) return address === undefined ? "They share nothing now." : "They share nothing there now.";
-    // Grouped by room, so two shares in one room read "screen and webcam shares in First room".
-    const sharesPhrase = (list: typeof shares) =>
-      `${andList(list.map((share) => share.kind))} ${list.length > 1 ? "shares" : "share"}`;
-    const items =
-      address === undefined
-        ? [...new Set(shares.map((share) => share.room))].map(
-            (room) => `${sharesPhrase(shares.filter((share) => share.room === room))} in ${roomName(room)}`,
-          )
-        : [`${sharesPhrase(shares)} there`];
-    const ends = shares.length > 1 ? "end" : "ends";
-    return `Their ${andList(items)} ${ends} for everyone watching.`;
+    return `Present in ${andList(entry.present.map((address) => roomName(rooms, address)))}`;
   }
 
   // Access. A tick grants at once; an untick asks first and changes nothing until then.
@@ -141,46 +112,7 @@
 
   const confirm = $derived.by(() => {
     if (!ask || !asked) return null;
-    const name = asked.name;
-    const what = ask;
-    if (what.kind === "room") {
-      const room = roomName(what.address);
-      const keeps = asked.rooms.filter((address) => address !== what.address).map(roomName);
-      return {
-        title: `Remove ${name} from ${room}?`,
-        lines: [
-          ...(asked.present.includes(what.address)
-            ? [
-                `${name} is in ${room} now. Their page there becomes “nothing here” within about 2 seconds.`,
-                sharingLine(asked, what.address),
-              ]
-            : [`${name} is not in ${room} now.`]),
-          keeps.length > 0
-            ? `They keep ${andList(keeps)}.`
-            : `${room} is their only room. They stay a member with no room until you tick one.`,
-        ],
-      };
-    }
-    const devices = asked.devices.length;
-    const forgotten =
-      devices === 0
-        ? "They have no device left to forget."
-        : devices === 1
-          ? "Their device is forgotten."
-          : `Their ${devices} devices are forgotten.`;
-    return {
-      title: `Remove ${name} from graeae?`,
-      lines: [
-        ...(asked.present.length > 0
-          ? [
-              `${name} is present in ${andList(asked.present.map(roomName))}. Every page of theirs becomes “nothing here” within about 2 seconds.`,
-              sharingLine(asked),
-            ]
-          : [`${name} is not in any room now.`]),
-        asked.rooms.length > 0 ? `They lose ${andList(asked.rooms.map(roomName))} and keep no room.` : "They have no room to lose.",
-        `${forgotten} Coming back takes a new invite.`,
-      ],
-    };
+    return ask.kind === "room" ? removalFromRoom(asked, ask.address, rooms) : removalFromInstance(asked, rooms);
   });
 
   function askToRemove(entry: MemberEntry) {
@@ -291,39 +223,32 @@
 {#if known.state === "loading"}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else if known.state === "loaded"}
+  {@const hereNow = people.filter((entry) => entry.present.length > 0).length}
   <div class="owner-columns">
     <section class="grid gap-1" aria-label="Members">
-      <div class="text-muted-foreground -mx-3 grid h-control-sm grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 px-3 text-xs" aria-hidden="true">
-        <span>Member</span>
-        <span class="text-right">Devices</span>
-        <span class="text-right">Last visit</span>
-      </div>
+      <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
+        <span>{hereNow} here now</span>
+        <span class="text-dim tabular-nums">{people.length}</span>
+      </h2>
       <ul class="-mx-3 grid gap-0.5">
         {#each people as entry (entry.id)}
           {@const chosen = entry.id === picked}
+          {@const away = entry.present.length === 0}
           <li>
             <button
               type="button"
               class={[
-                "grid h-item-row w-full grid-cols-[minmax(0,1fr)_64px_96px] items-center gap-3 rounded-md px-3 text-left transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex h-row w-full items-center gap-2.5 rounded-md px-3 text-left transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 chosen ? "bg-raised" : "hover:bg-raised",
               ]}
               aria-current={chosen ? "true" : undefined}
               onclick={() => pick(entry)}
             >
-              <span class="flex min-w-0 items-center gap-3">
-                <Avatar name={entry.name} large away={entry.present.length === 0} ring="var(--stage)" />
-                <span class="grid min-w-0 gap-0.5">
-                  <span class="truncate font-medium">
-                    {entry.name}{#if entry.owner}<span class="text-dim ml-1 font-normal">· owner</span>{/if}
-                  </span>
-                  <span class="text-muted-foreground truncate text-xs">{roomsLine(entry)}</span>
-                </span>
+              <Avatar name={entry.name} {away} ring={chosen ? "var(--raised)" : "var(--stage)"} />
+              <span class="min-w-0 flex-1 truncate font-medium">
+                {entry.name}{#if entry.owner}<span class="text-dim ml-1 font-normal">· owner</span>{/if}
               </span>
-              <span class="text-soft text-right tabular-nums">{entry.devices.length}</span>
-              <span class={["text-right text-xs tabular-nums", entry.present.length > 0 ? "text-soft" : "text-muted-foreground"]}>
-                {lastVisit(entry)}
-              </span>
+              <span class={["text-xs tabular-nums", away ? "text-muted-foreground" : "text-soft"]}>{lastVisit(entry)}</span>
             </button>
           </li>
         {/each}
@@ -344,14 +269,22 @@
       {/if}
     </section>
 
-    <aside class="sticky top-0 grid gap-6" aria-label={person ? person.name : "Member"}>
+    <Inspector label={person ? person.name : "Member"}>
       {#if !person}
-        <p class="text-dim pt-7">Pick someone to change their rooms, see their devices, let them back in or remove them.</p>
+        <div class="grid gap-1">
+          <p class="font-medium">{people.length === 1 ? "Only you so far" : `${people.length} members, ${hereNow} here now`}</p>
+          <p class="text-muted-foreground text-xs">
+            Pick someone to change their rooms, see their devices, let them back in or remove them.
+          </p>
+        </div>
       {:else}
         {@const entry = person}
-        <header class="grid gap-0.5 pt-1">
-          <h2 class="text-base font-medium text-balance">{entry.name}</h2>
-          <p class="text-muted-foreground text-xs">{entry.owner ? "The owner, with every room" : presentLine(entry)}</p>
+        <header class="flex items-center gap-3">
+          <Avatar name={entry.name} large away={entry.present.length === 0} ring="var(--raised)" />
+          <span class="grid min-w-0 gap-0.5">
+            <h2 class="truncate text-base font-medium">{entry.name}</h2>
+            <p class="text-muted-foreground truncate text-xs">{entry.owner ? "The owner, with every room" : presentLine(entry)}</p>
+          </span>
         </header>
 
         <fieldset class="grid gap-1.5">
@@ -363,7 +296,7 @@
                 <label
                   class={[
                     "flex h-row items-center gap-2.5 rounded-md px-2 transition-colors duration-150",
-                    entry.owner ? "" : "hover:bg-raised cursor-pointer",
+                    entry.owner ? "" : "hover:bg-raised-2 cursor-pointer",
                   ]}
                 >
                   <Checkbox
@@ -371,7 +304,7 @@
                     disabled={entry.owner || granting === room.address || removing}
                   />
                   <span class="truncate font-medium">{room.name}</span>
-                  {#if entry.present.includes(room.address)}<span class="text-dim ml-auto text-xs">present</span>{/if}
+                  {#if entry.present.includes(room.address)}<span class="text-dim ml-auto text-xs">here</span>{/if}
                 </label>
               </li>
             {/each}
@@ -390,7 +323,7 @@
                 <li
                   class={[
                     "flex h-item-row items-center gap-3 rounded-md pr-1 pl-2 transition-colors duration-150",
-                    asking ? "bg-raised" : "hover:bg-raised",
+                    asking ? "bg-raised-2" : "hover:bg-raised-2",
                   ]}
                   aria-label={label}
                 >
@@ -407,7 +340,7 @@
                     </span>
                   </span>
                   {#if asking}
-                    <Button variant="ghost" size="sm" onclick={() => (confirmingThis = false)}>Keep</Button>
+                    <Button variant="ghost" size="sm" class="hover:bg-raised" onclick={() => (confirmingThis = false)}>Keep</Button>
                     <Button
                       variant="destructive"
                       size="sm"
@@ -435,44 +368,46 @@
 
         {#if !entry.owner}
           {@const invite = entry.letBackIn}
-          {#if invite}
-            {@const done = copied?.code === invite.code && copied.done}
-            <section class="bg-raised grid gap-3 rounded-lg p-3" aria-label="Let back in" aria-live="polite">
-              <div class="grid gap-0.5">
-                <p class="font-medium">{done ? `${entry.name}'s link is on your clipboard` : `${entry.name}'s link is ready`}</p>
-                <p class="text-muted-foreground text-xs">
-                  Using it forgets their other devices and keeps their name and rooms. It works once, and expires
-                  {timeLeft(invite.expiresAt, now)}.
+          <div class="border-raised-2 grid gap-4 border-t pt-5">
+            {#if invite}
+              {@const done = copied?.code === invite.code && copied.done}
+              <section class="grid gap-3" aria-label="Let back in" aria-live="polite">
+                <div class="grid gap-0.5">
+                  <p class="font-medium">{done ? `${entry.name}'s link is on your clipboard` : `${entry.name}'s link is ready`}</p>
+                  <p class="text-muted-foreground text-xs">
+                    Using it forgets their other devices and keeps their name and rooms. It works once, and expires
+                    {timeLeft(invite.expiresAt, now)}.
+                  </p>
+                </div>
+                <p class="bg-raised-2 text-soft rounded-md px-2.5 py-2 text-xs break-all select-all" aria-label="Invite link">
+                  {linkTo(invite)}
                 </p>
-              </div>
-              <p class="bg-raised-2 text-soft rounded-md px-2.5 py-2 text-xs break-all select-all" aria-label="Invite link">
-                {linkTo(invite)}
-              </p>
-              <div class="flex items-center gap-1.5">
-                <Button variant="secondary" class="bg-raised-2 hover:bg-raised-2 min-w-28" onclick={() => copyAgain(invite)}>
-                  {#if justCopied}<Check />Copied{:else}<Copy />{done ? "Copy again" : "Copy"}{/if}
-                </Button>
-                <IconButton label="Cancel invite" variant="destructive" onclick={() => cancelInvite(entry, invite)}>
-                  <X />
-                </IconButton>
-              </div>
-            </section>
-          {/if}
-
-          <div class="grid gap-2">
-            <div class="flex flex-wrap gap-1.5">
-              <Button variant="secondary" disabled={inviting} onclick={() => letBackIn(entry)}>
-                <KeyRound />Let back in
-              </Button>
-              <Button variant="destructive" onclick={() => askToRemove(entry)}>Remove from graeae</Button>
-            </div>
-            {#if inviteFailed}
-              <p class="text-muted-foreground text-xs" role="alert">The invite was not made. Try again.</p>
+                <div class="flex items-center gap-1.5">
+                  <Button variant="secondary" class="bg-raised-2 min-w-28" onclick={() => copyAgain(invite)}>
+                    {#if justCopied}<Check />Copied{:else}<Copy />{done ? "Copy again" : "Copy"}{/if}
+                  </Button>
+                  <IconButton label="Cancel invite" variant="destructive" onclick={() => cancelInvite(entry, invite)}>
+                    <X />
+                  </IconButton>
+                </div>
+              </section>
             {/if}
+
+            <div class="grid gap-2">
+              <div class="flex flex-wrap gap-1.5">
+                <Button variant="secondary" class="bg-raised-2" disabled={inviting} onclick={() => letBackIn(entry)}>
+                  <KeyRound />Let back in
+                </Button>
+                <Button variant="destructive" onclick={() => askToRemove(entry)}>Remove from graeae</Button>
+              </div>
+              {#if inviteFailed}
+                <p class="text-muted-foreground text-xs" role="alert">The invite was not made. Try again.</p>
+              {/if}
+            </div>
           </div>
         {/if}
       {/if}
-    </aside>
+    </Inspector>
   </div>
 
   <RemovalConfirm

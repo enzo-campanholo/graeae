@@ -71,19 +71,17 @@
   --body-lh: 22px;
   --label: 13px; /* list headings, counts, captions' kinds, small buttons, tooltips */
   --label-lh: 18px;
-  --title: 17px; /* "Nothing here", a dialog's title, the chosen member */
+  --title: 17px; /* "Nothing here", a dialog's title, an owner section's inspector */
   --title-lh: 24px;
   --headline: 24px; /* a page's heading */
   --headline-lh: 32px;
-  --figure: 30px; /* the Usage section's three figures */
-  --figure-lh: 38px;
   --tag: 12px; /* the "720p" mark */
   --tag-lh: 16px;
   --key: 11px; /* a keyboard hint */
 
-  --row: 40px; /* a person in the bar, a link in the owner navigation, a room to tick */
-  --list-row: 64px; /* a room on the list of rooms or on the owner page */
-  --item-row: 56px; /* a device, an invite, a member on the owner page */
+  --row: 40px; /* a person in the bar, a link in the owner navigation, a room to tick, a line of an owner section's list */
+  --list-row: 64px; /* a room on the list of rooms */
+  --item-row: 56px; /* a device, a line of the Usage statement */
   --control: 36px; /* a button, an input */
   --control-sm: 32px; /* an icon button, a small button, a list's heading */
   --control-xs: 28px; /* the smallest buttons: Watch's shortcuts, a share icon in a row */
@@ -102,7 +100,7 @@
   --caption: 32px; /* under a share's picture: its line and the gap above it */
   --plain: 720px; /* the plain pages' column */
   --owner: 1000px; /* the owner page's content */
-  --owner-side: 360px; /* an owner section's side column: the chosen member, a form, the settings */
+  --owner-side: 360px; /* an owner section's side column, which holds its inspector */
 }
 
 /* The names shadcn-svelte's components read, mapped onto the theme. */
@@ -144,8 +142,6 @@
   --text-base--line-height: var(--title-lh);
   --text-xl: var(--headline);
   --text-xl--line-height: var(--headline-lh);
-  --text-2xl: var(--figure);
-  --text-2xl--line-height: var(--figure-lh);
   --text-tag: var(--tag);
   --text-tag--line-height: var(--tag-lh);
   --text-key: var(--key);

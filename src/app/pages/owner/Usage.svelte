@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The owner page's Usage section: the month so far against the usage budget, projected
-  // to its end at the same daily rate, and the day of the month usage resets on. The
+  // The owner page's Usage section: the month so far against the usage budget, read as a
+  // statement line by line, with the meter over it marking how much of the month is gone;
+  // and in the inspector, the usage budget and the day of the month usage resets on. The
   // figures are the owner page's, shared with the meter in its navigation.
   import Loading from "$lib/components/Loading.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -9,6 +10,7 @@
   import { budgetCost, INCLUDED_GIGABYTES, type OwnerUsage } from "$lib/owner-usage.svelte.js";
   import { dollars, gigabytes } from "$lib/words.js";
   import { holdUntil } from "$lib/swap.svelte.js";
+  import Inspector from "./Inspector.svelte";
   import RaiseConfirm from "./RaiseConfirm.svelte";
 
   let { usage }: { usage: OwnerUsage } = $props();
@@ -22,6 +24,21 @@
   const projectedShare = $derived(figures ? fraction(figures.projected) : 0);
   const level = $derived(usedShare >= 0.95 ? "stop" : usedShare >= 0.8 ? "warn" : "ok");
   const runsOut = $derived(!!figures && figures.projected > figures.budget);
+
+  // How far into the month today is, to set beside how much of the budget is used. Worked
+  // out again each time the figures arrive, every 15 seconds.
+  const DAY_MS = 86_400_000;
+  const month = $derived.by(() => {
+    if (!current) return { gone: 0, today: 0, days: 0 };
+    const elapsed = Date.now() - current.since;
+    const span = current.until - current.since;
+    const days = Math.round(span / DAY_MS);
+    return {
+      gone: Math.min(Math.max(elapsed / span, 0), 1),
+      today: Math.min(Math.floor(elapsed / DAY_MS) + 1, days),
+      days,
+    };
+  });
 
   /** A day as the owner reads it, in UTC, with no day of the week: "15 December". */
   function day(ms: number): string {
@@ -90,62 +107,69 @@
   }
 </script>
 
+{#snippet line(id: string, label: string, value: string, tone = "text-soft", strong = false)}
+  <div class="border-raised-2 flex h-item-row items-center justify-between gap-6 border-b last:border-b-0">
+    <dt id="usage-{id}" class={strong ? "font-medium" : "text-muted-foreground"}>{label}</dt>
+    <dd aria-labelledby="usage-{id}" class={["tabular-nums", tone]}>{value}</dd>
+  </div>
+{/snippet}
+
 {#if !current || !figures}
   <div class="grid h-40 place-items-center"><Loading /></div>
 {:else}
   <div class="owner-columns">
-    <section class="grid gap-4" aria-labelledby="usage-month">
+    <section class="grid gap-3" aria-labelledby="usage-month">
       <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
         <span id="usage-month">This month</span>
-        <span class="text-dim tabular-nums">Since {day(current.since)}</span>
+        <span class="text-dim tabular-nums">{day(current.since)} to {day(current.until)}</span>
       </h2>
 
-      <dl class="grid grid-cols-3 gap-6">
-        <div class="grid gap-1">
-          <dt id="usage-used" class="text-muted-foreground text-xs">Used</dt>
-          <dd aria-labelledby="usage-used" class="text-2xl font-medium tracking-[-0.01em] tabular-nums">
-            {gigabytes(figures.used)}
-          </dd>
-        </div>
-        <div class="grid gap-1">
-          <dt id="usage-budget" class="text-muted-foreground text-xs">Usage budget</dt>
-          <dd aria-labelledby="usage-budget" class="text-soft text-2xl font-medium tracking-[-0.01em] tabular-nums">
-            {gigabytes(figures.budget)}
-          </dd>
-        </div>
-        <div class="grid gap-1">
-          <dt id="usage-projected" class="text-muted-foreground text-xs">Projected by the month's end</dt>
-          <dd
-            aria-labelledby="usage-projected"
-            class={["text-2xl font-medium tracking-[-0.01em] tabular-nums", runsOut ? "text-warn" : "text-soft"]}
+      <div class="grid gap-2">
+        <div class="relative">
+          <!-- The fill is the month so far; the faint stretch beyond it, where the month is heading. -->
+          <div
+            class="bg-raised-2 relative h-1 overflow-hidden rounded-full"
+            role="meter"
+            aria-label="Usage this month"
+            aria-valuemin={0}
+            aria-valuemax={figures.budget}
+            aria-valuenow={figures.used}
+            aria-valuetext="{gigabytes(figures.used)} of {gigabytes(figures.budget)}"
           >
-            {gigabytes(figures.projected)}
-          </dd>
+            <div
+              class={["absolute inset-y-0 left-0 rounded-full opacity-30", runsOut ? "bg-warn" : "bg-soft"]}
+              style:width="{projectedShare * 100}%"
+            ></div>
+            <div
+              class={[
+                "absolute inset-y-0 left-0 rounded-full transition-[width] duration-300",
+                { ok: "bg-soft", warn: "bg-warn", stop: "bg-stop" }[level],
+              ]}
+              style:width="{usedShare * 100}%"
+            ></div>
+          </div>
+          <!-- Today, as far along the track as the month is gone: a fill short of it is a budget that lasts. -->
+          <span
+            class="bg-fg absolute -top-1.5 h-4 w-0.5 rounded-full"
+            style:left="calc({month.gone * 100}% - 1px)"
+            aria-hidden="true"
+          ></span>
         </div>
-      </dl>
-
-      <!-- The fill is the month so far; the faint stretch beyond it, where the month is heading. -->
-      <div
-        class="bg-raised-2 relative h-1 overflow-hidden rounded-full"
-        role="meter"
-        aria-label="Usage this month"
-        aria-valuemin={0}
-        aria-valuemax={figures.budget}
-        aria-valuenow={figures.used}
-        aria-valuetext="{gigabytes(figures.used)} of {gigabytes(figures.budget)}"
-      >
-        <div
-          class={["absolute inset-y-0 left-0 rounded-full opacity-30", runsOut ? "bg-warn" : "bg-soft"]}
-          style:width="{projectedShare * 100}%"
-        ></div>
-        <div
-          class={[
-            "absolute inset-y-0 left-0 rounded-full transition-[width] duration-300",
-            { ok: "bg-soft", warn: "bg-warn", stop: "bg-stop" }[level],
-          ]}
-          style:width="{usedShare * 100}%"
-        ></div>
+        <p class="text-muted-foreground text-xs tabular-nums">
+          {Math.round((figures.used / figures.budget) * 100)}% of the usage budget used, on day {month.today} of {month.days}.
+        </p>
       </div>
+
+      <dl class="grid">
+        {@render line("used", "Used so far", gigabytes(figures.used), "text-fg text-base font-medium", true)}
+        {@render line("projected", "Projected by the month's end", gigabytes(figures.projected), runsOut ? "text-warn" : "text-soft")}
+        {@render line("budget", "Usage budget", gigabytes(figures.budget))}
+        {@render line("included", "Included by Cloudflare", gigabytes(INCLUDED_GIGABYTES), "text-muted-foreground")}
+        {@render line("cost", "Cost so far", dollars(budgetCost(figures.used)))}
+        <!-- Capped at the usage budget, where watching stops. -->
+        {@render line("projected-cost", "Projected cost", dollars(budgetCost(Math.min(figures.projected, figures.budget))))}
+        {@render line("reset", "Next reset", `${day(current.until)}, midnight UTC`)}
+      </dl>
 
       <div class="text-dim grid gap-1 text-xs">
         {#if runsOut}
@@ -158,7 +182,7 @@
       </div>
     </section>
 
-    <div class="grid gap-12">
+    <Inspector label="Usage settings">
       <form class="grid gap-3" aria-label="Usage budget" onsubmit={saveBudget} novalidate>
         <h2 class="flex h-control-sm items-center text-sm font-medium">Usage budget</h2>
         <div class="grid gap-1.5">
@@ -173,13 +197,13 @@
               value={budgetShown}
               aria-invalid={budgetProblem === BUDGET_PROBLEM ? true : undefined}
               aria-describedby="usage-budget-cost"
-              class="w-28 [appearance:textfield] text-right tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="bg-raised-2 w-28 [appearance:textfield] text-right tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               oninput={(event) => {
                 budgetDraft = event.currentTarget.value;
                 budgetProblem = null;
               }}
             />
-            <Button type="submit" variant="secondary" disabled={budgetDraft === null || budgetSaving}>Save</Button>
+            <Button type="submit" variant="secondary" class="bg-raised-2" disabled={budgetDraft === null || budgetSaving}>Save</Button>
             <!-- The dollar equivalent of what is typed, beside it. -->
             <p id="usage-budget-cost" class="text-soft ml-3 text-xs tabular-nums" aria-live="polite">
               {#if budgetTyped === null}
@@ -230,13 +254,13 @@
               step={1}
               value={shown}
               aria-invalid={problem === "Pick a day from 1 to 31." ? true : undefined}
-              class="w-16 [appearance:textfield] text-center tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="bg-raised-2 w-16 [appearance:textfield] text-center tabular-nums [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               oninput={(event) => {
                 draft = event.currentTarget.value;
                 problem = null;
               }}
             />
-            <Button type="submit" variant="secondary" disabled={draft === null || saving}>Save</Button>
+            <Button type="submit" variant="secondary" class="bg-raised-2" disabled={draft === null || saving}>Save</Button>
           </div>
         </div>
         <div class="grid gap-1 text-xs">
@@ -250,6 +274,6 @@
           </p>
         </div>
       </form>
-    </div>
+    </Inspector>
   </div>
 {/if}

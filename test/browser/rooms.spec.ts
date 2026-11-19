@@ -28,29 +28,33 @@ test("the owner makes and renames rooms, and a member with two finds them on the
   // With one room, the bar has no link back to a list.
   await expect(owner.getByRole("link", { name: "Rooms" })).toHaveCount(0);
 
-  // The owner page's Rooms section shows the room's fixed address.
+  // The owner page's Rooms section opens on the new room's form; picking a room shows its fixed address.
   const admin = await ownerContext.newPage();
   await admin.goto("/owner/rooms");
   await expect(admin.getByRole("heading", { name: "Rooms", exact: true })).toBeVisible();
   const every = admin.getByRole("region", { name: "Every room" });
-  await expect(every.getByRole("listitem", { name: "First room" }).getByLabel("Address")).toHaveText(
+  await expect(admin.getByRole("form", { name: "New room" })).toBeVisible();
+  await every.getByRole("listitem", { name: "First room" }).getByRole("button").click();
+  await expect(admin.getByRole("complementary", { name: "First room" }).getByLabel("Address")).toHaveText(
     new RegExp(`${firstPath}$`),
   );
 
-  // Making a room: it is listed, and the owner's open room gains the link back at once.
+  // Making a room: it is listed and shown, and the owner's open room gains the link back at once.
+  await every.getByRole("button", { name: "New room" }).click();
   await admin.getByLabel("Room name").fill("Late shift");
   await admin.getByRole("button", { name: "Create room" }).click();
-  const late = every.getByRole("listitem", { name: "Late shift" });
-  await expect(late).toBeVisible();
+  await expect(every.getByRole("listitem", { name: "Late shift" })).toBeVisible();
+  const late = admin.getByRole("complementary", { name: "Late shift" });
   const lateAddress = (await late.getByLabel("Address").textContent())!.trim();
   await expect(owner.getByRole("link", { name: "Rooms" })).toBeVisible();
 
   // Renaming it keeps its address.
   await late.getByRole("button", { name: "Rename" }).click();
-  await every.getByRole("textbox", { name: "Room name" }).fill("Night shift");
-  await every.getByRole("textbox", { name: "Room name" }).press("Enter");
-  const night = every.getByRole("listitem", { name: "Night shift" });
+  await late.getByRole("textbox", { name: "Room name" }).fill("Night shift");
+  await late.getByRole("textbox", { name: "Room name" }).press("Enter");
+  const night = admin.getByRole("complementary", { name: "Night shift" });
   await expect(night.getByLabel("Address")).toHaveText(lateAddress);
+  await expect(every.getByRole("listitem", { name: "Night shift" })).toBeVisible();
   await expect(every.getByRole("listitem")).toHaveCount(2);
   const nightPath = lateAddress.slice(lateAddress.indexOf("/r/"));
 
@@ -87,9 +91,10 @@ test("the owner makes and renames rooms, and a member with two finds them on the
   await expect(gil.getByRole("heading", { name: "Night shift" })).toBeVisible();
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Gil" })).toBeVisible();
   await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Rooms" }).click();
-  await every.getByRole("listitem", { name: "Night shift" }).getByRole("button", { name: "Rename" }).click();
-  await every.getByRole("textbox", { name: "Room name" }).fill("Late nights");
-  await every.getByRole("button", { name: "Save" }).click();
+  await every.getByRole("listitem", { name: "Night shift" }).getByRole("button").click();
+  await night.getByRole("button", { name: "Rename" }).click();
+  await night.getByRole("textbox", { name: "Room name" }).fill("Late nights");
+  await night.getByRole("button", { name: "Save" }).click();
   await expect(gil.getByRole("heading", { name: "Late nights" })).toBeVisible();
   await expect(owner.getByRole("heading", { name: "Late nights" })).toBeVisible();
 
@@ -102,4 +107,27 @@ test("the owner makes and renames rooms, and a member with two finds them on the
   await expect(owner.getByRole("heading", { name: "Rooms" })).toBeVisible();
   await expect(owner.getByRole("link", { name: /Late nights/ })).toContainText("No one here");
   await expect(owner.getByRole("link", { name: "Owner page" })).toBeVisible();
+
+  // Access, from the room's side: a room shows everyone with a tick for who has it.
+  await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Rooms" }).click();
+  await every.getByRole("listitem", { name: "First room" }).getByRole("button").click();
+  const first = admin.getByRole("complementary", { name: "First room" });
+  const gilHas = first.getByRole("checkbox", { name: /^Gil/ });
+  await expect(gilHas).toBeChecked();
+  await expect(first.getByRole("checkbox", { name: /^Owner/ })).toBeDisabled();
+
+  // Unticking asks first, as from People, and the tick goes only once confirmed.
+  await gilHas.click();
+  const confirm = admin.getByRole("alertdialog", { name: "Remove Gil from First room?" });
+  await expect(confirm).toContainText("Gil is not in First room now.");
+  await expect(confirm).toContainText("They keep Late nights.");
+  await expect(gilHas).toBeChecked();
+  await confirm.getByRole("button", { name: "Remove" }).click();
+  await expect(gilHas).not.toBeChecked();
+
+  // Ticking gives it back at once.
+  await gilHas.click();
+  await expect(gilHas).toBeChecked();
+  await gil.goto("/");
+  await expect(gil.getByRole("link", { name: /First room/ })).toBeVisible();
 });
