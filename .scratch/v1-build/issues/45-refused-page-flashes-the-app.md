@@ -8,7 +8,7 @@ Spec: [17](../spec.md) and "One plain page for every refused address" (`spec.md`
 
 **Blocked by:** none
 
-**Status:** needs-triage
+**Status:** resolved
 
 ## What is known (not yet confirmed)
 
@@ -50,4 +50,18 @@ A first look at the code, not checked on `graeae-test`:
 - **Standards:** `api.ts`'s header now names the mark, the test's delay is named after the hold-back, and the test's setup is one helper.
 - **Left as is:** `match` reads the refused address from the module, as the module already reads `window`. That keeps the rule in one place for every caller.
 
-**Not done:** not deployed to `graeae-test`, and not checked there from a browser that is not a device.
+**Not done:** not deployed to `graeae-test`, and not checked there from a browser that is not a device. Both done below.
+
+### 2026-11-19: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-19, from `163c36d` (version `c6bd98e5`), with `pnpm run deploy --name graeae-test`. The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**Checked on `graeae-test`, as a browser the instance does not know:**
+- `/`, `/r/a-room`, `/you`, `/owner`, `/owner/people`, `/invite/not-a-real-invite`, `/setup` and `/api/rooms` each answer 404 with the same page, byte for byte. That page carries `data-refused` and loads the new script, `index-DKxViFNZ.js`, which has none of the fakes.
+- `nothing-here.spec.ts`, run in a headless Chromium against the live instance over the real network (still with its 600ms slowdown), passes all seven tests. Every address shows only "nothing here", and the wrong setup secret shows the loading mark at most.
+
+**Not checked on `graeae-test`:** a member's own pages, since this machine is not one of the instance's devices. Locally every journey a member takes passes. Only `nothingHere` adds the mark, and pages a visitor is let into never go through it.
+
+**Cleaned up.** Nothing is left behind: no branch, no capture sets (the sample check's were deleted), and no temporary config.
+
+**Still open, not this ticket's:** the fake-media build copying `.dev.vars` into `dist/graeae/` (ticket 46).
