@@ -64,3 +64,17 @@ Each option is shown at rest and under the pointer. The whole room in each optio
 **Found on the way, not fixed.** `vite build` copies the root `.dev.vars` into `dist/graeae/.dev.vars`, and `vite preview` then reads it over the test secrets the journeys pass in. With real secrets in `.dev.vars`, setup refuses the Seam 2 secret and every journey fails at "First room". The journeys above ran after deleting `dist/graeae/.dev.vars` between the build and `playwright test`.
 
 The options branch `t41-options` and the round 1 shots in `.impeccable/review/captures/t41-r1/` can go.
+
+### 2026-11-19: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-19, from `0eeb3a8` (version `ef0f4a44`).
+- The live page loads the new build: the script `index-D2wx8vWq.js`, which carries `aria-keyshortcuts` and none of the fakes, and the stylesheet `index-CfkrsDrQ.css`.
+- The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**After-shots** are in `.impeccable/review/captures/t41-after/` (not committed), set against `t40-after` in its contact sheet. In the bar's foot, "Share screen" now sits centred like "Webcam live" beside it, with no S. The `.dev.vars` copy broke `pnpm capture`'s own build too, so the shots were taken the same way as the journeys.
+
+**Cleaned up.**
+- Branch `t41-options` is deleted, so `?option=` and `?sample=resting` no longer exist anywhere.
+- The round 1 shots (`t41-r1`) are deleted, so the round 1 comment above describes what was shown, not files to open.
+
+**Moved to its own ticket:** the `.dev.vars` copy is now ticket 46.
