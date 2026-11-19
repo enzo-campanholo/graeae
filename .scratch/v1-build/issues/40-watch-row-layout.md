@@ -8,7 +8,7 @@ This touches a locked call. `ignore.md` keeps "the dim 'Watch' label before Webc
 
 **Blocked by:** 34 (options can be shown before then; building waits on it)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ## Options first
 
@@ -133,3 +133,14 @@ A's one real cost is its 52px.
 **Not done here.**
 - **Deploy to `graeae-test`.**
 - **Branch `t40-options` can be deleted,** and with it the shots in `t40-r1` and `t40-r2`.
+
+### 2026-11-19: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-19, from `ee40adb` (version `f83c37bd`). The live page names the new build's files at once: the script `index-DLwN7AWa.js`, which carries "Watch every webcam" and "Watch nothing", and the stylesheet `index-B9tZ9xoM.css`. The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**Cleaned up.**
+- Branch `t40-options` is deleted, so `?option=` and `?sample=webcams` no longer exist anywhere.
+- The round 1 and 2 shots (`t40-r1`, `t40-r2`) are deleted, so the comments above that point to them describe what was shown, not files to open.
+- `t40-after` stays.
+
+**Still open, not this ticket's:** the fake-media build copying `.dev.vars` into `dist/graeae/`, which makes `pnpm test`'s journeys fail wherever a `.dev.vars` exists (see the comment above).
