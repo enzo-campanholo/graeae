@@ -6,7 +6,7 @@ Owner's note (2026-11-18): "If you are not watching anything this appears, the o
 
 **Blocked by:** 34
 
-**Status:** needs-triage
+**Status:** resolved
 
 ## Open questions
 
@@ -132,3 +132,16 @@ The stage's buttons carry the bar's names, so every journey that found a share b
   - The 8px corner in `StageChoice`'s own style stays a literal, as the shapes in DESIGN.md name it.
 
 **Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold. The empty stage shows no share, the bar's width is unchanged, and the journeys that measure them pass.
+
+### 2026-11-19: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-19, from `65036c5` (version `4be9c00a`).
+- The live page loads the new build at once: the script `index-CVIoRIbx.js`, which carries "Only you are sharing." and "Pick a share to watch it" and none of the fakes, and the stylesheet `index-CYIBQCVh.css`, which carries `--choice: 224px`.
+- The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**Cleaned up.**
+- Branch `t42-options` is deleted, so `?option=` and `?sample=quiet`, `alone` and `many` no longer exist anywhere.
+- The round 1 shots (`t42-r1`) are deleted, so the round 1 comment above describes what was shown, not files to open.
+- `t42-after` stays.
+
+**Still open, not this ticket's:** the fake-media build copying `.dev.vars` into `dist/graeae/` (ticket 46).
