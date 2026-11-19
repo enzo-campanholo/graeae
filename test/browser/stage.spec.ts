@@ -1,12 +1,13 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Watching from the bar, and how the stage lays out what is watched. The media on every
 // side is fake, so these cover what the owner sees, not pictures. Journeys share one
-// instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia, Yan, Zoe, Lia
-// and Noa, whom no other journey uses. Every share here is a webcam, but for Tom's screen
-// in the shortcuts journey, which tells "Watch every webcam" from "Watch everything".
+// instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia, Yan, Zoe, Lia,
+// Noa, Cleo and Davi, whom no other journey uses. Every share here is a webcam, but for
+// Tom's screen in the shortcuts journey, which tells "Watch every webcam" from "Watch
+// everything".
 
 const opened: BrowserContext[] = [];
 
@@ -53,20 +54,20 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined, viewpo
 }
 
 async function shareWebcam(page: Page) {
-  await page.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(page).getByRole("button", { name: "Share webcam" }).click();
   await expect(page.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
 }
 
 /** Shares a screen, through the first-time notice, on the fake picker's default: a tab with its sound. */
 async function shareScreen(page: Page) {
-  await page.getByRole("button", { name: "Share screen" }).click();
+  await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
   await expect(page.getByRole("button", { name: "Stop your screen" })).toBeVisible();
 }
 
 async function stopWebcam(page: Page) {
   await page.getByRole("button", { name: "Stop your webcam" }).click();
-  await expect(page.getByRole("button", { name: "Share webcam" })).toBeEnabled();
+  await expect(inBar(page).getByRole("button", { name: "Share webcam" })).toBeEnabled();
 }
 
 test("a name watches everything that member shares, and keeps following them until the viewer picks otherwise", async ({
@@ -334,3 +335,55 @@ test("watched shares fill an even grid, one can be focused over a strip of the r
 async function settled(page: Page) {
   await page.evaluate("Promise.all(document.getAnimations().map((animation) => animation.finished))");
 }
+
+test("while no one shares, the empty stage offers sharing as the bar does, the screen's first-time notice beside it", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner, join } = await ownerInRoom(browser, baseURL);
+  const stage = owner.getByRole("main", { name: "Stage" });
+  const bar = owner.getByRole("complementary", { name: "People" });
+  await expect(stage.getByRole("heading", { name: "No one is sharing yet." })).toBeVisible();
+
+  // One click shares the webcam, as in the bar.
+  await stage.getByRole("button", { name: "Share webcam" }).click();
+  await expect(owner.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
+  await expect(stage.getByRole("heading", { name: "Only you are sharing." })).toBeVisible();
+  await expect(stage.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+
+  // Share screen names its key. Its first-time notice opens on the stage, where it was
+  // pressed, not in the bar's foot, and going on from it shares the screen.
+  const shareScreen = stage.getByRole("button", { name: "Share screen" });
+  await expect(shareScreen).toHaveAttribute("aria-keyshortcuts", "S");
+  await shareScreen.click();
+  const notice = stage.getByRole("dialog", { name: "Before you pick" });
+  await expect(notice).toBeVisible();
+  await expect(bar.getByRole("dialog")).toHaveCount(0);
+  await notice.getByRole("button", { name: "Choose what to share" }).click();
+  await expect(owner.getByRole("button", { name: "Stop your screen" })).toBeVisible();
+  await expect(stage.getByRole("button", { name: "Screen live" })).toBeDisabled();
+
+  // Once someone else shares, the stage offers what they share instead of sharing.
+  await join("Cleo");
+  await expect(stage.getByRole("button", { name: "Watch Cleo's webcam" })).toBeVisible();
+  await expect(stage.getByRole("button", { name: /^Share / })).toHaveCount(0);
+});
+
+test("with shares live, the empty stage offers each one by name, and a click watches that one alone", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner, join } = await ownerInRoom(browser, baseURL);
+  await join("Cleo");
+  await join("Davi");
+  const stage = owner.getByRole("main", { name: "Stage" });
+  const here = owner.getByRole("region", { name: "Here" });
+  await expect(stage.getByRole("heading", { name: "You're not watching anything yet." })).toBeVisible();
+  await expect(stage.getByRole("button", { name: "Watch Cleo's webcam" })).toBeVisible();
+
+  await stage.getByRole("button", { name: "Watch Davi's webcam" }).click();
+  await expect(stage.getByRole("img", { name: "Davi's webcam, with no picture" })).toBeVisible();
+  await expect(stage.getByRole("img", { name: "Cleo's webcam, with no picture" })).toHaveCount(0);
+  // The same watch as the row's icon, which lights.
+  await expect(here.getByRole("button", { name: "Stop watching Davi's webcam" })).toBeVisible();
+});

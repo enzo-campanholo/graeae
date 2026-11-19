@@ -18,7 +18,8 @@
   import ShareButtons from "$lib/components/room/ShareButtons.svelte";
   import Shortcuts from "$lib/components/room/Shortcuts.svelte";
   import Stage from "$lib/components/room/Stage.svelte";
-  import StageEmpty from "$lib/components/room/StageEmpty.svelte";
+  import StageEmpty, { type LiveChoice } from "$lib/components/room/StageEmpty.svelte";
+  import type { PanelPlace } from "$lib/components/room/FootPanel.svelte";
   import StageTile from "$lib/components/room/StageTile.svelte";
   import WatchedPicture from "$lib/components/room/WatchedPicture.svelte";
   import YouMenu from "$lib/components/YouMenu.svelte";
@@ -123,16 +124,22 @@
   /** Whether the screen share the notice leads to hands over one live elsewhere. */
   let handingOver = false;
 
-  function shareScreen() {
+  // The notice and the offer open where the button pressed was: in the bar (or beside the
+  // rail), or on the empty stage while it offers sharing. A key press asks in the bar.
+  let asked = $state<"bar" | "stage">("bar");
+
+  function shareScreen(from: "bar" | "stage" = "bar") {
     if (!client || shareButtons.screenLive || shareButtons.screenStarting) return;
+    asked = from;
     if (liveElsewhere("screen")) {
       notice = false;
       offer = "screen";
     } else pickScreen(false);
   }
 
-  function shareWebcam() {
+  function shareWebcam(from: "bar" | "stage" = "bar") {
     if (!client || shareButtons.webcamLive || shareButtons.webcamStarting) return;
+    asked = from;
     if (liveElsewhere("webcam")) {
       notice = false;
       offer = "webcam";
@@ -266,12 +273,29 @@
   // the empty stage says so.
   const budget = $derived(view?.usage.budget ?? null);
 
-  // Shares others have live, which you could watch.
-  const live = $derived(
-    room
-      ? room.people.reduce((n, person) => n + Number(!!person.screen) + Number(!!person.webcam), 0)
-      : (view?.shares.live.filter((share) => share.member !== view.people.you.id).length ?? 0),
+  // Shares others have live, which you could watch, by name, a screen before a webcam.
+  // The empty stage offers each of them, or sharing while there are none.
+  const others: LiveChoice[] = $derived(
+    (room
+      ? room.people.flatMap((person) =>
+          (["screen", "webcam"] as const)
+            .filter((kind) => person[kind])
+            .map((kind) => ({ member: person.id, name: person.name, kind })),
+        )
+      : (view?.shares.live ?? [])
+          .filter((share) => share.member !== view?.people.you.id)
+          .map((share) => ({ member: share.member, name: nameOf(share.member), kind: share.kind }))
+    ).toSorted((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind)),
   );
+  // A share of yours is live, from this tab or another.
+  const yoursLive = $derived(
+    room ? room.mine.length > 0 : !!view && (isLive(view.people.you.id, "screen") || isLive(view.people.you.id, "webcam")),
+  );
+  // The empty stage offers sharing, so what a press of its buttons asks opens there.
+  const stageOffers = $derived(
+    !!(room || view) && tiles.length === 0 && !client?.following && budget !== "used up" && others.length === 0,
+  );
+  const askOnStage = $derived(asked === "stage" && stageOffers);
 </script>
 
 {#if !refused}<PageTitle title={name ? `${name} · graeae` : "graeae"} />{/if}
@@ -303,12 +327,8 @@
         onfollow={(id) => client?.follow(id)}
       >
         {#snippet foot()}
-          {#if notice && client}
-            <ScreenNotice floating browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
-          {:else if offer}
-            <HandOverOffer floating kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
-          {/if}
-          <ShareButtons compact {...shareButtons} onscreen={shareScreen} onwebcam={shareWebcam} />
+          {#if !askOnStage}{@render asking("rail")}{/if}
+          <ShareButtons compact {...shareButtons} onscreen={() => shareScreen()} onwebcam={() => shareWebcam()} />
           <div class="mt-3"><YouMenu name={me} {owner} side="right" large newTab /></div>
         {/snippet}
       </Rail>
@@ -408,12 +428,8 @@
               Your {client.failed === "screen" ? "screen share" : "webcam"} didn't start. Try again.
             </p>
           {/if}
-          {#if notice && client}
-            <ScreenNotice browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
-          {:else if offer}
-            <HandOverOffer kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
-          {/if}
-          <ShareButtons {...shareButtons} onscreen={shareScreen} onwebcam={shareWebcam} />
+          {#if !askOnStage}{@render asking("foot")}{/if}
+          <ShareButtons {...shareButtons} onscreen={() => shareScreen()} onwebcam={() => shareWebcam()} />
         {/snippet}
       </Bar>
     {/if}
@@ -431,15 +447,33 @@
       {#snippet empty()}
         <!-- Until the room is known, the stage says only that it is loading. -->
         {#if room || view}<StageEmpty
-            {live}
+            shares={others}
+            {yoursLive}
+            sharing={shareButtons}
             following={client?.following ? nameOf(client.following) : null}
             usedUp={budget === "used up"}
             owner={view?.people.you.owner ?? false}
-            oneverything={() => client?.pick("everything")} />{:else}<Loading />{/if}
+            oneverything={() => client?.pick("everything")}
+            onwatch={(share) => toggle(share.member, share.kind)}
+            onscreen={() => shareScreen("stage")}
+            onwebcam={() => shareWebcam("stage")}
+            panel={askOnStage ? stagePanel : undefined} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>
 {/if}
+
+<!-- What a press of a share button asks first: the first-time notice before the picker, or
+     the offer to hand a share over. -->
+{#snippet asking(place: PanelPlace)}
+  {#if notice && client}
+    <ScreenNotice {place} browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
+  {:else if offer}
+    <HandOverOffer {place} kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
+  {/if}
+{/snippet}
+
+{#snippet stagePanel()}{@render asking("stage")}{/snippet}
 
 <!-- The watch shortcuts, at the right of the "Here" heading. -->
 {#snippet shortcuts()}

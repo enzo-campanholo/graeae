@@ -101,6 +101,8 @@
   --plain: 720px; /* the plain pages' column */
   --owner: 1000px; /* the owner page's content */
   --owner-side: 360px; /* an owner section's side column, which holds its inspector */
+  --choice: 224px; /* a large choice on the empty stage: to share, or a live share to watch */
+  --choice-h: 136px;
 }
 
 /* The names shadcn-svelte's components read, mapped onto the theme. */
@@ -160,6 +162,8 @@
   --spacing-header: var(--header);
   --spacing-bar: var(--bar);
   --spacing-rail: var(--rail);
+  --spacing-choice: var(--choice);
+  --spacing-choice-h: var(--choice-h);
   --container-plain: var(--plain);
   --container-owner: var(--owner);
 

@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // The quality a viewer watches a screen share at: "Auto", "1080p" or "720p" on a share
 // that goes out at two qualities, and a "720p" mark on one received at the lower one.
@@ -65,9 +65,9 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined) {
 
 /** Shares `page`'s screen, through the first-time notice. */
 async function shareScreen(page: Page) {
-  await page.getByRole("button", { name: "Share screen" }).click();
+  await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(page.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(page).getByRole("button", { name: "Screen live" })).toBeDisabled();
 }
 
 /** Every share `page` watches arrives at `quality` from now on. */
@@ -84,7 +84,7 @@ test("a viewer chooses the quality of a Chromium screen share sent at two qualit
   const here = owner.getByRole("region", { name: "Here" });
   const stage = owner.getByRole("main", { name: "Stage" });
   await shareScreen(kai);
-  await kai.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(kai).getByRole("button", { name: "Share webcam" }).click();
 
   await here.getByRole("button", { name: "Kai", exact: true }).click();
   await expect(stage.getByRole("img", { name: "Kai's screen, with no picture" })).toBeVisible();

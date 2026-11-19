@@ -3,23 +3,23 @@
   // thing the picker offers sends. On Firefox it says instead that a screen share is
   // video only.
   import type { BrowserFamily } from "$lib/media/capture.js";
-  import FootPanel from "./FootPanel.svelte";
+  import FootPanel, { type PanelPlace } from "./FootPanel.svelte";
 
   let {
     browser,
-    floating = false,
+    place = "foot",
     oncontinue,
     oncancel,
   }: {
     browser: BrowserFamily;
-    /** Beside the folded rail rather than in the bar's foot. */
-    floating?: boolean;
+    /** Where it opens: the bar's foot, beside the folded rail, or the empty stage. */
+    place?: PanelPlace;
     oncontinue: () => void;
     oncancel: () => void;
   } = $props();
 </script>
 
-<FootPanel id="screen-notice-title" title="Before you pick" action="Choose what to share" {floating} {oncontinue} {oncancel}>
+<FootPanel id="screen-notice-title" title="Before you pick" action="Choose what to share" {place} {oncontinue} {oncancel}>
   {#if browser === "firefox"}
     In Firefox a screen share is video only, and it may be less smooth. A Chromium browser such as Chrome does better.
   {:else}

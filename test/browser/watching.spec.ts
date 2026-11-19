@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import { LOST_CLOSE_CODE } from "../../src/shared/socket/heartbeat.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Watching a webcam share between two browsers. The media on both sides is fake: the
 // page's media client receives nothing and the instance's media server is in memory, so
@@ -38,7 +38,7 @@ test("a share is watched in one click, its sharer sees who watches, and it leave
   await jade.goto(`/invite/${invite.code}`);
   await jade.getByRole("button", { name: "Join as Jade" }).click();
   await expect(jade).toHaveURL(room);
-  await jade.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(jade).getByRole("button", { name: "Share webcam" }).click();
   await expect(jade.getByText("No one watching")).toBeVisible();
 
   // Nothing is watched on arrival, and the stage says so.
@@ -103,7 +103,7 @@ async function ownerWatchingThrough(browser: Browser, baseURL: string | undefine
   await member.goto(`/invite/${invite.code}`);
   await member.getByRole("button", { name: `Join as ${name}` }).click();
   await expect(member).toHaveURL(room);
-  await member.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(member).getByRole("button", { name: "Share webcam" }).click();
   await expect(member.getByText("No one watching")).toBeVisible();
 
   const route = {

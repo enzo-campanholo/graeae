@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Media through dropped connections. A member's socket is routed through the test, which
 // can hold its opening or stop passing anything either way, as on a dropped network. The
@@ -69,10 +69,10 @@ test("a click on Share webcam before the room's socket has opened still shares",
   let open = () => {};
   network.opening = new Promise((resolve) => (open = resolve));
   await kim.reload();
-  await kim.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(kim).getByRole("button", { name: "Share webcam" }).click();
   open();
 
-  await expect(kim.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(kim).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Kim's webcam" })).toBeVisible();
 
   // Pages close before their browsers, so each member leaves cleanly.
@@ -104,7 +104,7 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   await expect(ownerHere.getByRole("button", { name: "Ines" })).toBeVisible();
 
   // Ines watches the owner's webcam, and shares a webcam and a screen; the owner watches Ines's webcam.
-  await owner.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(owner).getByRole("button", { name: "Share webcam" }).click();
   await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's webcam" }).click();
   const ownersPicture = inesStage.getByRole("img", { name: "Owner's webcam, with no picture" });
   await expect(ownersPicture).toBeVisible();
@@ -112,17 +112,17 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   await owner.evaluate(() => {
     (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.twoQualities = true;
   });
-  await owner.getByRole("button", { name: "Share screen" }).click();
+  await inBar(owner).getByRole("button", { name: "Share screen" }).click();
   await owner.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
   await ines.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's screen" }).click();
   const quality = inesStage.getByRole("radiogroup", { name: "Quality of Owner's screen" });
   await quality.getByRole("radio", { name: "720p" }).click();
   await expect(quality.getByRole("radio", { name: "720p" })).toBeChecked();
-  await ines.getByRole("button", { name: "Share webcam" }).click();
-  await ines.getByRole("button", { name: "Share screen" }).click();
+  await inBar(ines).getByRole("button", { name: "Share webcam" }).click();
+  await inBar(ines).getByRole("button", { name: "Share screen" }).click();
   await ines.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(ines.getByRole("button", { name: "Webcam live" })).toBeDisabled();
-  await expect(ines.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(ines).getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(ines).getByRole("button", { name: "Screen live" })).toBeDisabled();
   await ownerHere.getByRole("button", { name: "Watch Ines's webcam" }).click();
   const inesPicture = ownerStage.getByRole("img", { name: "Ines's webcam, with no picture" });
   await expect(inesPicture).toBeVisible();
@@ -162,8 +162,8 @@ test("a member whose connection drops keeps watching and sharing, and gets both 
   await expect(quality.getByRole("radio", { name: "720p" })).toBeChecked();
   await expect(ownerHere.getByRole("button", { name: "Watch Ines's webcam" })).toBeVisible();
   await expect(ownerHere.getByRole("button", { name: "Watch Ines's screen" })).toBeVisible();
-  await expect(ines.getByRole("button", { name: "Webcam live" })).toBeDisabled();
-  await expect(ines.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(ines).getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(ines).getByRole("button", { name: "Screen live" })).toBeDisabled();
   expect(await fake(ines)).toMatchObject({ connections: 2, asked: [expect.anything()] });
 
   // Nobody who watched Ines's webcam before is carried over.
@@ -186,8 +186,8 @@ test("a sharer whose network drops silently for a few seconds keeps her share, h
   await rhea.getByRole("button", { name: "Join as Rhea" }).click();
   await expect(rhea).toHaveURL(room);
   const ownerHere = owner.getByRole("region", { name: "Here" });
-  await rhea.getByRole("button", { name: "Share webcam" }).click();
-  await expect(rhea.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(rhea).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(rhea).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await ownerHere.getByRole("button", { name: "Watch Rhea's webcam" }).click();
   const picture = owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Rhea's webcam, with no picture" });
   await expect(picture).toBeVisible();
@@ -203,7 +203,7 @@ test("a sharer whose network drops silently for a few seconds keeps her share, h
   // Back in time, she is the same tab: the share, its connection and its viewer are as they were.
   await expect(ownerHere.getByRole("button", { name: "Stop watching Rhea's webcam" })).toBeVisible({ timeout: 15_000 });
   await expect(rhea.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
-  await expect(rhea.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(rhea).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(rhea.getByText("Owner watching")).toBeVisible();
   await expect(picture).toBeVisible();
   expect(await fake(rhea)).toMatchObject({ connections: 1 });
@@ -219,14 +219,14 @@ test("a sharer's tab tells the instance when its media connection falters and re
   await kit.goto(`/invite/${code}`);
   await kit.getByRole("button", { name: "Join as Kit" }).click();
   await expect(kit).toHaveURL(room);
-  await kit.getByRole("button", { name: "Share webcam" }).click();
-  await expect(kit.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(kit).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(kit).getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
   await kit.evaluate(() => (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.falter());
   await expect.poll(() => sent).toContainEqual(JSON.stringify({ type: "media", request: { type: "faltering" } }));
   await kit.evaluate(() => (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.recover());
   await expect.poll(() => sent).toContainEqual(JSON.stringify({ type: "media", request: { type: "recovered" } }));
-  await expect(kit.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(kit).getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
   await kit.close();
   await owner.close();
@@ -239,8 +239,8 @@ test("a sharer's tab restarts a media connection the browser gave up on, until a
   await tove.goto(`/invite/${code}`);
   await tove.getByRole("button", { name: "Join as Tove" }).click();
   await expect(tove).toHaveURL(room);
-  await tove.getByRole("button", { name: "Share webcam" }).click();
-  await expect(tove.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(tove).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(tove).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Tove's webcam" }).click();
   await expect(tove.getByText("Owner watching")).toBeVisible();
   const media = (act: (control: FakeMediaControl) => unknown) =>
@@ -264,7 +264,7 @@ test("a sharer's tab restarts a media connection the browser gave up on, until a
   // The network is back: the next restart finds a path, and nothing was ended or carried anywhere.
   await media((control) => (control.restartFails = false));
   await expect.poll(() => sent, { timeout: 10_000 }).toContainEqual(recovered);
-  await expect(tove.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(tove).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(tove.getByText("Owner watching")).toBeVisible();
   expect(await media((control) => control.connections)).toBe(1);
   const settled = await restarts();
@@ -281,8 +281,8 @@ test("a sharer's tab stops restarting a failed media connection once the instanc
   await wren.goto(`/invite/${code}`);
   await wren.getByRole("button", { name: "Join as Wren" }).click();
   await expect(wren).toHaveURL(room);
-  await wren.getByRole("button", { name: "Share webcam" }).click();
-  await expect(wren.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(wren).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(wren).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   const media = (act: (control: FakeMediaControl) => unknown) =>
     wren.evaluate(`(${act.toString()})(globalThis.graeaeFakeMedia)`) as Promise<unknown>;
   const restarts = () => media((control) => control.restarts) as Promise<number>;
@@ -291,7 +291,7 @@ test("a sharer's tab stops restarting a failed media connection once the instanc
   await media((control) => (control.restartFails = true));
   await media((control) => control.fail());
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Wren's webcam" })).toBeVisible();
-  await expect(wren.getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
+  await expect(inBar(wren).getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Wren's webcam" })).toHaveCount(0);
 
   // The connection is gone, so nothing is restarted any more.

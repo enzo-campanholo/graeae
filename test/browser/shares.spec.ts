@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type BrowserContext } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // A webcam share between two browsers. The media on both sides is fake: the page's media
 // client captures nothing and the instance's media server is in memory, so this covers
@@ -43,10 +43,10 @@ test("a webcam share goes live in one click, shows on the other member's bar, an
   await expect(iarasWebcam).toHaveCount(0);
 
   // One click, and no dialog: the share is live for both.
-  await iara.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(iara).getByRole("button", { name: "Share webcam" }).click();
   await expect(iara.getByRole("img", { name: "Your webcam, with no picture" })).toBeVisible();
   await expect(iara.getByText("No one watching")).toBeVisible();
-  await expect(iara.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(iara).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(iarasWebcam).toBeVisible();
   await expect(owner.getByText("You're not watching anything yet.")).toBeVisible();
 
@@ -54,11 +54,11 @@ test("a webcam share goes live in one click, shows on the other member's bar, an
   await iara.getByRole("button", { name: "Stop your webcam" }).click();
   await expect(iara.getByRole("img", { name: "Your webcam, with no picture" })).toHaveCount(0);
   await expect(iarasWebcam).toHaveCount(0);
-  await expect(iara.getByRole("button", { name: "Share webcam" })).toBeEnabled();
+  await expect(inBar(iara).getByRole("button", { name: "Share webcam" })).toBeEnabled();
   await expect(owner.getByText("No one is sharing yet.")).toBeVisible();
 
   // Sharing again, then leaving: a clean leave ends the share too.
-  await iara.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(iara).getByRole("button", { name: "Share webcam" }).click();
   await expect(iarasWebcam).toBeVisible();
   await iara.close();
   await expect(iarasWebcam).toHaveCount(0);

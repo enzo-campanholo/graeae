@@ -2,7 +2,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
 import type { IceServer } from "../../src/shared/socket/index.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Relay credential renewal, as the page takes it. The instance hands a tab a fresh
 // credential 11 hours after its last, which Seam 1 proves; here the test hands it to the
@@ -78,7 +78,7 @@ async function watchingAndSharing(browser: Browser, baseURL: string | undefined,
   const owner = await ownerContext.newPage();
   await owner.goto(`/setup#${SETUP_SECRET}`);
   await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
-  await owner.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(owner).getByRole("button", { name: "Share webcam" }).click();
   const made = await ownerContext.request.post("/api/owner/invites", { data: { name } });
   expect(made.status(), "the invite was refused").toBe(200);
   const { invite } = (await made.json()) as CreateInviteAnswer;
@@ -91,8 +91,8 @@ async function watchingAndSharing(browser: Browser, baseURL: string | undefined,
   await member.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's webcam" }).click();
   const ownersPicture = member.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Owner's webcam, with no picture" });
   await expect(ownersPicture).toBeVisible();
-  await member.getByRole("button", { name: "Share webcam" }).click();
-  await expect(member.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(member).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(member).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   const ownerHere = owner.getByRole("region", { name: "Here" });
   await ownerHere.getByRole("button", { name: `Watch ${name}'s webcam` }).click();
   const membersPicture = owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: `${name}'s webcam, with no picture` });
@@ -125,7 +125,7 @@ test("a tab on a direct path takes a fresh credential silently", async ({ browse
   await expect(otto.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
   await expect(ownersPicture).toBeVisible();
   await expect(membersPicture).toBeVisible();
-  await expect(otto.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(otto).getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
   await otto.close();
   await owner.close();
@@ -153,7 +153,7 @@ test("a tab on the relay sends its final total, then restarts its connection wit
   // Every share and watch carries on, on the same connection.
   await expect(ownersPicture).toBeVisible();
   await expect(membersPicture).toBeVisible();
-  await expect(pia.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(pia).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(pia.getByText("Owner watching")).toBeVisible();
 
   // The instance counts from zero after the restart; so do the tab's next totals.
@@ -193,7 +193,7 @@ test("a tab whose restart fails reconnects the ordinary way, with its shares and
   // A new media connection: Teo's webcam is live again with no picker, and he watches the owner's again.
   await expect(reconnecting).toHaveCount(0);
   await expect.poll(async () => (await fake(teo)).connections).toBe(2);
-  await expect(teo.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(inBar(teo).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(ownersPicture).toBeVisible();
   await expect(ownerHere.getByRole("button", { name: "Watch Teo's webcam" })).toBeVisible();
   // As after any reconnect, the owner's watching of it is not carried over.

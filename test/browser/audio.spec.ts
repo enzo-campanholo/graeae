@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl, FakePick } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // A viewer's audio controls: every watched share with screen audio plays at once, each
 // with its own mute and volume and a "hear only this one", in the watched share's pill of
@@ -52,9 +52,9 @@ async function shareScreen(page: Page, pick: FakePick = { surface: "tab", audio:
   await page.evaluate((pick) => {
     (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.picker = pick;
   }, pick);
-  await page.getByRole("button", { name: "Share screen" }).click();
+  await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(page.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(page).getByRole("button", { name: "Screen live" })).toBeDisabled();
 }
 
 /** The tile of `share` ("Dani's screen") on the stage. */
@@ -71,7 +71,7 @@ test("a viewer hears every watched share with sound at once, and sets each one's
   await shareScreen(dani);
   await shareScreen(eli);
   await shareScreen(fabi, { surface: "screen", audio: false });
-  await fabi.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(fabi).getByRole("button", { name: "Share webcam" }).click();
   const stage = owner.getByRole("main", { name: "Stage" });
 
   await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Watch everything" }).click();

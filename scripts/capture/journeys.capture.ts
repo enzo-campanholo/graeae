@@ -7,7 +7,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { GIGABYTE, type CreateInviteAnswer, type UsageAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
 import type { StatsEntry } from "../../src/app/lib/media/sending.ts";
-import { SETUP_SECRET } from "../../test/browser/app.ts";
+import { inBar, SETUP_SECRET } from "../../test/browser/app.ts";
 import { shoot } from "./shoot.ts";
 
 type Fake = { graeaeFakeMedia: FakeMediaControl };
@@ -29,13 +29,13 @@ const stageOf = (page: Page) => page.getByRole("main", { name: "Stage" });
 const hereOf = (page: Page) => page.getByRole("region", { name: "Here", exact: true });
 
 async function shareWebcam(page: Page) {
-  await page.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(page).getByRole("button", { name: "Share webcam" }).click();
   await expect(page.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
 }
 
 /** Shares a screen through the first-time notice, on the fake picker's default: a tab with its sound. */
 async function shareScreen(page: Page) {
-  await page.getByRole("button", { name: "Share screen" }).click();
+  await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
   await expect(page.getByRole("button", { name: "Stop your screen" })).toBeVisible();
 }
@@ -87,6 +87,12 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
   const room = owner.url();
   await shoot(owner, "room--owner-alone");
+  // Pressed on the empty stage, the first screen share asks there.
+  await stageOf(owner).getByRole("button", { name: "Share screen" }).click();
+  const stageNotice = stageOf(owner).getByRole("dialog", { name: "Before you pick" });
+  await expect(stageNotice).toBeVisible();
+  await shoot(owner, "room--stage-notice");
+  await stageNotice.getByRole("button", { name: "Cancel" }).click();
 
   /** A member joins from their own browser. `gated` routes their socket through a switch that can go dead. */
   async function join(name: string, gated?: { online: boolean }): Promise<Page> {
@@ -121,9 +127,12 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   const duda = await join("Duda", dudaLine);
   await shareWebcam(duda);
   await join("Eli");
+  // The empty stage offers each live share.
+  await expect(stageOf(owner).getByRole("button", { name: "Watch Duda's webcam" })).toBeVisible();
+  await shoot(owner, "room--choices");
 
   // The owner's first screen share asks first.
-  await owner.getByRole("button", { name: "Share screen" }).click();
+  await inBar(owner).getByRole("button", { name: "Share screen" }).click();
   const notice = owner.getByRole("dialog", { name: "Before you pick" });
   await expect(notice).toBeVisible();
   await shoot(owner, "room--screen-notice");
@@ -179,7 +188,7 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   const biaTab = await bia.context().newPage();
   await biaTab.goto(room);
   await expect(biaTab.getByRole("link", { name: "Bia · you" })).toBeVisible();
-  await biaTab.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(biaTab).getByRole("button", { name: "Share webcam" }).click();
   await expect(biaTab.getByRole("dialog", { name: "Your webcam is already live" })).toBeVisible();
   await shoot(biaTab, "room--handover-offer");
   await biaTab.getByRole("dialog", { name: "Your webcam is already live" }).getByRole("button", { name: "Cancel" }).click();

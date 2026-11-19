@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext } from "@playwright/test";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // The owner page's People section, with a second browser removed while it is present
 // and sharing, and its share leaving the stage of the owner watching it.
@@ -62,7 +62,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   await expect(jo.getByRole("link", { name: "Rooms" })).toBeVisible();
 
   // Jo shares their webcam in the first room, and the owner watches it there.
-  await jo.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(jo).getByRole("button", { name: "Share webcam" }).click();
   await expect(jo.getByText("No one watching")).toBeVisible();
   const ownerRoom = await ownerContext.newPage();
   await ownerRoom.goto(jo.url());

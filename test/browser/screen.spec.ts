@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl, FakePick } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Screen shares. The media on every side is fake: the page's media client captures
 // nothing, and a journey tells it what the browser's picker returns and which browser
@@ -79,7 +79,7 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   const here = owner.getByRole("region", { name: "Here" });
   const stage = owner.getByRole("main", { name: "Stage" });
   const miasScreen = here.getByRole("button", { name: "Watch Mia's screen" });
-  const shareScreen = mia.getByRole("button", { name: "Share screen" });
+  const shareScreen = inBar(mia).getByRole("button", { name: "Share screen" });
   const notice = mia.getByRole("dialog", { name: "Before you pick" });
 
   // The first time on this device, a short notice comes first: click 1 of 4.
@@ -91,7 +91,7 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   await notice.getByRole("button", { name: "Choose what to share" }).click();
   await expect(notice).toHaveCount(0);
   await expect(mia.getByRole("img", { name: "Your screen, with no picture" })).toBeVisible();
-  await expect(mia.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(mia).getByRole("button", { name: "Screen live" })).toBeDisabled();
   await expect(miasScreen).toBeVisible();
   // graeae asked for the picker's audio checkbox ticked, and for no toggle of its own.
   expect(await asked(mia)).toMatchObject([{ audioSelection: "preferred", systemAudio: "exclude" }]);
@@ -106,7 +106,7 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   expect(await mia.evaluate(() => (globalThis as unknown as Fake).graeaeFakeMedia.screenAudio)).toBe(true);
 
   // A name watches the screen and the webcam together. A share with sound says nothing of it.
-  await mia.getByRole("button", { name: "Share webcam" }).click();
+  await inBar(mia).getByRole("button", { name: "Share webcam" }).click();
   await here.getByRole("button", { name: "Mia", exact: true }).click();
   await expect(stage.getByRole("img", { name: "Mia's screen, with no picture" })).toBeVisible();
   await expect(stage.getByRole("img", { name: "Mia's webcam, with no picture" })).toBeVisible();
@@ -149,7 +149,7 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   // One screen share per member: another tab of Mia's cannot start a second, only offer to take this one over.
   const second = await mia.context().newPage();
   await second.goto(owner.url());
-  await second.getByRole("button", { name: "Share screen" }).click();
+  await inBar(second).getByRole("button", { name: "Share screen" }).click();
   const offer = second.getByRole("dialog", { name: "Your screen is already live" });
   await offer.getByRole("button", { name: "Cancel" }).click();
   await expect(offer).toHaveCount(0);
@@ -185,7 +185,7 @@ test("on Firefox the notice says a screen share is video only, and the collapsed
   expect(await asked(oli)).toMatchObject([{ audio: false }]);
   await oli.getByRole("button", { name: "Show the bar" }).click();
   await expect(oli.getByText("Video only. No one hears this share.")).toBeVisible();
-  await expect(oli.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(oli).getByRole("button", { name: "Screen live" })).toBeDisabled();
 });
 
 test("the gear and your own name open their pages in a new tab, so a live share and watching carry on", async ({
@@ -197,10 +197,10 @@ test("the gear and your own name open their pages in a new tab, so a live share 
   const room = owner.url();
 
   // The owner shares a screen, and Uma watches it.
-  await owner.getByRole("button", { name: "Share screen" }).click();
+  await inBar(owner).getByRole("button", { name: "Share screen" }).click();
   const notice = owner.getByRole("dialog", { name: "Before you pick" });
   await notice.getByRole("button", { name: "Choose what to share" }).click();
-  await expect(owner.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(owner).getByRole("button", { name: "Screen live" })).toBeDisabled();
   await uma.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Owner's screen" }).click();
   const watched = uma.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Owner's screen, with no picture" });
   await expect(watched).toBeVisible();
@@ -212,7 +212,7 @@ test("the gear and your own name open their pages in a new tab, so a live share 
   ]);
   await expect(ownerPage).toHaveURL(/\/owner\/people$/);
   await expect(owner).toHaveURL(room);
-  await expect(owner.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(owner).getByRole("button", { name: "Screen live" })).toBeDisabled();
 
   // So does Uma's own name, for the "You" page, with her watching kept.
   const [you] = await Promise.all([uma.context().waitForEvent("page"), uma.getByRole("link", { name: "Uma · you" }).click()]);

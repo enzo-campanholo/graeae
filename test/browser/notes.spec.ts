@@ -2,7 +2,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
 import type { StatsEntry } from "../../src/app/lib/media/sending.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // The notes a sharer sees on their own share, and the share stepping down by itself on a
 // weak upload. The media is fake: a journey feeds the page the browser's statistics of
@@ -56,9 +56,9 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined) {
 
 /** Shares `page`'s screen, through the first-time notice. */
 async function shareScreen(page: Page) {
-  await page.getByRole("button", { name: "Share screen" }).click();
+  await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(page.getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(inBar(page).getByRole("button", { name: "Screen live" })).toBeDisabled();
 }
 
 /**

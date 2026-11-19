@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { GIGABYTE, type CreateInviteAnswer, type UsageAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // The usage budget: the owner's warning strip at 80%, everyone's at 95%, the stopped
 // stage at the limit, and the confirm that raises the budget again. The media is fake: the
@@ -52,8 +52,8 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
   await rui.goto(`/invite/${invite.code}`);
   await rui.getByRole("button", { name: "Join as Rui" }).click();
   await expect(rui).toHaveURL(owner.url());
-  await rui.getByRole("button", { name: "Share webcam" }).click();
-  await expect(rui.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(rui).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(rui).getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
   const ownerStage = owner.getByRole("main", { name: "Stage" });
   const ruiStage = rui.getByRole("main", { name: "Stage" });
@@ -117,7 +117,7 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
       ruiStage.getByText("Watching stops until the month resets or the owner raises it. Shares stay live."),
     ).toBeVisible();
     await expect(ownerStage.getByRole("status").filter({ hasText: "usage budget" })).toHaveCount(0);
-    await expect(rui.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+    await expect(inBar(rui).getByRole("button", { name: "Webcam live" })).toBeDisabled();
     // A new watch is refused: the stage stays as it is, with not even a moment of the
     // share on its way, nor the icon lit.
     const flashed = await owner.evaluate(`(async () => {

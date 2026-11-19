@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
-import { SETUP_SECRET } from "./app.ts";
+import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Usage: what a watching tab reports, and the owner's meter. The media is fake: a journey
 // says what the tab's media connection has received. Journeys share one instance, so the
@@ -34,8 +34,8 @@ async function ownerAndSharer(browser: Browser, baseURL: string | undefined, nam
   await member.goto(`/invite/${invite.code}`);
   await member.getByRole("button", { name: `Join as ${name}` }).click();
   await expect(member).toHaveURL(owner.url());
-  await member.getByRole("button", { name: "Share webcam" }).click();
-  await expect(member.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(member).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(member).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   return { owner, ownerContext, member };
 }
 
@@ -92,12 +92,12 @@ test("a tab reports what its media connection has received, and its final total 
   // her share: her tab sends its final total first, and nothing more of that connection.
   const fromLia = reports(lia);
   await lia.reload();
-  await lia.getByRole("button", { name: "Share webcam" }).click();
-  await expect(lia.getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await inBar(lia).getByRole("button", { name: "Share webcam" }).click();
+  await expect(inBar(lia).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await received(lia, 700);
   await expect.poll(() => fromLia, { timeout: 10_000 }).toContainEqual({ type: "received", bytes: 700, relayed: false });
   await lia.evaluate(() => (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.falter());
-  await expect(lia.getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
+  await expect(inBar(lia).getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
   await expect
     .poll(() => fromLia.at(-1), { timeout: 5_000 })
     .toEqual({ type: "received", bytes: 700, relayed: false, final: true });

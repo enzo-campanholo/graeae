@@ -3,17 +3,17 @@
   // share of that kind of yours is live from another tab or device. Going on stops it
   // there and shares from here; whoever watches it in this room is carried over.
   import type { ShareKind } from "$lib/share.js";
-  import FootPanel from "./FootPanel.svelte";
+  import FootPanel, { type PanelPlace } from "./FootPanel.svelte";
 
   let {
     kind,
-    floating = false,
+    place = "foot",
     oncontinue,
     oncancel,
   }: {
     kind: ShareKind;
-    /** Beside the folded rail rather than in the bar's foot. */
-    floating?: boolean;
+    /** Where it opens: the bar's foot, beside the folded rail, or the empty stage. */
+    place?: PanelPlace;
     oncontinue: () => void;
     oncancel: () => void;
   } = $props();
@@ -23,7 +23,7 @@
   id="hand-over-title"
   title={kind === "screen" ? "Your screen is already live" : "Your webcam is already live"}
   action="Share from here"
-  {floating}
+  {place}
   {oncontinue}
   {oncancel}
 >
