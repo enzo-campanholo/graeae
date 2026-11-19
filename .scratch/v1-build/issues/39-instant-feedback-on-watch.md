@@ -59,4 +59,10 @@ Owner's note (2026-11-18), on real media: "Selecting which transmission to watch
 
 Owner, on `graeae-test`: "All those look good. […] It didn't feel slow though." The instant icon and tile, the double-click, and stopping and choosing again all passed on real media. A watch no longer feels slow, so neither of the bigger cuts is needed, and the timings were not read.
 
-Seen on the way, not this ticket's: the owner's first share of the session went out encoded in software (the sharer's note showed, and the picture was poor). After a restart it went out in hardware. The note reads Chrome's own statistics, so the encoder really was the software one. The sending side was untouched here.
+Seen on the way, not this ticket's: one screen share went out encoded in software. The sharer's note showed, and the picture was poor. The note reads Chrome's own statistics, so the encoder really was the software one. The sending side was untouched here.
+
+- **Only with a tab shared.** The owner says it happened only when they shared one particular browser tab. A shared window or the entire screen went out in hardware with a good picture. So it follows what is shared, not which attempt in the session it was.
+- **A guess, not checked:** a tab is captured at its viewport's own size, which can be odd or not a multiple of 16. Some hardware H.264 encoders refuse such sizes, and Chrome then falls back to OpenH264. A window or a screen is usually a standard size.
+- **What a ticket for it would need:**
+  - The tab's capture size and the encoder Chrome names (`encoderImplementation` in the sender's statistics) while the note shows.
+  - Whether resizing the tab's window changes the encoder.
