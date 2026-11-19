@@ -13,7 +13,7 @@
   import { copy } from "$lib/clipboard.js";
   import { heldBack } from "$lib/hold-back.js";
   import { holdUntil } from "$lib/swap.svelte.js";
-  import { theme, type Theme } from "$lib/theme.svelte.js";
+  import { theme, themes } from "$lib/theme.svelte.js";
   import { deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
   import type { DeviceInvite, DeviceInviteAnswer, DeviceSummary, Me, MeAnswer } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
@@ -140,12 +140,6 @@
   function onvisibilitychange() {
     if (document.visibilityState === "visible") void refresh();
   }
-
-  const themes: { value: Theme; label: string }[] = [
-    { value: "dark", label: "Dark" },
-    { value: "light", label: "Light" },
-    { value: "system", label: "Match system" },
-  ];
 </script>
 
 <svelte:window onfocus={refresh} />

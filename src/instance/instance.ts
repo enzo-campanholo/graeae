@@ -262,6 +262,7 @@ export class Instance extends DurableObject<Env> {
       const body = await request.json<{ name?: unknown }>().catch(() => null);
       const renamed = body && this.people.rename(member, body.name);
       if (!renamed) return refuse();
+      this.signaling.toLists(new Set([renamed.id]), { type: "you", you: { name: renamed.name, owner: renamed.owner } });
       for (const room of this.people.rooms(renamed)) {
         this.signaling.toRoom(room.address, {
           type: "people",
@@ -617,7 +618,10 @@ export class Instance extends DurableObject<Env> {
 
   /** The whole list of rooms as `member` sees it: what the list gets on connecting. */
   private list(member: Member): ListState {
-    return { you: { owner: member.owner }, rooms: this.people.rooms(member).map((room) => this.listed(room)) };
+    return {
+      you: { name: member.name, owner: member.owner },
+      rooms: this.people.rooms(member).map((room) => this.listed(room)),
+    };
   }
 
   /** A room's line in the list of rooms. It reads the same to every member with access. */

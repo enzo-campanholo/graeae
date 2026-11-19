@@ -27,7 +27,7 @@ describe("the list of rooms", () => {
     expect(await root.text()).toContain('<div id="app"></div>');
   });
 
-  it("gives its socket each of the member's rooms, oldest first, with the names of those present", async () => {
+  it("gives its socket the member's name and each of their rooms, oldest first, with the names of those present", async () => {
     const { owner, bia, first, second } = await twoRooms();
     await openRoom(owner, `/r/${second}`);
     await openRoom(bia, `/r/${second}`);
@@ -35,13 +35,13 @@ describe("the list of rooms", () => {
     const { state } = await openList(bia);
 
     expect(state).toEqual({
-      you: { owner: false },
+      you: { name: "Bia", owner: false },
       rooms: [
         { address: first, name: "First room", present: [], live: 0 },
         { address: second, name: "Late shift", present: ["Bia", "Owner"], live: 0 },
       ],
     });
-    expect((await openList(owner)).state.you).toEqual({ owner: true });
+    expect((await openList(owner)).state.you).toEqual({ name: "Owner", owner: true });
   });
 
   it("lists only the rooms the member has access to", async () => {

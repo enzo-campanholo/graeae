@@ -42,7 +42,7 @@
 {#if refused}
   <NothingHere />
 {:else}
-  <PlainPage title="Rooms" {gear}>
+  <PlainPage title="Rooms" {gear} me={sample?.you.name ?? list?.you.name ?? null}>
     <ul class="-mx-3 grid gap-0.5">
       {#if rooms === null}
         {#each [0, 1, 2] as i (i)}

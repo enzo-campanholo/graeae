@@ -21,6 +21,7 @@
   import StageEmpty from "$lib/components/room/StageEmpty.svelte";
   import StageTile from "$lib/components/room/StageTile.svelte";
   import WatchedPicture from "$lib/components/room/WatchedPicture.svelte";
+  import YouMenu from "$lib/components/YouMenu.svelte";
   import Loading from "$lib/components/Loading.svelte";
   import PageTitle from "$lib/components/PageTitle.svelte";
   import { Hearing } from "$lib/hearing.js";
@@ -52,6 +53,7 @@
   const view = $derived(client?.view ?? null);
   const refused = $derived(client?.refused ?? false);
   const name = $derived(room?.name ?? view?.room.name ?? null);
+  const owner = $derived(room?.gear ?? view?.people.you.owner ?? false);
   holdUntil(() => !!sample || refused || view !== null);
 
   // The bar's people: those present first, then, dimmed, those with access who are not.
@@ -71,6 +73,8 @@
       away: others.filter((person) => !present.has(person.id)).toSorted(byName),
     };
   });
+  // Your own name, for the avatar in the header and at the rail's foot.
+  const me = $derived(room?.me ?? (people?.you || null));
 
   // Whether a member has a live share of a kind. Each live share is an icon on its
   // sharer's row, lit while this tab watches it.
@@ -301,6 +305,7 @@
             <HandOverOffer floating kind={offer} oncontinue={handOver} oncancel={() => (offer = null)} />
           {/if}
           <ShareButtons compact {...shareButtons} onscreen={shareScreen} onwebcam={shareWebcam} />
+          <div class="mt-3"><YouMenu name={me} {owner} side="right" large newTab /></div>
         {/snippet}
       </Rail>
     {:else}
@@ -308,8 +313,9 @@
         {#snippet header()}
           <BarHeader
             {name}
+            {me}
             home={room?.home ?? (view ? view.people.you.rooms > 1 : false)}
-            gear={room?.gear ?? view?.people.you.owner}
+            gear={owner}
             oncollapse={() => fold(true)}
           />
         {/snippet}

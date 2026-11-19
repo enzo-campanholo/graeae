@@ -2,7 +2,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import type { CreateInviteAnswer } from "../../src/shared/api.ts";
 import { SETUP_SECRET } from "./app.ts";
 
-// Journeys share one instance. This one's member is Fia, whom no other journey uses.
+// Journeys share one instance. Its members are Fia and Ari, whom no other journey uses.
 
 const opened: BrowserContext[] = [];
 
@@ -83,4 +83,57 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   await expect(owner.getByRole("region", { name: "Not here" })).toContainText("Fia R.");
   await laptop.reload();
   await expect(laptop.getByRole("heading", { name: "Nothing here" })).toBeVisible();
+});
+
+test("the avatar at the top of the bar opens You and sets the appearance, for a member and the owner", async ({
+  browser,
+  baseURL,
+}) => {
+  const owner = await newBrowser(browser, baseURL);
+  await owner.goto(`/setup#${SETUP_SECRET}`);
+  await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
+  const room = owner.url();
+  const made = await owner.request.post("/api/owner/invites", { data: { name: "Ari" } });
+  expect(made.status(), "the invite was refused").toBe(200);
+  const { invite } = (await made.json()) as CreateInviteAnswer;
+  const ari = await newBrowser(browser, baseURL);
+  await ari.goto(`/invite/${invite.code}`);
+  await ari.getByRole("button", { name: "Join as Ari" }).click();
+  await expect(ari).toHaveURL(room);
+
+  // Ari, a member with one room, has no gear: the avatar alone, whose menu names them.
+  const bar = ari.getByRole("complementary", { name: "People" });
+  await expect(bar.getByRole("link", { name: "Owner page" })).toHaveCount(0);
+  await bar.getByRole("button", { name: "You", exact: true }).click();
+  const menu = ari.getByRole("menu");
+  await expect(menu).toContainText("Ari");
+  await expect(menu.getByRole("menuitem", { name: "Owner page" })).toHaveCount(0);
+
+  // The appearance changes here, in the room, and is kept for the "You" page.
+  await expect(ari.locator("html")).toHaveClass(/\bdark\b/);
+  await menu.getByRole("menuitemradio", { name: "Light" }).click();
+  await expect(ari.locator("html")).not.toHaveClass(/\bdark\b/);
+  await expect(menu.getByRole("menuitemradio", { name: "Light" })).toBeChecked();
+
+  // "You" opens in a new tab, so Ari stays in the room.
+  const [you] = await Promise.all([ari.context().waitForEvent("page"), menu.getByRole("menuitem", { name: "You" }).click()]);
+  await expect(you).toHaveURL(/\/you$/);
+  await expect(you.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
+  // The "You" page has no avatar of its own: its menu would lead to where you are.
+  await expect(you.getByRole("button", { name: "You", exact: true })).toHaveCount(0);
+  await you.close();
+  await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Ari" })).toBeVisible();
+
+  // The owner keeps the gear beside the avatar, so the owner page stays one click away.
+  const ownerBar = owner.getByRole("complementary", { name: "People" });
+  await expect(ownerBar.getByRole("link", { name: "Owner page" })).toBeVisible();
+  await ownerBar.getByRole("button", { name: "You", exact: true }).click();
+  await expect(owner.getByRole("menu")).toContainText("Owner");
+  await expect(owner.getByRole("menu").getByRole("menuitem", { name: "Owner page" })).toHaveCount(0);
+  await owner.keyboard.press("Escape");
+
+  // Folded, the avatar sits at the rail's foot with the same menu.
+  await ownerBar.getByRole("button", { name: "Hide the bar" }).click();
+  await owner.getByRole("complementary", { name: "People" }).getByRole("button", { name: "You", exact: true }).click();
+  await expect(owner.getByRole("menu").getByRole("menuitem", { name: "You" })).toBeVisible();
 });

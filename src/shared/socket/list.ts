@@ -8,7 +8,8 @@
 // The conversation. Every message is one JSON text frame. The instance sends
 // `{ type: "state" }` first, holding the whole list, then a `rooms` change each time a
 // room's line in the list changes: a room renamed, someone arriving or leaving, a share
-// starting or ending, or the member gaining or losing access to a room. A list that connects
+// starting or ending, or the member gaining or losing access to a room. A `you` message
+// says the member renamed themselves. A list that connects
 // again gets the whole list again. The list sends only the heartbeat, which the instance
 // answers, as on a room's socket (`heartbeat.ts`); a list's lost connection has no
 // presence to keep.
@@ -30,8 +31,8 @@ export interface ListedRoom {
 }
 
 export interface ListState {
-  /** The member the list belongs to. */
-  you: { owner: boolean };
+  /** The member the list belongs to: their display name, for the avatar in the header. */
+  you: { name: string; owner: boolean };
   /** Every room the member has access to, oldest first. */
   rooms: ListedRoom[];
 }
@@ -49,6 +50,8 @@ export type ListChange =
 export type ListMessage =
   | { type: "state"; state: ListState }
   | { type: "rooms"; change: ListChange }
+  /** The member renamed themselves, from the "You" page. */
+  | { type: "you"; you: ListState["you"] }
   | { type: "gone" }
   | Heard;
 
@@ -78,5 +81,6 @@ export function applyList(state: ListState, change: ListChange): ListState {
 export function applyListMessage(state: ListState | null, message: ListMessage): ListState | null {
   if (message.type === "state") return message.state;
   if (!state) return null;
+  if (message.type === "you") return { ...state, you: message.you };
   return message.type === "rooms" ? applyList(state, message.change) : state;
 }

@@ -31,3 +31,10 @@ function apply() {
 }
 
 systemLight.addEventListener("change", apply);
+
+/** The choices, as the "You" page and the avatar menu offer them. */
+export const themes: readonly { value: Theme; label: string }[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "Match system" },
+];

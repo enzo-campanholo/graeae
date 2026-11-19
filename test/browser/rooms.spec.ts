@@ -77,8 +77,13 @@ test("the owner makes and renames rooms, and a member with two finds them on the
   const nightLine = gil.getByRole("link", { name: /Night shift/ });
   await expect(firstLine).toContainText("Owner");
   await expect(nightLine).toContainText("No one here");
-  await expect(gil.getByRole("link", { name: "You", exact: true })).toBeVisible();
   await expect(gil.getByRole("link", { name: "Owner page" })).toHaveCount(0);
+  // Gil's avatar names Gil and leads to "You", in this tab, as the list's links do.
+  await gil.getByRole("button", { name: "You", exact: true }).click();
+  await expect(gil.getByRole("menu")).toContainText("Gil");
+  await expect(gil.getByRole("menu").getByRole("menuitem", { name: "You" })).toHaveAttribute("href", "/you");
+  await expect(gil.getByRole("menu").getByRole("menuitem", { name: "You" })).not.toHaveAttribute("target");
+  await gil.keyboard.press("Escape");
 
   // The list is live, and looking at it makes Gil present nowhere.
   await expect(owner.getByRole("region", { name: "Not here" }).getByText("Gil", { exact: true })).toBeVisible();

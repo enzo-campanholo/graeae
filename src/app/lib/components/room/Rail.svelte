@@ -11,7 +11,8 @@
 
 <script lang="ts">
   // The bar folded into a thin rail: the present members' initials, still one click to
-  // follow someone, and the share buttons at the foot.
+  // follow someone, and the share buttons at the foot, under which your avatar keeps the
+  // header's menu.
   import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
   import type { Snippet } from "svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";

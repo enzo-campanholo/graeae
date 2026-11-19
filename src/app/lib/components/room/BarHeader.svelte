@@ -1,22 +1,26 @@
 <script lang="ts">
   // The bar's header: the room's name centred between the home icon (back to the list
-  // of rooms, for a member with more than one room) and the gear (the owner page, for
-  // the owner). The toggle that folds the bar into the rail sits at the far left, where
-  // the rail keeps it.
+  // of rooms, for a member with more than one room) on the left and your avatar on the
+  // right, a menu with the way to "You", beside the gear (the owner page, for the owner).
+  // The toggle that folds the bar into the rail sits at the far left, where the rail keeps it.
   import House from "@lucide/svelte/icons/house";
   import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
   import Settings from "@lucide/svelte/icons/settings";
   import { heldBack } from "../../hold-back.js";
   import IconButton from "../IconButton.svelte";
+  import YouMenu from "../YouMenu.svelte";
 
   let {
     name,
+    me,
     home = false,
     gear = false,
     oncollapse,
   }: {
     /** The room's name, or null while it is still loading. */
     name: string | null;
+    /** Your own display name, or null while it is still loading. */
+    me: string | null;
     home?: boolean;
     gear?: boolean;
     oncollapse: () => void;
@@ -36,10 +40,11 @@
   {:else}
     <h1 class="truncate px-1 text-center text-sm font-medium" title={name}>{name}</h1>
   {/if}
-  <div class="flex justify-end">
+  <div class="flex items-center justify-end gap-1">
+    <!-- New tabs, so the room, its shares and its watching carry on meanwhile. -->
     {#if gear}
-      <!-- A new tab, so the room, its shares and its watching carry on meanwhile. -->
       <IconButton label="Owner page" href="/owner" target="_blank"><Settings /></IconButton>
     {/if}
+    <YouMenu name={me} owner={gear} newTab />
   </div>
 </header>

@@ -354,6 +354,19 @@ describe("the display name in the list of rooms", () => {
     });
     await expect(list.next()).rejects.toThrow(/no message/);
   });
+
+  it("changes live at the top of the member's own lists, for the avatar there", async () => {
+    const instance = await startInstance();
+    const owner = instance.browser();
+    const first = addressOf(await setUpOwner(owner));
+    const { browser: bia } = await addMember(instance, owner, "Bia", [first]);
+    const { tab: list } = await openList(bia);
+
+    await rename(bia, "Bia S.");
+
+    expect(await list.next()).toEqual({ type: "you", you: { name: "Bia S.", owner: false } });
+    await expect(list.next()).rejects.toThrow(/no message/);
+  });
 });
 
 describe("forgetting a device with the list of rooms open", () => {

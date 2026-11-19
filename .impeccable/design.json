@@ -319,7 +319,7 @@
       {
         "name": "lift",
         "value": "0 4px 16px -4px rgb(0 0 0 / 0.4)",
-        "purpose": "The one shadow (`--lift`, `shadow-lift`), the tooltip's soft drop: lifts what floats off what it covers. Tooltips, the confirms, the floating screen notice, \"Reconnecting…\" and \"Click for sound\"."
+        "purpose": "The one shadow (`--lift`, `shadow-lift`), the tooltip's soft drop: lifts what floats off what it covers. Tooltips, the You Menu, the confirms, the floating screen notice, \"Reconnecting…\" and \"Click for sound\"."
       },
       {
         "name": "eye-cutout",
@@ -440,6 +440,14 @@
       "description": "Names every icon-only button, with its key when it has one.",
       "html": "<span class=\"ds-tooltip\">Hide the bar<kbd class=\"ds-tooltip-kbd\">[</kbd></span>",
       "css": ".ds-tooltip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--raised-2, #232326); color: var(--fg, #ececee); font: 500 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4); } .ds-tooltip-kbd { color: var(--muted-text, #8e8e95); font: 500 10px/1 'Geist Mono Variable', ui-monospace, monospace; }"
+    },
+    {
+      "name": "You Menu",
+      "kind": "custom",
+      "refersTo": "you-menu",
+      "description": "Your avatar as a menu, in the bar's header, at the rail's foot and on the list of rooms: your name, the way to \"You\", and the appearance. The owner's gear stays beside it.",
+      "html": "<div class=\"ds-you-menu\"><div class=\"ds-you-head\"><span class=\"ds-you-avatar\">M</span><span><b>Marta</b><small>Owner</small></span></div><a class=\"ds-you-item\">You</a><hr><small class=\"ds-you-label\">Appearance</small><a class=\"ds-you-item ds-you-on\">✓ Dark</a><a class=\"ds-you-item\">Light</a><a class=\"ds-you-item\">Match system</a></div>",
+      "css": ".ds-you-menu { display: grid; gap: 2px; width: 224px; padding: 4px; border-radius: 12px; background: var(--raised, #18181b); box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4); font: 400 14px/20px 'Geist Variable', ui-sans-serif, sans-serif; } .ds-you-head { display: flex; align-items: center; gap: 10px; padding: 8px; } .ds-you-head span:last-child { display: grid; } .ds-you-head b { color: var(--fg, #ececee); font-weight: 500; } .ds-you-head small, .ds-you-label { color: var(--dim, #808087); font-size: 12px; } .ds-you-label { padding: 4px 8px 2px; font-weight: 500; } .ds-you-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--raised-2, #232326); color: var(--soft, #b9b9bf); font-size: 12px; font-weight: 600; } .ds-you-item { display: flex; align-items: center; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--soft, #b9b9bf); } .ds-you-on { background: var(--raised-2, #232326); color: var(--fg, #ececee); } .ds-you-menu hr { margin: 4px; border: 0; height: 1px; background: var(--raised-2, #232326); }"
     },
     {
       "name": "Usage Meter",

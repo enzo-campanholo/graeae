@@ -6,7 +6,7 @@ Owner's note (2026-11-18): "Accessing your profile from inside a room is still w
 
 **Blocked by:** none
 
-**Status:** needs-triage
+**Status:** resolved
 
 ## Open questions
 
@@ -60,3 +60,41 @@ C's one real cost is the owner page going from 1 click to 2.
 **Building C-plus's list of rooms needs one more thing:** the list's connection doesn't carry your name today (`ListState.you` holds only `owner`). The shots use the sample's name, and on real data the avatar falls back to a plain person icon until the list sends the name.
 
 **Waiting on the owner:** C or C-plus, or either with changes.
+
+### 2026-11-18: chosen and built, C-plus without "Owner page" in the menu
+
+**The owner's verdict on round 2.** C-plus. The agent suggested one change, which the owner agreed to: with the gear right beside the avatar, the menu's "Owner page" did the same thing as the gear, so it is gone. The owner and a member now get the same menu.
+
+**Built.** `YouMenu.svelte`: your avatar as a menu, named "You" by its tooltip. It holds your name over "Owner" or "Member", then "You", then under a rule "Appearance" (Dark / Light / Match system). Picking an appearance applies it at once and leaves the menu open.
+- **In a room:** the menu sits at the header's right, after the owner's gear. The gear and "You" open in a new tab, so the room carries on. Folded, the avatar sits 12px under the rail's share buttons and its menu opens to the right. Your own row still opens "You", as before.
+- **The list of rooms:** the gear and the avatar replace the "You" text link, and here they open in the same tab, as the list's links do. The "You" page keeps only the gear.
+- **The list's connection:**
+  - `ListState.you` carries your display name, for the avatar.
+  - A rename on the "You" page sends a new `you` message to your own open lists, so an avatar in another tab follows.
+- **Shared code:** the appearance choices moved into `theme.svelte.ts`, so the "You" page and the menu share one list.
+- **DESIGN.md and the sidecar:**
+  - A new "You Menu" component entry.
+  - The room, rail and plain-page entries describe it.
+  - The rule inside it is listed under Tone Not Lines, its width under the One Scale Rule's hand-set sizes, and its highlight under Raised Two.
+
+**Tests.** Test first, one slice at a time:
+- **Seam 1, `list.test.ts`:** the list's state names the member, for both a member and the owner.
+- **Seam 1, `you.test.ts`:** a rename reaches the member's own list as a `you` message.
+- **Seam 2, `you.spec.ts` (new journey, member Ari):**
+  - A member's bar has no gear. The avatar's menu names them, and has no "Owner page".
+  - Light from the menu applies in the room and is checked on "You".
+  - "You" opens in a new tab while Ari stays here, and the "You" page has no avatar.
+  - The owner keeps the gear beside the avatar.
+  - Folded, the rail's avatar opens the same menu.
+- **Seam 2, `rooms.spec.ts`:** Gil's avatar on the list names Gil and leads to `/you` in the same tab, in place of the old "You" link.
+
+Each was red before its slice and green after. `pnpm typecheck` and `pnpm lint` are clean, and `pnpm test` passes in full: 429 Workers tests and 45 browser journeys. One run in between had `stage.spec.ts`'s layout journey abort a `page.evaluate` under load. It passed alone twice and in both full runs. The samples after the build are in `.impeccable/review/captures/t38-after/` (not committed).
+
+**Review.**
+- **Standards:** two hard mismatches with DESIGN.md (the panel's corners were 8px against 12px, the items' 4px against 6px) and literal `size-4` icons, all fixed. The menu's 224px width is now listed among the One Scale Rule's hand-set sizes, and the menu's raised-2 uses are listed under Raised Two. `item` was renamed `itemClass`.
+- **Spec:** the list's name could go stale in another tab after a rename, fixed as above. Your name in the room could reach the avatar as an empty string, now null, which shows the person icon. Missing: a check that the "You" page has no avatar, now in the journey.
+- **Left as is:** the tooltip-around-a-trigger shape repeats `IconButton`'s, since this trigger is a menu's and not a button. `PlainPage` takes `owner` from `gear`, which is the same fact on these pages. No journey checks the tooltip's text or the owner's list page.
+
+**Not done here.**
+- **Deploy to `graeae-test`.**
+- **Branch `t38-options` can be deleted,** and with it the shots in `t38-r1` and `t38-r2`.
