@@ -44,3 +44,22 @@ All three keep ticket 36's frame: the centred 1000px column, the headings at one
 **Not settled by any option yet:** taking a room away from the matrix (A), a chip (B) or the room's panel (C) would go through the removal confirm as unticking does now. In round 1 those only give access. Click counts and the 1080p promise are the room's, and none of this touches the room.
 
 **Waiting on the owner:** what you like and dislike in each, per section if it differs. Round 2 combines those.
+
+### 2026-11-18: round 1's verdict, and round 2, C beside C-plus
+
+**What the owner said of round 1.** B is out entirely. They lean to C and see merit in A.
+
+**What A had that C lacked**, and why A is not the base:
+- A's grid of members and rooms showed everyone's access at once. C shows it one member or one room at a time.
+- A's chart showed the month's pace as a picture, where C's statement is all text.
+- But A's grid has one column per room in a 592px column, and three rooms already fill it (the owner's name was cut off). Rooms are unlimited, so it breaks at the fourth.
+- A's chart draws the month's average as if it were a history, since no daily figures are kept.
+
+**Round 2: C beside C-plus.** Shots in `.impeccable/review/captures/t37-r2/index.html` (not committed): `--c` and `--c2` for each section, same data and sizes as round 1. On branch `t37-options` the new one is `?option=c2`. Invites and Rooms are the same in both.
+
+- **C** as round 1 showed it.
+- **C-plus** is C with two of A's strengths, kept within C's own form:
+  - **People.** Each member's line carries their rooms after the name, in muted label text ("Bia  First room and Late shift"; "Every room" for the owner). So access across everyone reads at a glance, without a grid that runs out of room. It sits on the line rather than as a second line, to keep C's 40px rhythm, as C's invites already carry their rooms.
+  - **Usage.** A tick on the meter marks today, with a line under it: "41% of the usage budget used, on day 19 of 30." The pace reads at a glance without a chart that implies a daily history. The statement beneath is unchanged.
+
+**Waiting on the owner:** C or C-plus, or either with changes.
