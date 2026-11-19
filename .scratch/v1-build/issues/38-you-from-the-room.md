@@ -98,3 +98,12 @@ Each was red before its slice and green after. `pnpm typecheck` and `pnpm lint` 
 **Not done here.**
 - **Deploy to `graeae-test`.**
 - **Branch `t38-options` can be deleted,** and with it the shots in `t38-r1` and `t38-r2`.
+
+### 2026-11-18: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-18, from `4049d77` (version `930477fd`). The live script (`index-CtWk4H5k.js`) carries the menu's "Appearance", and the stylesheet (`index-BDs-KNZV.css`) its `rounded-xl` panel. The secrets were left as they were, since no `.secrets` file was uploaded. As in ticket 35, the page went on naming the previous build's files for about five minutes after the deploy, until the instance's `ASSETS` binding caught up.
+
+**Cleaned up.**
+- Branch `t38-options` is deleted, so `?option=` no longer exists anywhere.
+- The round 1 and 2 shots (`t38-r1`, `t38-r2`) are deleted, so the comments above that point to them describe what was shown, not files to open.
+- `t38-after` stays.
