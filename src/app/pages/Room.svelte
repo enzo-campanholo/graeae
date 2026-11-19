@@ -326,7 +326,7 @@
 
         {#if people}
           <section aria-label="Here">
-            <PeopleHeading label="Here" count={people.here.length + 1} />
+            <PeopleHeading label="Here" count={people.here.length + 1} actions={shortcuts} />
             {#each people.here as person (person.id)}
               <PersonRow
                 name={person.name}
@@ -345,11 +345,6 @@
               webcam={ownRowShare("webcam")}
               ontoggle={(kind) => view && toggle(view.people.you.id, kind)}
             />
-            <Shortcuts
-              onwebcams={() => client?.pick("webcams")}
-              oneverything={() => client?.pick("everything")}
-              onnothing={() => client?.pick("nothing")}
-            />
           </section>
           {#if people.away.length}
             <section class="mt-4" aria-label="Not here">
@@ -361,7 +356,7 @@
           {/if}
         {:else if room}
           <section aria-label="Here">
-            <PeopleHeading label="Here" count={room.people.length + 1} />
+            <PeopleHeading label="Here" count={room.people.length + 1} actions={shortcuts} />
             {#each room.people as person (person.id)}
               <PersonRow
                 name={person.name}
@@ -372,7 +367,6 @@
               />
             {/each}
             <PersonRow name={room.me} you />
-            <Shortcuts />
           </section>
           {#if room.away.length}
             <section class="mt-4" aria-label="Not here">
@@ -446,6 +440,11 @@
     </Stage>
   </div>
 {/if}
+
+<!-- The watch shortcuts, at the right of the "Here" heading. -->
+{#snippet shortcuts()}
+  <Shortcuts picked={room ? room.picked : (client?.picked ?? null)} onpick={(what) => client?.pick(what)} />
+{/snippet}
 
 {#snippet budgetWarning()}
   {#if budget === "80%" || budget === "95%"}<BudgetStrip level={budget} owner={view?.people.you.owner ?? false} />{/if}

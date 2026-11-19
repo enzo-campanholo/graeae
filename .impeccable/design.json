@@ -397,8 +397,8 @@
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Plain text buttons: the Webcams / Everything / Nothing shortcuts.",
-      "html": "<button class=\"ds-btn-ghost\">Everything</button>",
+      "description": "Quiet actions with no fill, such as Cancel, and every icon button, the watch shortcuts in the Here heading among them.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
       "css": ".ds-btn-ghost { display: inline-flex; align-items: center; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-text, #8e8e95); font: 500 12px/16px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-btn-ghost:hover { background: var(--raised, #18181b); color: var(--fg, #ececee); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dim, #808087); }"
     },
     {

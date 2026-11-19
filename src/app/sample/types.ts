@@ -3,6 +3,7 @@
 
 import type { Component } from "svelte";
 import type { MeAnswer } from "../../shared/api.ts";
+import type { Shortcut } from "../lib/room-client.svelte.ts";
 import type { ShareKind } from "../lib/share.ts";
 
 export type Scene = "game" | "race" | "webcam" | "webcam-2";
@@ -33,6 +34,8 @@ export interface SampleRoom {
   away: string[];
   mine: { kind: ShareKind; watchers: string[]; scene: Scene }[];
   stage: SampleShare[];
+  /** The watch shortcut the stage holds, lit in the "Here" heading. */
+  picked: Shortcut | null;
 }
 
 export interface Sample {

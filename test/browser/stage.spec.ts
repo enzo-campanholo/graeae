@@ -6,7 +6,7 @@ import { SETUP_SECRET } from "./app.ts";
 // side is fake, so these cover what the owner sees, not pictures. Journeys share one
 // instance; these name their members Rui, Sol, Tom, Ugo, Vera, Wil, Xia, Yan, Zoe, Lia
 // and Noa, whom no other journey uses. Every share here is a webcam, but for Tom's screen
-// in the shortcuts journey, which tells "Webcams" from "Everything".
+// in the shortcuts journey, which tells "Watch every webcam" from "Watch everything".
 
 const opened: BrowserContext[] = [];
 
@@ -155,38 +155,61 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
   const ugos = stage.getByRole("img", { name: "Ugo's webcam, with no picture" });
   const ugoName = here.getByRole("button", { name: "Ugo", exact: true });
 
+  // The shortcuts sit in the "Here" heading. The one whose pick the stage holds is lit,
+  // and none is while the stage holds something else.
+  const shortcuts = here.getByRole("group", { name: "Watch" });
+  const picks = ["Watch every webcam", "Watch everything", "Watch nothing"] as const;
+  const lit = async (pick: (typeof picks)[number] | null) => {
+    for (const each of picks)
+      await expect(shortcuts.getByRole("button", { name: each })).toHaveAttribute("aria-pressed", String(each === pick));
+  };
+  await lit("Watch nothing");
+
   // On arrival the empty stage offers to watch everything, and it does.
   await stage.getByRole("button", { name: "Watch everything" }).click();
   await expect(toms).toBeVisible();
   await expect(tomsScreen).toBeVisible();
+  await lit("Watch everything");
   // It follows nobody: a share started afterwards does not join by itself.
   await shareWebcam(ugo);
   await expect(here.getByRole("button", { name: "Watch Ugo's webcam" })).toBeVisible();
   await expect(ugos).toHaveCount(0);
+  await lit(null);
 
   // "Nothing" empties the stage.
-  const shortcuts = here.getByRole("group", { name: "Watch" });
-  await shortcuts.getByRole("button", { name: "Nothing" }).click();
+  await shortcuts.getByRole("button", { name: "Watch nothing" }).click();
   await expect(toms).toHaveCount(0);
   await expect(stage.getByText("You're not watching anything yet.")).toBeVisible();
+  await lit("Watch nothing");
 
   // "Everything" watches every share, and "Webcams" every webcam and nothing else.
-  await shortcuts.getByRole("button", { name: "Everything" }).click();
+  await shortcuts.getByRole("button", { name: "Watch everything" }).click();
   await expect(toms).toBeVisible();
   await expect(tomsScreen).toBeVisible();
   await expect(ugos).toBeVisible();
-  await shortcuts.getByRole("button", { name: "Nothing" }).click();
+  await lit("Watch everything");
+  await shortcuts.getByRole("button", { name: "Watch nothing" }).click();
   await expect(ugos).toHaveCount(0);
   await expect(tomsScreen).toHaveCount(0);
-  await shortcuts.getByRole("button", { name: "Webcams" }).click();
+  await shortcuts.getByRole("button", { name: "Watch every webcam" }).click();
   await expect(toms).toBeVisible();
   await expect(ugos).toBeVisible();
   await expect(tomsScreen).toHaveCount(0);
+  await lit("Watch every webcam");
 
   // A shortcut ends following, and is one-off itself.
   await ugoName.click();
   await expect(toms).toHaveCount(0);
-  await shortcuts.getByRole("button", { name: "Webcams" }).click();
+  await lit(null);
+  // Following a member who shares nothing empties the stage, and lights no pick: the
+  // stage follows a person, not "nothing".
+  await stopWebcam(ugo);
+  await expect(ugos).toHaveCount(0);
+  await expect(stage.getByText("Ugo isn't sharing anything right now.")).toBeVisible();
+  await lit(null);
+  await shareWebcam(ugo);
+  await expect(ugos).toBeVisible();
+  await shortcuts.getByRole("button", { name: "Watch every webcam" }).click();
   await expect(toms).toBeVisible();
   await expect(ugoName).toHaveAttribute("aria-pressed", "false");
   await stopWebcam(ugo);
@@ -261,7 +284,7 @@ test("watched shares fill an even grid, one can be focused over a strip of the r
   await expect.poll(columns).toBe(3);
   await watch("Lia", "Noa");
   await expect.poll(columns).toBe(4);
-  await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Nothing" }).click();
+  await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Watch nothing" }).click();
   await expect(stage.getByRole("figure")).toHaveCount(0);
 
   // Focus makes one share large, with the others in a strip beneath it.

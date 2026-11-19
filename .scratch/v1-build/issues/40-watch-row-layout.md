@@ -90,3 +90,46 @@ A's one real cost is its 52px.
 **Rules kept.** All of them are one click each, and none changes the bar's width or the stage, so ticket 32's click counts and the 1080p promise hold.
 
 **Waiting on the owner:** which of D, E and F, or what to take from each.
+
+### 2026-11-19: chosen and built, F, with E kept in reserve
+
+**The owner's verdict on round 2.** F. The owner knows its cost, that the names live only in the tooltips, but liked it too much to give it up. E (one slim "Watch Webcams / Everything / Nothing" track under your own row, lit the same way) is kept as the agreed replacement if too many people find the icons unclear. Switching to it is a build, not a new round of options.
+
+**Built.**
+- **`Shortcuts.svelte`:** three faint 28px icon buttons, named by their tooltips: "Watch every webcam" (video), "Watch everything" (eye) and "Watch nothing" (eye-closed, not the tile's eye-off). The group is named "Watch" for screen readers.
+  - The pick the stage holds rests lit, on raised-2 in foreground, and is `aria-pressed`.
+  - It lights from the click on, since it reads what the member chose (`staged`) rather than what the instance has caught up with.
+- **`PeopleHeading.svelte`:** takes `actions` at its right, and then puts the count beside the label. Only "Here" uses it, for the shortcuts. The old row under your own row is gone, so the list gains 34px.
+- **`RoomClient.picked`:** the pick the stage holds.
+  - It is worked out from the same rule `pick()` uses (`chooses`), so the two cannot disagree.
+  - The order matters: "nothing" while the stage is empty, then "everything" over "webcams" while only webcams are live.
+  - Null while the stage holds anything else, such as a share started since.
+  - Null while the tab follows a member, even one who shares nothing, since that stage is about a person. The spec review found this case; at first "Watch nothing" lit while following.
+- **The samples** carry `picked`: "nothing" in `?sample=none`, "everything" in `?sample=busy`, none lit otherwise.
+- **The docs:**
+  - **DESIGN.md:** the room's bar describes the heading and its icons. Faint, Raised Two, the 28px icon buttons and Ghost list the shortcuts. The 1366x768 sentence no longer names a Watch row.
+  - **The sidecar:** the Ghost button's example is now Cancel.
+  - **`ignore.md`:** "the dim 'Watch' label" line is replaced by a line for ticket 40's call, which names E as the replacement.
+
+**Tests.** Test first, one slice at a time, at Seam 2 (`stage.spec.ts`'s shortcuts journey):
+- **The picks are named icons in the "Watch" group of "Here".** Red: no "Watch nothing" button. Green once built. `audio.spec.ts` and the grid journey now find the picks by their new names in that group.
+- **The pick the stage holds is lit, and no other.** This is checked on arrival (nothing), after the empty stage's "Watch everything", after a share starts later (none lit), and after each shortcut. Red: no `aria-pressed`. Green once built.
+- **Following lights nothing**, also while the followed member shares nothing. Red: "Watch nothing" pressed. Green after the fix.
+
+`pnpm typecheck` and `pnpm lint` are clean. The Workers tests (431) and the browser journeys (49) passed in full. `scripts/capture/journeys.capture.ts` clicked the old "Everything" and now clicks "Watch everything". The shots after the build are in `.impeccable/review/captures/t40-after/` (not committed).
+
+**Found on the way: the test build carries your real secrets.** `vite build --mode fake-media` copies `.dev.vars` into `dist/graeae/`. With a `.dev.vars` present (one was added on 2026-11-19 for real media), `vite preview` then uses its `SETUP_SECRET` over the tests' own. Setup is refused, and every Seam 2 journey fails at "First room". Here the copy was deleted from `dist/graeae/` after each build (the real `.dev.vars` untouched). Plain `pnpm test` will fail the same way until that is fixed, and this ticket does not fix it.
+
+**Review.**
+- **Standards:** the Faint and 28px icon-button lists in DESIGN.md (and `app.css`'s faint comment) did not name the shortcuts, now fixed. The label and count were written twice in `PeopleHeading`, now one snippet. The pick order list was renamed `PICKED_FIRST` to say what it is.
+- **Spec:** the lit pick while following (fixed, above), the capture script (fixed), the journey's comment naming the old labels (fixed), and this comment.
+- **Left as is:**
+  - `Shortcut` stays the type's name, as the spec and DESIGN.md call these the shortcuts.
+  - `picked`'s set comparison stays local, since `only` has no such helper.
+  - On an empty stage, the stage's "Watch everything" and the heading's icon share a name, as they do the same thing.
+
+**Rules kept.** Every pick is still one click. Ticket 32's counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold, since neither the bar's width nor the stage changed, and the journeys that measure them pass.
+
+**Not done here.**
+- **Deploy to `graeae-test`.**
+- **Branch `t40-options` can be deleted,** and with it the shots in `t40-r1` and `t40-r2`.

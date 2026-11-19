@@ -4,7 +4,6 @@ The owner ruled on these on 2026-11-18, in a grilling before the second critique
 
 ## Ticket 28's taste calls
 
-- **The dim "Watch" label before Webcams / Everything / Nothing.** The row reads as one sentence ("Watch nothing"), names the group for screen readers, and adds no click.
 - **A short last row of tiles centred under the rows above.** A short row centred under packed rows reads as one group of pictures; the stage is not a table, so column alignment gives way.
 - **"Screen live" resting as a secondary (raised, muted, not dimmed), like "Webcam live".** A live share is a state, not an action. Both live states rest alike, and "one filled button per surface" means at most one, so a room with none is fine.
 - **The owner page's content column (`--owner`, 1000px since ticket 34) centred in its panel.** The owner page reads as a centred settings column, like the plain pages and Linear's preferences. Reconfirmed in ticket 36, shown beside a column by the navigation and one that fills the panel. (Whether the member panel's weight balances the list at 1920 is still open to critique.)
@@ -33,3 +32,4 @@ The owner ruled on these on 2026-11-18, in a grilling before the second critique
 - **18: notes are grey, not amber, and there are none in the rail.** Notes block nothing, and amber means a warning. They live under the previews, which the rail does not have.
 - **24: viewers click again once watching is allowed.** A raised budget never restarts watching by itself, so an idle tab spends nothing.
 - **24: the owner's 80% usage strip sits in the room.** It is the one owner-only thing in the room, because a surprise bill is what the product promises never to cause.
+- **40: the watch shortcuts are three icons in the "Here" heading, named only by their tooltips.** The owner chose them over words on 2026-11-19, knowing the cost: they take no row, sit over the share icons they act on, and the lit one says what the stage holds. If too many people find them unclear, ticket 40's option E (one slim "Watch Webcams / Everything / Nothing" track under your own row, lit the same way) is the agreed replacement, not a new round.

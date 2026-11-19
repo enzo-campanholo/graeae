@@ -61,6 +61,12 @@ import { UsageReports } from "./usage-reports.ts";
 /** The wait between a restart of a failed media connection that found no path and the next. */
 const RESTART_AGAIN_MS = 2_000;
 
+/** A one-off pick of what others share: every webcam, everything, or nothing. */
+export type Shortcut = "webcams" | "everything" | "nothing";
+
+/** The picks in the order `picked` tries them, so an empty stage reads as "nothing". */
+const PICKED_FIRST: readonly Shortcut[] = ["nothing", "everything", "webcams"];
+
 /** What this tab receives of a share it watches. */
 export interface Picture {
   share: LiveShare;
@@ -397,12 +403,32 @@ export class RoomClient {
    * A one-off pick of what others share in the room: every webcam, everything, or
    * nothing. The stage becomes exactly that, and the tab follows nobody.
    */
-  pick(what: "webcams" | "everything" | "nothing") {
+  pick(what: Shortcut) {
     this.following = null;
+    this.only(this.chooses(what));
+  }
+
+  /**
+   * The one-off pick the stage holds as the member chose it (`staged`), from the click
+   * on: "nothing" while it is empty, and "everything" over "webcams" while only webcams
+   * are live. Null while it holds anything else, such as a share started since, and
+   * while the tab follows a member, whose stage is about a person even when empty.
+   */
+  get picked(): Shortcut | null {
+    if (this.following) return null;
+    const staged = this.staged;
+    const live = this.view?.shares.live ?? [];
+    const holds = (what: Shortcut) => {
+      const chosen = live.filter(this.chooses(what));
+      return chosen.length === staged.length && chosen.every((share) => staged.some((on) => sameShare(on, share)));
+    };
+    return PICKED_FIRST.find(holds) ?? null;
+  }
+
+  /** Which live shares a pick puts on the stage. */
+  private chooses(what: Shortcut): (share: LiveShare) => boolean {
     const you = this.view?.people.you.id;
-    this.only(
-      (share) => what !== "nothing" && share.member !== you && (what === "everything" || share.kind === "webcam"),
-    );
+    return (share) => what !== "nothing" && share.member !== you && (what === "everything" || share.kind === "webcam");
   }
 
   /**

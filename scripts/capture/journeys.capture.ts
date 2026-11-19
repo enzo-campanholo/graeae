@@ -132,7 +132,7 @@ test("every state of the room and the owner page the samples lack", async ({ bro
 
   // Watching everything: four shares, no pictures.
   const stage = stageOf(owner);
-  await owner.getByRole("button", { name: "Everything", exact: true }).click();
+  await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Watch everything" }).click();
   await expect(stage.getByRole("figure")).toHaveCount(4);
   await owner.mouse.move(0, 0);
   await shoot(owner, "room--everything");

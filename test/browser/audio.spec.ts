@@ -74,7 +74,7 @@ test("a viewer hears every watched share with sound at once, and sets each one's
   await fabi.getByRole("button", { name: "Share webcam" }).click();
   const stage = owner.getByRole("main", { name: "Stage" });
 
-  await owner.getByRole("button", { name: "Everything", exact: true }).click();
+  await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Watch everything" }).click();
   await expect(stage.getByRole("figure")).toHaveCount(4);
 
   // Both shares with sound play at once, at full volume, neither turned down for the other.
@@ -152,7 +152,7 @@ test("a viewer hears every watched share with sound at once, and sets each one's
       await owner.evaluate(`document.documentElement.classList.toggle("dark", ${colorScheme === "dark"})`);
       await owner.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/audio-${colorScheme}.png` });
     }
-    await owner.getByRole("button", { name: "Everything", exact: true }).click();
+    await owner.getByRole("group", { name: "Watch" }).getByRole("button", { name: "Watch everything" }).click();
     await stage.getByRole("slider", { name: "Volume of Eli's screen" }).hover();
     await owner.screenshot({ path: `${process.env.GRAEAE_SCREENSHOTS}/audio-two.png` });
   }

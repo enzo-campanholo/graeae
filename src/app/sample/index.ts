@@ -65,6 +65,7 @@ function build(): Sample {
       away: isBusy ? ["Fê"] : ["Edu", "Fê"],
       mine: [{ kind: "webcam", watchers: ["Bia", "Caio"], scene: "webcam-2" }],
       stage: onStage,
+      picked: variant === "none" ? "nothing" : isBusy ? "everything" : null,
     },
     rooms: [
       { address: "den", name: "The den", present: ["Bia", "Caio", "Duda"], live: 4 },
