@@ -58,3 +58,35 @@ In all three the picks do what they do now: one click each, following nobody.
 **For `ignore.md`.** A keeps the dim "Watch" label as a heading, C keeps it as it is now, and B drops it from view (only screen readers hear it). The locked line changes once one is chosen.
 
 **Waiting on the owner:** what you like and dislike in each. Round 2 combines those.
+
+### 2026-11-19: round 1's verdict, and round 2, hybrids of A and B
+
+**What the owner said of round 1.**
+- **C is the worst** of the three.
+- **B is liked** because it adds the least to the screen, but its icons are not clear enough.
+- **Between A and B, still undecided.**
+
+**What the agent added.** The agent leaned to A:
+- A's words carry the meaning.
+- A's light says something new: whether you watch everything, every webcam or nothing.
+- B's eye-off is also the tile's "Stop watching".
+
+A's one real cost is its 52px.
+
+**Round 2: three hybrids, beside today's row, A and B.** The comparison is one page of the bar's top, cropped at 1366x768 and set side by side. Buttons switch the state (some watched, nothing, webcams) and the theme. The page is at `.impeccable/review/captures/t40-r2/compare.html` (not committed, self-contained). `scripts/capture/compare.config.ts` reshoots it. On branch `t40-options`, the hybrids are `?option=d`, `e` and `f`.
+
+- **D, A's control in B's place.** A small segmented control (Webcams / Everything / Nothing, 24px options on a raised track) sits at the right of the "Here" heading. It is lit at the stage's pick, and the count moves beside "Here".
+  - **Gains:** no row at all, with the words kept.
+  - **Cost:** the heading is full, and the visible "Watch" is gone, so the group is named only for screen readers.
+- **E, A slimmed to today's row.** It sits where today's row is, under your own row, as one 32px raised track: a dim "Watch", then the three picks filling the width, lit at the stage's pick.
+  - **Gains:** the sentence and the light.
+  - **Cost:** 4px more than today, and 48px less than A.
+- **F, B lit.** B's three faint icons in the heading, with two changes:
+  - The pick the stage matches rests on raised-2 in foreground.
+  - "Nothing" is a closed eye (eye-closed) instead of the tile's eye-off.
+  - **Gains:** no row, as in B.
+  - **Cost:** the names stay in the tooltips.
+
+**Rules kept.** All of them are one click each, and none changes the bar's width or the stage, so ticket 32's click counts and the 1080p promise hold.
+
+**Waiting on the owner:** which of D, E and F, or what to take from each.
