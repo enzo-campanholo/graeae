@@ -1,13 +1,19 @@
 // The instance's answers. A page is always the same app page, which shows what belongs
-// at its address; only the status says whether the visitor was let in.
+// at its address. A refused one is marked, the same way for every refusal, so the app
+// shows "nothing here" from its first frame (ticket 45): it cannot read its own status.
+
+import { REFUSED_MARK } from "../shared/api.ts";
 
 /**
- * The one answer for every refused address: the app's page, which shows "nothing here"
- * for any address it is not let into. Its status, headers and body carry nothing from
- * the request, so no two refusals can be told apart.
+ * The one answer for every refused address: the app's page, marked refused, which shows
+ * "nothing here" at once. Its status, headers and body carry nothing from the request, so
+ * no two refusals can be told apart.
  */
 export async function nothingHere(assets: Fetcher, request: Request): Promise<Response> {
-  return appPage(assets, request, 404);
+  const page = await appPage(assets, request, 404);
+  return new HTMLRewriter()
+    .on("html", { element: (html) => void html.setAttribute(REFUSED_MARK, "") })
+    .transform(page);
 }
 
 /** The app's page for an address the visitor is let into. */

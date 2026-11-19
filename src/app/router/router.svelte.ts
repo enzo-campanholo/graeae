@@ -1,4 +1,6 @@
 import type { Component } from "svelte";
+import { sample } from "$sample";
+import { REFUSED_MARK } from "../../shared/api.ts";
 
 export type Params = Record<string, string>;
 
@@ -12,6 +14,12 @@ export interface Route {
    * Each address is its own view unless this says otherwise.
    */
   view?: (params: Params) => string;
+  /**
+   * The page shows even where the instance refused its address. Only the setup page: its
+   * secret is never in the address, so the instance refuses it to everyone, and the page
+   * learns whether it holds the right secret by sending it.
+   */
+  whenRefused?: boolean;
 }
 
 export interface Match {
@@ -19,10 +27,22 @@ export interface Match {
   params: Params;
 }
 
-/** The first route whose pattern matches `pathname`, with its `:named` segments filled in. */
+// The address this page was loaded at, when the instance refused it (ticket 45). The page
+// shows "nothing here" there from its first frame, rather than drawing what belongs at the
+// address and then asking the instance, which only says what the load already did. A move
+// to another address, the setup page's into the room, is the instance's to answer again.
+// A sample under `pnpm dev` draws its page for a browser the instance does not know.
+const refusedAt =
+  document.documentElement.hasAttribute(REFUSED_MARK) && !sample ? window.location.pathname : null;
+
+/**
+ * The first route whose pattern matches `pathname`, with its `:named` segments filled in.
+ * At an address the instance refused, only a route shown `whenRefused` matches.
+ */
 export function match(routes: readonly Route[], pathname: string): Match | null {
   const parts = segments(pathname);
   for (const route of routes) {
+    if (pathname === refusedAt && !route.whenRefused) continue;
     const pattern = segments(route.path);
     if (pattern.length !== parts.length) continue;
     const params: Params = {};

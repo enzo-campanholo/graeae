@@ -1,6 +1,14 @@
-// The shapes of the instance's HTTP answers, shared by the instance and the page.
+// The shapes of the instance's HTTP answers, and the mark on its refused page, shared by
+// the instance and the page.
 
 import type { ShareKind } from "./socket/shares.ts";
+
+/**
+ * The attribute on the page's `<html>` when the instance refused its address. Every
+ * refusal carries it alike, so it says no more than the 404 status does, but the page
+ * can read it before it draws anything.
+ */
+export const REFUSED_MARK = "data-refused";
 
 export interface RoomSummary {
   address: string;

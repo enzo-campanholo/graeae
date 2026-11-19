@@ -15,7 +15,7 @@
   const routes: Route[] = [
     { path: "/", component: Rooms },
     { path: "/r/:room", component: Room },
-    { path: "/setup", component: Setup },
+    { path: "/setup", component: Setup, whenRefused: true },
     { path: "/you", component: You },
     { path: "/invite/:invite", component: Invite },
     // One view: the owner page swaps its sections itself.

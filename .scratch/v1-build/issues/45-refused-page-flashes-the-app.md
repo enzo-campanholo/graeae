@@ -27,3 +27,27 @@ A first look at the code, not checked on `graeae-test`:
 ## Comments
 
 **2026-11-18, from ticket 33's whole pages.** The list of rooms now holds itself out of sight until it has its list or is refused, for up to 300ms. A refusal that arrives within that time shows "nothing here" first. A slower one still shows the Rooms page, now with no skeleton, before "nothing here". Not checked on `graeae-test`, and the other addresses are not looked at yet.
+
+### 2026-11-19: built, the instance marks its refused page
+
+**Chosen.** The first of the open questions: the instance tells the page it is refused from the start. Holding every page until the instance answers would have cost members a wait on every visit.
+
+**Built.**
+- `nothingHere` (`src/instance/answers.ts`) marks the app's page with `data-refused` on `<html>` (`REFUSED_MARK`, `src/shared/api.ts`). Every refusal still answers through it alone, so the answers stay identical byte for byte (`test/nothing-here.test.ts`, `test/invites.test.ts`). The mark says no more than the 404 does, but the page can read it before it draws. A page a visitor is let into never carries it.
+- The router (`src/app/router/router.svelte.ts`) shows "nothing here" at the address the page was loaded at when it carries the mark. It checks before any page mounts, so there is no shell, no socket and no question to the instance. A move to another address within the page is the instance's to answer again.
+- The setup page is the one route shown on a refused page (`whenRefused` in `App.svelte`). The instance refuses `/setup` to everyone, because the secret never reaches it in the address, and the page then moves into the room within the same page.
+- A `?sample` under `pnpm dev` ignores the mark, so the samples still draw for a browser the instance does not know (`pnpm capture`'s samples project).
+
+**What a stranger sees now**, with every answer from the instance slowed past the hold-back:
+- `/`, `/r/<address>`, `/you`, `/owner`, `/owner/<section>` and `/invite/<made-up, used, expired or cancelled code>`: "nothing here" from the first frame, and nothing else ever.
+- Before, `/` read "graeae Rooms" first, the room showed its share buttons and its loading mark, and `/you` showed its whole form. The owner page and the invite showed the loading mark.
+- `/setup#<wrong secret>`: the one exception, since only sending the secret tells the page. It is blank for the hold-back, shows the loading mark until the instance refuses, then shows "nothing here". It never shows a page of the app's. `/setup` with no secret shows "nothing here" at once, as before.
+
+**Tests.** Test first, at Seam 2, in `test/browser/nothing-here.spec.ts`. It slows every `/api/` answer to 600ms, records the page's text and loading mark from before its scripts run, and checks that only "nothing here" ever appears. Without the fix all six addresses failed, as listed above. The setup exception has its own test. Typecheck, lint, 431 tests in the Workers runtime and 60 journeys pass. The journeys ran by hand with `dist/graeae/.dev.vars` deleted (ticket 46).
+
+**Review.**
+- **Spec:** found that `?sample` under `pnpm dev` showed "nothing here" to a browser the instance does not know, which broke the capture's samples. Fixed: both samples failed without the fix and pass with it. Also found the setup exception was untested and this comment missing. Both are covered now.
+- **Standards:** `api.ts`'s header now names the mark, the test's delay is named after the hold-back, and the test's setup is one helper.
+- **Left as is:** `match` reads the refused address from the module, as the module already reads `window`. That keeps the rule in one place for every caller.
+
+**Not done:** not deployed to `graeae-test`, and not checked there from a browser that is not a device.
