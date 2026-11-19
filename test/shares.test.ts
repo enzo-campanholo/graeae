@@ -77,6 +77,34 @@ describe("a tab's media connection", () => {
     expect(instance.media.credentials()).toHaveLength(1);
   });
 
+  it("asks the media server for the connection and the relay credential at once, so the first watch waits on one call", async () => {
+    const { instance, biaTab } = await twoPresent();
+    const made = instance.media.hold("connect");
+    const minted = instance.media.hold("relayCredential");
+
+    biaTab.send({ type: "media", request: { type: "connect" } });
+    await made.reached;
+    // The credential is asked for while the connection is still being made.
+    await minted.reached;
+    made.release();
+    minted.release();
+
+    const connected = await biaTab.next();
+    expect(connected).toMatchObject({ type: "media", change: { type: "connected" } });
+    expect(instance.media.connections()).toHaveLength(1);
+    expect(instance.media.credentials()).toEqual([{ iceServers: expect.any(Array), ttlSeconds: 12 * 60 * 60 }]);
+  });
+
+  it("is unavailable when the relay refuses its credential, and can be asked for again", async () => {
+    const { instance, biaTab } = await twoPresent();
+    instance.media.fail("relayCredential");
+
+    biaTab.send({ type: "media", request: { type: "connect" } });
+
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable" } });
+    await shareWebcam(biaTab);
+  });
+
   it("is unavailable when the media server fails to make it, and can be asked for again", async () => {
     const { instance, biaTab } = await twoPresent();
     instance.media.fail("connect");

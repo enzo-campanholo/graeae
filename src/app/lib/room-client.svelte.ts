@@ -138,9 +138,17 @@ export class RoomClient {
   /** Requests waiting for their answer in the media area, oldest first. */
   private readonly waiting: { accepts: (change: MediaChange) => boolean; lost: () => void }[] = [];
   /** Shares being asked for that the tab no longer wants: each is stopped once it is watched. */
-  private unwanted: LiveShare[] = [];
-  /** Shares on the stage whose pull never reached the tab: each is watched again once its watch is closed. */
-  private rewatch: LiveShare[] = [];
+  private unwanted = $state.raw<LiveShare[]>([]);
+  /** Shares on the stage the tab has asked to stop watching, until the instance has closed their pull. */
+  private leaving = $state.raw<LiveShare[]>([]);
+  /**
+   * Shares on the stage to watch afresh once their watch is closed: one whose pull never
+   * reached the tab, or one chosen again while it was leaving.
+   */
+  private rewatch = $state.raw<LiveShare[]>([]);
+  /** When each share being asked for was asked for, by its key, to time its arrival (`timed`). */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
+  private readonly askedAt = new Map<string, number>();
   /** The qualities a stage rebuilt after the grace period was watched at: each is chosen again once its share is watched. */
   private restoring: { share: LiveShare; quality: QualityChoice }[] = [];
   /** How to stop listening for the quality each watched share arrives at, by its video's mid. Nothing renders from it. */
@@ -329,14 +337,46 @@ export class RoomClient {
     this.send({ type: "watching", request: { type: "quality", share, quality } });
   }
 
-  /** Whether this tab watches `share`: it is on the tab's stage. */
+  /** Whether this tab watches `share`: the instance has it on the tab's stage. */
   watches(share: LiveShare): boolean {
     return !!this.view?.watching.stage.some((watched) => sameShare(watched, share));
   }
 
   /**
+   * Whether `share` is on this tab's stage as the member last chose it: watched or asked
+   * for, and not let go of since. The page shows this from the click on, while the
+   * instance and the media server catch up.
+   */
+  wants(share: LiveShare): boolean {
+    const has = (list: LiveShare[]) => list.some((candidate) => sameShare(candidate, share));
+    if (has(this.rewatch)) return true;
+    if (has(this.unwanted) || has(this.leaving)) return false;
+    return this.watches(share) || has(this.asking);
+  }
+
+  /**
+   * The shares on this tab's stage as the member chose them (`wants`): those the instance
+   * has on it, in the order it began watching them, then those still being asked for.
+   */
+  get staged(): LiveShare[] {
+    const stage = this.view?.watching.stage ?? [];
+    const asked = this.asking.filter((share) => !stage.some((watched) => sameShare(watched, share)));
+    return [...stage, ...asked].filter((share) => this.wants(share));
+  }
+
+  /**
+   * The page has shown the first frame of `share`'s picture: the end of its arrival, for
+   * the timings a watch leaves in the browser's performance timeline (`timed`).
+   */
+  shown(share: LiveShare) {
+    this.timed(share, "first frame");
+    this.askedAt.delete(keyOf(share));
+  }
+
+  /**
    * Watches `share` if this tab does not, and stops watching it if it does: a click on
-   * its icon. The rest of the stage stays as it is, and the tab follows nobody.
+   * its icon. The rest of the stage stays as it is, and the tab follows nobody. Either
+   * shows at once (`wants`).
    */
   toggle(share: LiveShare) {
     this.following = null;
@@ -371,18 +411,32 @@ export class RoomClient {
    * once the instance says `watched`. A refused watch leaves the stage as it was.
    */
   private async watch(share: LiveShare) {
-    this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
+    if (this.unwanted.some((candidate) => sameShare(candidate, share)))
+      this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
+    // Still leaving: watched afresh once the instance has closed its pull.
+    if (this.leaving.some((candidate) => sameShare(candidate, share))) {
+      this.leaving = this.leaving.filter((candidate) => !sameShare(candidate, share));
+      this.rewatch = [...this.rewatch, { member: share.member, kind: share.kind }];
+      return;
+    }
     if (this.watches(share) || this.asking.some((asked) => sameShare(asked, share))) return;
+    // The instance refuses every watch while the usage budget is used up: nothing to show.
+    if (this.view?.usage.budget === "used up") return;
     // Asked for by its name alone, whatever else the room's list says of it.
     share = { member: share.member, kind: share.kind };
     this.asking = [...this.asking, share];
+    this.askedAt.set(keyOf(share), performance.now());
+    let lost = false;
     try {
       if (!(await this.connected())) return;
+      this.timed(share, "media connection");
       await this.negotiate(async () => {
+        this.timed(share, "turn");
         const pulled = await this.request(
           { type: "watching", request: { type: "watch", share } },
           (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
         );
+        this.timed(share, "pull");
         if (pulled.type !== "pulled") return;
         const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
         this.pictures = [
@@ -391,15 +445,22 @@ export class RoomClient {
         ];
         this.listen(share, pulled.video);
         await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
+        this.timed(share, "answer");
       });
     } catch {
       // The connection was lost on the way: the stage comes back with the room's state.
+      lost = true;
     } finally {
-      // Let go of a share the tab stopped wanting on the way, now that its negotiation is done.
+      // Let go of a share the tab stopped wanting on the way, now that its negotiation is
+      // done. One whose answer the lost socket never brought stays let go of: the room's
+      // state on the next socket says whether the instance pulled it all the same.
       const unwanted = this.unwanted.some((candidate) => sameShare(candidate, share));
       this.asking = this.asking.filter((asked) => !sameShare(asked, share));
-      this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
-      if (unwanted) this.drop(share);
+      if (!this.pictures.some((picture) => sameShare(picture.share, share))) this.askedAt.delete(keyOf(share));
+      if (!lost || !unwanted) {
+        this.unwanted = this.unwanted.filter((candidate) => !sameShare(candidate, share));
+        if (unwanted) this.drop(share);
+      }
     }
   }
 
@@ -418,19 +479,21 @@ export class RoomClient {
     for (const share of this.view?.shares.live ?? []) if (keep(share)) void this.watch(share);
   }
 
-  /** Whether this tab watches `share` or is asking to, and still wants it. */
-  private wants(share: LiveShare): boolean {
-    const asked = this.asking.some((candidate) => sameShare(candidate, share));
-    return (this.watches(share) || asked) && !this.unwanted.some((candidate) => sameShare(candidate, share));
-  }
-
   /**
-   * Stops watching `share`. One still being asked for is let go of once the instance
-   * says it is watched, since its pull is under way.
+   * Stops watching `share`, which leaves the stage at once (`wants`). One still being
+   * asked for is let go of once the instance says it is watched, since its pull is under
+   * way. One to be watched afresh is not, its unwatch being on its way already.
    */
   private drop(share: LiveShare) {
-    if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
-    else if (this.wants(share)) this.unwanted = [...this.unwanted, share];
+    if (!this.wants(share)) return;
+    share = { member: share.member, kind: share.kind };
+    if (this.rewatch.some((candidate) => sameShare(candidate, share))) {
+      this.rewatch = this.rewatch.filter((candidate) => !sameShare(candidate, share));
+      if (this.watches(share)) this.leaving = [...this.leaving, share];
+    } else if (this.watches(share)) {
+      this.leaving = [...this.leaving, share];
+      this.send({ type: "watching", request: { type: "unwatch", share } });
+    } else this.unwanted = [...this.unwanted, share];
   }
 
   /** Leaves the room: the instance ends this tab's presence, and what it shares, at once. */
@@ -492,6 +555,8 @@ export class RoomClient {
       this.follow(this.following);
     // The member followed has left the room: the tab follows nobody.
     if (this.following && !this.view?.presence.present.includes(this.following)) this.following = null;
+    // A share has left once the instance has it off the stage, however that came about.
+    if (this.leaving.some((share) => !this.watches(share))) this.leaving = this.leaving.filter((share) => this.watches(share));
   }
 
   /**
@@ -508,6 +573,10 @@ export class RoomClient {
     const you = view.people.you.id;
     const liveOfYours = (kind: ShareKind) =>
       view.shares.live.some((share) => share.member === you && share.kind === kind);
+    // A watch let go of on its way, whose answer the lost socket never brought: it leaves
+    // the stage if the instance pulled it all the same.
+    for (const share of this.unwanted) if (this.watches(share)) this.leaving = [...this.leaving, share];
+    this.unwanted = this.unwanted.filter((share) => this.asking.some((asked) => sameShare(asked, share)));
 
     if (media.connected || !this.made) {
       for (const picture of this.pictures) if (!this.watches(picture.share)) this.unwatched(picture.share);
@@ -520,8 +589,12 @@ export class RoomClient {
         else if (own.state === "stopping") this.send({ type: "shares", request: { type: "stop", kind: own.kind } });
       }
       if (!this.made) return;
+      // An unwatch the lost socket may never have carried, of a share leaving or to be watched afresh.
+      for (const share of [...this.leaving, ...this.rewatch])
+        if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
       // A watch whose pull the lost socket never brought is on the stage with no picture: ask again.
       for (const share of view.watching.stage) {
+        if ([...this.leaving, ...this.rewatch].some((other) => sameShare(other, share))) continue;
         if (this.pictures.some((picture) => sameShare(picture.share, share))) continue;
         this.rewatch = [...this.rewatch, share];
         this.send({ type: "watching", request: { type: "unwatch", share } });
@@ -564,10 +637,16 @@ export class RoomClient {
         this.tidy(own);
       }
     }
+    // What was leaving went with the old connection, and is not watched again. What was
+    // to be watched afresh is, being on `before`'s stage.
+    const left = this.leaving;
+    this.leaving = [];
+    this.rewatch = [];
     if (this.following) this.follow(this.following);
     else
       for (const share of before.stage)
-        if (view.shares.live.some((live) => sameShare(live, share))) asked.push(this.watch(share));
+        if (view.shares.live.some((live) => sameShare(live, share)) && !left.some((gone) => sameShare(gone, share)))
+          asked.push(this.watch(share));
     return Promise.all(asked);
   }
 
@@ -661,6 +740,7 @@ export class RoomClient {
   private dropPicture(share: LiveShare) {
     const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
     if (!picture) return;
+    this.askedAt.delete(keyOf(share));
     this.listening.get(picture.video)?.();
     this.listening.delete(picture.video);
     this.media.drop(picture.video);
@@ -707,6 +787,20 @@ export class RoomClient {
       );
     });
     this.listening.set(video, stop);
+  }
+
+  /**
+   * Leaves in the browser's performance timeline how long `share` took to reach `step` of
+   * its arrival since it was asked for, as "graeae watch: <step>": "media connection" once
+   * the tab has one, "turn" once its earlier negotiations are done, "pull" once the
+   * instance has pulled it, "answer" once the media server has the tab's answer, and
+   * "first frame". Nothing reads them: they are for measuring a watch on real media, with
+   * `performance.getEntriesByType("measure")`.
+   */
+  private timed(share: LiveShare, step: WatchStep) {
+    const start = this.askedAt.get(keyOf(share));
+    if (start === undefined) return;
+    performance.measure(`graeae watch: ${step}`, { start, end: performance.now(), detail: keyOf(share) });
   }
 
   /** Runs `negotiation` on the media connection once every earlier one is done. */
@@ -840,4 +934,12 @@ function startRequest(kind: ShareKind, offer: Offer, media: MediaClient, handOve
   const twoQualities = media.plan(kind).qualities.length > 1 ? { twoQualities: true as const } : {};
   const browser = media.browser;
   return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio, ...twoQualities, ...replacing };
+}
+
+/** A step of a watch's arrival, as `RoomClient.timed` measures it. */
+type WatchStep = "media connection" | "turn" | "pull" | "answer" | "first frame";
+
+/** A share's key: its member and its kind. */
+function keyOf(share: LiveShare): string {
+  return `${share.member}:${share.kind}`;
 }

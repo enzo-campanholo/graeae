@@ -10,7 +10,8 @@
 <script lang="ts">
   // One member in the bar. A present member's name follows them (watches everything they
   // share, now and later); each icon watches or stops watching one live share. An icon
-  // lights with the eye while you watch that share. Your own row leads to the "You" page,
+  // lights with the eye while you watch that share, from the click on: the picture may
+  // take a moment to arrive. Your own row leads to the "You" page,
   // and shows the icons of your shares sent from another tab or device, to watch them here.
   // A share whose sending device has gone quiet breathes, as a reconnecting avatar does.
   import Monitor from "@lucide/svelte/icons/monitor";
@@ -102,7 +103,10 @@
     side="right"
     pressed={share.watched}
     class={[share.watched ? "text-eye hover:text-eye" : "text-faint", share.reconnecting && "share-reconnecting"].filter(Boolean).join(" ")}
-    onclick={() => ontoggle?.(kind)}
+    onclick={(event) => {
+      // A double-click is one click: its second would take the share straight off again.
+      if (event.detail < 2) ontoggle?.(kind);
+    }}
   >
     {#if kind === "screen"}<Monitor />{:else}<Video />{/if}
   </IconButton>

@@ -118,8 +118,14 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
     ).toBeVisible();
     await expect(ownerStage.getByRole("status").filter({ hasText: "usage budget" })).toHaveCount(0);
     await expect(rui.getByRole("button", { name: "Webcam live" })).toBeDisabled();
-    // A new watch is refused: the stage stays as it is.
-    await watchRui.click();
+    // A new watch is refused: the stage stays as it is, with not even a moment of the
+    // share on its way, nor the icon lit.
+    const flashed = await owner.evaluate(`(async () => {
+      document.querySelector('[aria-label="Watch Rui\\'s webcam"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return !!document.querySelector('[aria-label="Rui\\'s webcam, connecting"], [aria-label="Stop watching Rui\\'s webcam"]');
+    })()`);
+    expect(flashed, "the refused watch showed on the stage").toBe(false);
     await owner.waitForTimeout(1_000);
     await expect(picture).toHaveCount(0);
     await screenshot(owner, "budget-used-up");

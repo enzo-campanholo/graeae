@@ -83,7 +83,7 @@
   const rowShare = (member: string, kind: ShareKind) =>
     isLive(member, kind)
       ? {
-          watched: !!client?.watches({ member, kind }),
+          watched: !!client?.wants({ member, kind }),
           reconnecting: !!view?.shares.live.some(
             (share) => share.member === member && share.kind === kind && share.reconnecting,
           ),
@@ -165,7 +165,8 @@
     !!view && !mine.some((share) => share.kind === kind) ? rowShare(view.people.you.id, kind) : null;
 
   // The stage: the shares this tab watches, while they are live, in the order it began
-  // watching them.
+  // watching them. A share is on it from the click that chose it, connecting until its
+  // picture arrives, and off it from the click that let it go.
   // The sample's made-up shares stand in for them under `?sample`.
   interface Tile {
     key: string;
@@ -179,6 +180,8 @@
     twoQualities?: boolean;
     /** It arrives at the lower of its two qualities. */
     lower?: boolean;
+    /** Chosen, and on its way: the instance has not pulled it to this tab yet. */
+    arriving?: boolean;
     share?: LiveShare;
     stream?: MediaStream | null;
     scene?: Scene;
@@ -186,7 +189,7 @@
   const tiles: Tile[] = $derived(
     room
       ? room.stage.map((share) => ({ key: share.id, name: share.name, kind: share.kind, scene: share.scene }))
-      : (view?.watching.stage ?? [])
+      : (client?.staged ?? [])
           .filter((share) => isLive(share.member, share.kind))
           .map((share) => {
             const listed = view?.shares.live.find((live) => sameShare(live, share));
@@ -200,6 +203,7 @@
               sound: listed?.audio === true,
               twoQualities,
               lower: twoQualities && picture?.received === "720p",
+              arriving: !picture,
               share,
               stream: picture?.stream ?? null,
             };
@@ -463,7 +467,7 @@
     kind={tile.kind}
     videoOnly={tile.videoOnly}
     audio={audioOf(tile)}
-    quality={tile.twoQualities && tile.share && client
+    quality={tile.twoQualities && tile.share && client?.watches(tile.share)
       ? { value: client.quality(tile.share), onchoose: (quality) => tile.share && client?.chooseQuality(tile.share, quality) }
       : null}
     lower={tile.lower}
@@ -479,6 +483,8 @@
         name={tile.name}
         kind={tile.kind}
         stream={tile.stream ?? null}
+        arriving={tile.arriving}
+        onframe={() => tile.share && client?.shown(tile.share)}
         volume={tile.share ? hearing.volume(tile.share.member) : 100}
         muted={hearing.isMuted(tile.key)}
         small={place === "strip"}

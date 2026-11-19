@@ -309,11 +309,11 @@ export class Shares {
   }
 
   /**
-   * Makes `tab`'s one media connection and has `mint` mint the relay credential for it. A
-   * tab that never heard the answer that handed it its connection (`unanswered`) gets a
-   * new one in its place, if the old one carries nothing yet: a connection with no tracks
-   * needs no close. "already" when the tab is making one or has one; null when the media
-   * server or the relay fails.
+   * Makes `tab`'s one media connection and, at the same time, has `mint` mint the relay
+   * credential for it. A tab that never heard the answer that handed it its connection
+   * (`unanswered`) gets a new one in its place, if the old one carries nothing yet: a
+   * connection with no tracks needs no close. "already" when the tab is making one or has
+   * one; null when the media server or the relay fails.
    */
   async connect(tab: Tab, mint: () => Promise<IceServer[]>): Promise<IceServer[] | "already" | null> {
     if (this.connectionRow(tab.id)) {
@@ -330,10 +330,15 @@ export class Shares {
       Date.now(),
     );
     this.inFlight.add(tab.id);
+    // Both at once, so the tab's first share or watch waits on one call to the media
+    // server, not two. A credential minted for a connection that then fails goes unused
+    // until it expires.
+    const minted = mint();
+    minted.catch(() => undefined);
     try {
       const mediaId = await this.media.connect();
       this.sql.exec("UPDATE media_connection SET media_id = ? WHERE tab_id = ?", mediaId, tab.id);
-      return await mint();
+      return await minted;
     } catch {
       // A media connection with no tracks carries nothing, so it needs no close.
       this.sql.exec("DELETE FROM media_connection WHERE tab_id = ?", tab.id);
