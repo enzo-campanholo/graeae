@@ -6,7 +6,7 @@ Owner's note (2026-11-18), on real media: "Selecting which transmission to watch
 
 **Blocked by:** none. Needs `graeae-test` to verify, since the fakes are instant.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 ## Open questions
 
@@ -54,3 +54,9 @@ Owner's note (2026-11-18), on real media: "Selecting which transmission to watch
   - Asking the sharer for a fresh keyframe on a new watch, if "first frame" turns out to be the long step.
 - **A second single click** (not a double-click) during the wait still takes the share off. That is now what the lit icon says it will do.
 - **Deployed to `graeae-test`** on 2026-11-19, from `9eb31e2` (version `fca44756`), for the owner to try on real media. The owner had already tried it on the fakes (`pnpm dev:fake-media`): "Looks good".
+
+### 2026-11-19: closed
+
+Owner, on `graeae-test`: "All those look good. […] It didn't feel slow though." The instant icon and tile, the double-click, and stopping and choosing again all passed on real media. A watch no longer feels slow, so neither of the bigger cuts is needed, and the timings were not read.
+
+Seen on the way, not this ticket's: the owner's first share of the session went out encoded in software (the sharer's note showed, and the picture was poor). After a restart it went out in hardware. The note reads Chrome's own statistics, so the encoder really was the software one. The sending side was untouched here.
