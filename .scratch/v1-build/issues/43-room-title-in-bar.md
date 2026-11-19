@@ -6,7 +6,7 @@ Owner's note (2026-11-18): "I don't like how the title is displayed."
 
 **Blocked by:** 34 (options can be shown before then; building waits on it)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ## Options first
 
@@ -122,4 +122,21 @@ The shots after the build are in `.impeccable/review/captures/t43-after/` (not c
 
 **Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold. The bar's width and the stage are unchanged, and the journeys that measure them pass. Home and the gear are still one click.
 
-**Branch `t43-options`** (`f2c999d`) can be deleted once this is deployed. With it go `?option=`, `?sample=member` and `?sample=long`.
+**Branch `t43-options`** (`f2c999d`) was to be deleted once this was deployed; see below.
+
+### 2026-11-19: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-19, from `8df1d4f` (version `dd1c2e4c`), with `pnpm run deploy --name graeae-test`.
+- The live page loads the new build at once:
+  - the script `index-DsAlDRVi.js`, which carries the heading's `wrap-break-word` and none of the fakes;
+  - the stylesheet `index-4X43AbOZ.css`, which carries `--headline-tracking: -.01em` and `.wrap-break-word{overflow-wrap:break-word}`.
+- The secrets were left as they were, since no `.secrets` file was uploaded.
+
+**Cleaned up.**
+- Branch `t43-options` is deleted, so `?option=`, `?sample=member` and `?sample=long` no longer exist anywhere, nor do `RoomPath` and `RoomSwitcher`.
+- The round 1 shots (`t43-r1`) are deleted, so the round 1 comment above describes what was shown, not files to open.
+- `t43-after` stays.
+
+**Still open, not this ticket's:**
+- The fake-media build copying `.dev.vars` into `dist/graeae/` (ticket 46).
+- The audio journey's one flake (3 shares counted where it waits for 4), seen once in four full runs.
