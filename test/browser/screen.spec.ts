@@ -221,3 +221,29 @@ test("the gear and your own name open their pages in a new tab, so a live share 
   await expect(watched).toBeVisible();
   await expect(uma.getByRole("region", { name: "Here" }).getByRole("button", { name: "Stop watching Owner's screen" })).toBeVisible();
 });
+
+test("Share screen names its key in a tooltip, as the rail's buttons do, not beside its label", async ({ browser, baseURL }) => {
+  const { owner } = await ownerInRoom(browser, baseURL);
+  const bar = owner.getByRole("complementary", { name: "People" });
+  const shareScreen = bar.getByRole("button", { name: "Share screen", exact: true });
+
+  // The label is the action alone, so it sits as "Share webcam"'s does; the key is announced.
+  await expect(shareScreen).toBeVisible();
+  await expect(shareScreen).toHaveAttribute("aria-keyshortcuts", "S");
+  await shareScreen.hover();
+  await expect(shareScreen).toHaveAccessibleDescription("Share screen S");
+
+  // The key does what the tooltip says. The pointer leaves first, so the tooltip closes.
+  await owner.mouse.move(0, 0);
+  await owner.keyboard.press("s");
+  const notice = owner.getByRole("dialog", { name: "Before you pick" });
+  await expect(notice).toBeVisible();
+  await notice.getByRole("button", { name: "Cancel" }).click();
+
+  // Folded into the rail, it is an icon named the same way, with the same key.
+  await owner.getByRole("button", { name: "Hide the bar" }).click();
+  const railScreen = bar.getByRole("button", { name: "Share screen", exact: true });
+  await expect(railScreen).toHaveAttribute("aria-keyshortcuts", "S");
+  await railScreen.hover();
+  await expect(railScreen).toHaveAccessibleDescription("Share screen S");
+});

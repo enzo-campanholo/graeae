@@ -6,7 +6,7 @@ Owner's note (2026-11-18): "I hate these buttons. The text is misaligned because
 
 **Blocked by:** none
 
-**Status:** needs-triage
+**Status:** resolved
 
 ## Open questions
 
@@ -43,3 +43,24 @@ Each option is shown at rest and under the pointer. The whole room in each optio
 **Rules kept.** Ticket 32's "keyed actions show their keys" holds in all three: in the tooltip (A), in the button (B), or in the label (C). No option changes the bar's width, the click counts or the stage.
 
 **Waiting on the owner:** what you like and dislike in each.
+
+### 2026-11-19: chosen and built, A
+
+**The owner's verdict on round 1.** A, the S in the tooltip only.
+
+**Built.**
+- **`ShareButtons.svelte`:** the bar's Share screen holds only its icon and "Share screen". A tooltip above it reads "Share screen S", with the S in the key-hint style, as on the rail's icon buttons. The button carries `aria-keyshortcuts="S"`. "Starting" and "Screen live" have neither the tooltip nor the attribute. Both labels now sit at the same centre, 12px right of their buttons' centres after the icon, where the S had pushed "Share screen" 11px left of "Share webcam".
+- **`IconButton.svelte`:** a keyed icon button now carries `aria-keyshortcuts` from its `key`, so the rail's Share screen announces S as the bar's does. "Hide the bar" and "Show the bar" announce `[` the same way. This was not asked for; it keeps the two Share screen buttons one family.
+- **The docs:**
+  - **DESIGN.md:** the Key Hint lives in tooltips, never inside a button. The Primary button names Share screen's S in its tooltip. The "Do" line on tooltips adds a labelled button's key.
+  - **The sidecar:** the Key Hint's purpose, the tooltip's description and the Primary button's example, which loses its key.
+  - **`ignore.md`:** a line for this call.
+- **Left as is:** the `Kbd` component's in-button styling (`in-data-[slot=button]`) now matches nothing. It is generated shadcn code.
+
+**Tests.** Test first, at Seam 2, in `screen.spec.ts`: "Share screen names its key in a tooltip, as the rail's buttons do, not beside its label." It checks the bar's button is named "Share screen" exactly and carries `aria-keyshortcuts="S"`. Under the pointer, its description is "Share screen S". Pressing s opens the screen notice. Folded into the rail, it checks the same name, key and description. Red: no button named exactly "Share screen" (it was "Share screen S"). Green once built. This is the first journey to press S.
+
+`pnpm typecheck` and `pnpm lint` are clean. The Workers tests (431) and the browser journeys (50) passed in full.
+
+**Found on the way, not fixed.** `vite build` copies the root `.dev.vars` into `dist/graeae/.dev.vars`, and `vite preview` then reads it over the test secrets the journeys pass in. With real secrets in `.dev.vars`, setup refuses the Seam 2 secret and every journey fails at "First room". The journeys above ran after deleting `dist/graeae/.dev.vars` between the build and `playwright test`.
+
+The options branch `t41-options` and the round 1 shots in `.impeccable/review/captures/t41-r1/` can go.

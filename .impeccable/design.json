@@ -312,7 +312,7 @@
       },
       "key-hint": {
         "displayName": "Key Hint",
-        "purpose": "Keyboard hints only, in buttons and tooltips."
+        "purpose": "Keyboard hints only, in tooltips; never inside a button."
       }
     },
     "shadows": [
@@ -382,8 +382,8 @@
       "kind": "button",
       "refersTo": "button-primary",
       "description": "The one filled button on a surface: Share screen in the room, Join on the invite page.",
-      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"/><line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"/><line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"/></svg>Share screen<kbd class=\"ds-kbd\">S</kbd></button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--primary-fill, #ececee); color: var(--primary-text, #0b0b0c); font: 500 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms; } .ds-btn-primary svg { width: 15px; height: 15px; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary-fill, #ececee) 88%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground, #0b0b0c), 0 0 0 4px var(--dim, #808087); } .ds-kbd { font: 500 10px/1 'Geist Mono Variable', ui-monospace, monospace; opacity: 0.6; padding: 0 2px; }"
+      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"/><line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"/><line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"/></svg>Share screen</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--primary-fill, #ececee); color: var(--primary-text, #0b0b0c); font: 500 13px/19px 'Geist Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background-color 150ms; } .ds-btn-primary svg { width: 15px; height: 15px; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary-fill, #ececee) 88%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground, #0b0b0c), 0 0 0 4px var(--dim, #808087); }"
     },
     {
       "name": "Secondary Button",
@@ -437,7 +437,7 @@
       "name": "Tooltip",
       "kind": "custom",
       "refersTo": "tooltip",
-      "description": "Names every icon-only button, with its key when it has one.",
+      "description": "Names every icon-only button, with its key when it has one, and holds the key of a labelled button such as Share screen.",
       "html": "<span class=\"ds-tooltip\">Hide the bar<kbd class=\"ds-tooltip-kbd\">[</kbd></span>",
       "css": ".ds-tooltip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--raised-2, #232326); color: var(--fg, #ececee); font: 500 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.4); } .ds-tooltip-kbd { color: var(--muted-text, #8e8e95); font: 500 10px/1 'Geist Mono Variable', ui-monospace, monospace; }"
     },
@@ -523,7 +523,7 @@
       "**Do** separate surfaces by tone: ground, inset stage (12px radius), raised rows and controls.",
       "**Do** keep one filled button per surface.",
       "**Do** read colours from the semantic tokens so a new theme is one block under its own selector.",
-      "**Do** name every icon-only button with a tooltip, including its key when it has one.",
+      "**Do** name every icon-only button with a tooltip, including its key when it has one, and show a labelled button's key in its tooltip too, never beside its label.",
       "**Do** stop every animation under reduced motion.",
       "**Do** use glossary terms only, plain labels (\"Forget\", \"Let back in\", \"Nothing here\"), and no exclamation marks."
     ],

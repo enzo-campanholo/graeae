@@ -8,6 +8,7 @@
   import Video from "@lucide/svelte/icons/video";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Kbd } from "$lib/components/ui/kbd/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import IconButton from "../IconButton.svelte";
 
   let {
@@ -31,6 +32,8 @@
   } = $props();
 
   const screenLabel = $derived(screenStarting ? "Starting screen share" : screenLive ? "Screen live" : "Share screen");
+  // S shares a screen while there is none of this tab's to start.
+  const keyed = $derived(!screenLive && !screenStarting);
   const webcamLabel = $derived(webcamStarting ? "Starting webcam" : webcamLive ? "Webcam live" : "Share webcam");
 </script>
 
@@ -38,7 +41,7 @@
   <div class="grid gap-1.5">
     <IconButton
       label={screenLabel}
-      key={screenLive || screenStarting ? undefined : "S"}
+      key={keyed ? "S" : undefined}
       variant={screenLive ? "secondary" : "default"}
       size="icon"
       side="right"
@@ -62,15 +65,25 @@
   </div>
 {:else}
   <div class="grid grid-cols-2 gap-1.5">
-    <!-- Live, it rests as "Webcam live" does: a state, not a dimmed action. -->
-    <Button
-      variant={screenLive ? "secondary" : "default"}
-      class={screenLive ? "disabled:text-muted-foreground disabled:opacity-100" : undefined}
-      disabled={screenLive || screenStarting}
-      onclick={onscreen}
-    >
-      <Monitor />{#if screenStarting}Starting{:else if screenLive}Screen live{:else}Share screen<Kbd>S</Kbd>{/if}
-    </Button>
+    <!-- Live, it rests as "Webcam live" does: a state, not a dimmed action. Its key is in
+         its tooltip, as the rail's is, so its label sits as "Share webcam"'s does. -->
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant={screenLive ? "secondary" : "default"}
+            class={screenLive ? "disabled:text-muted-foreground disabled:opacity-100" : undefined}
+            disabled={screenLive || screenStarting}
+            aria-keyshortcuts={keyed ? "S" : undefined}
+            onclick={onscreen}
+          >
+            <Monitor />{#if screenStarting}Starting{:else if screenLive}Screen live{:else}Share screen{/if}
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      {#if keyed}<Tooltip.Content side="top">Share screen <Kbd>S</Kbd></Tooltip.Content>{/if}
+    </Tooltip.Root>
     <Button
       variant="secondary"
       class="disabled:text-muted-foreground disabled:opacity-100"

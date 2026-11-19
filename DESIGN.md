@@ -222,7 +222,7 @@ A neutral grey scale from near-black to near-white, with one cyan eye and two re
 - **Body Strong** (500, 15px/22px): member names, room names, section titles, button labels, the room name in the bar header.
 - **Label** (400, 13px/18px): "Here" / "Not here" headings, counts, captions, share kind under a tile, small buttons, tooltips (500).
 - **Mark Tag** (500, 12px/16px, tabular): the "720p" mark on a caption, the one size between label and key hint.
-- **Key Hint** (Geist Mono 500, 11px): the key in a button or tooltip ("S", "["), at 60% opacity inside a button.
+- **Key Hint** (Geist Mono 500, 11px): the key in a tooltip ("S", "["), in muted text. A key never sits inside a button, where it would push the label off centre.
 
 Spacing stays on the 16px rem while the body is 15px. Counts and usage figures use tabular numerals. Headings balance their wrap. The scale is sized for a 1080p screen seen from a desk: the space a wide window has goes to type, rows and controls that read at a glance, not to margins.
 
@@ -267,7 +267,7 @@ Everything is rounded; nothing is square. Controls, rows, inputs and tooltips ta
 ### Buttons
 Quiet and literal; one filled button per surface.
 - **Shape:** gently rounded (6px); heights 28 / 32 / 36 / 44px.
-- **Primary:** near-white fill with near-black text in dark (inverted in light), 36px high, 12px side padding, at 88% on hover. In the room it is Share screen, with its key hint (while the screen is live it rests as a secondary "Screen live" instead); on the invite page it is Join.
+- **Primary:** near-white fill with near-black text in dark (inverted in light), 36px high, 12px side padding, at 88% on hover. In the room it is Share screen, its key S in its tooltip as on the rail (while the screen is live it rests as a secondary "Screen live" instead); on the invite page it is Join.
 - **Secondary:** raised grey with soft text; raised-2 and foreground text on hover.
 - **Ghost:** muted text with no fill; raised fill and foreground text on hover. Used for icon buttons, the watch shortcuts among them, and quiet actions such as Cancel.
 - **Destructive:** the `destructive` variant rests as a ghost button (Stop adds the raised fill to rest as a secondary) and turns stop-red on hover: 14% stop tint behind stop text, 22% when pressed. Stop and Forget. In a confirm whose one job is to remove (the removal modal, and Forget once a device row asks "Keep" or "Forget" before forgetting the device you are on), the destructive action rests in the stop tint instead (14% behind stop text, 22% on hover), with a ghost Cancel beside it holding the focus.
@@ -319,7 +319,7 @@ Three circles, the outer two in mark-dot grey and the middle in the eye (7px dot
 - **Do** separate surfaces by tone: ground, inset stage (12px radius), raised rows and controls.
 - **Do** keep one filled button per surface.
 - **Do** read colours from the semantic tokens so a new theme is one block under its own selector.
-- **Do** name every icon-only button with a tooltip, including its key when it has one.
+- **Do** name every icon-only button with a tooltip, including its key when it has one, and show a labelled button's key in its tooltip too, never beside its label.
 - **Do** stop every animation under reduced motion.
 - **Do** use glossary terms only, plain labels ("Forget", "Let back in", "Nothing here"), and no exclamation marks.
 

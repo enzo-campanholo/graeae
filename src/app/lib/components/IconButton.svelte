@@ -20,7 +20,7 @@
     children,
   }: {
     label: string;
-    /** The keyboard shortcut, shown in the tooltip. */
+    /** The keyboard shortcut, shown in the tooltip and announced. */
     key?: string;
     href?: string;
     /** Where a link opens, such as "_blank" for a new tab. */
@@ -48,6 +48,7 @@
         {size}
         class={className}
         aria-label={label}
+        aria-keyshortcuts={key}
         aria-pressed={pressed}
         {disabled}
       >
