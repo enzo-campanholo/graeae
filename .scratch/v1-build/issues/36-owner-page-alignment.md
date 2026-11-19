@@ -42,3 +42,7 @@ So moving between sections, the second column jumped about 150px, and Usage ende
 **Review.** The standards and spec reviews found no defects. After the review, the test lost its second list of section names, and DESIGN.md's owner page entry stopped using "side column" for both the navigation and the sections' column.
 
 **For 37.** The frame is set: a centred 1000px column, split 1fr | 360px in every section. The layouts inside each section are still 37's to redesign.
+
+### 2026-11-18: deployed and closed
+
+**Deployed to `graeae-test`** on 2026-11-18, from `b93e59c` (version `002953ed`). The live stylesheet carries `--owner-side: 360px` and the `owner-columns` split. Its secrets were left as they were, since no `.secrets` file was uploaded. This time the page named the new build's files straight away, without ticket 35's five-minute lag.
