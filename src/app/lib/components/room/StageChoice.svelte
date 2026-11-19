@@ -3,6 +3,7 @@
   // for a live share, the sharer's avatar and the share's icon over the name and kind. A
   // keyed choice names its key in its tooltip, as the bar's buttons do, never inside.
   import type { Component } from "svelte";
+  import type { ShareKind } from "$lib/share.js";
   import { Kbd } from "$lib/components/ui/kbd/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import Avatar from "../Avatar.svelte";
@@ -23,7 +24,7 @@
     /** A live share's sharer, whose avatar leads the icon. */
     who?: string;
     /** A live share's kind, in dim under the name. */
-    kind?: string;
+    kind?: ShareKind;
     /** The keyboard shortcut, shown in the tooltip and announced. */
     key?: string;
     /** The accessible name, where the label alone does not say what it does. */
@@ -38,7 +39,7 @@
     {#if who}
       <span class="flex items-center gap-2"><Avatar name={who} ring="var(--raised)" /><Icon class="size-icon" /></span>
     {:else}
-      <Icon class="size-7 stroke-[1.5]" />
+      <Icon class="size-7" />
     {/if}
     <span class="grid gap-0.5">
       <span class="font-medium">{label}</span>
@@ -74,11 +75,14 @@
       background-color 150ms,
       color 150ms;
   }
+  .choice :global(svg) {
+    stroke-width: 1.75;
+  }
   .choice:hover:not(:disabled) {
     background: var(--raised-2);
     color: var(--fg);
   }
-  /* The avatar is raised-2 too, so under the pointer it steps back to raised. */
+  /* The avatar is raised-2 too, so under the pointer it steps back to raised to stay a circle. */
   .choice:hover:not(:disabled) :global(.avatar) {
     background: var(--raised);
   }

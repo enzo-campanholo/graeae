@@ -69,3 +69,66 @@ In all three:
 **Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold in all three. The empty stage shows no share, and the bar's width does not change.
 
 **Waiting on the owner:** what you like and dislike in each. Round 2 combines those.
+
+### 2026-11-19: chosen and built, A
+
+**The owner's verdict on round 1.** A, large choices in the middle.
+- **C is out:** too much useless information.
+- **B** was the other contender. The agent leaned to A because B's live state reads as shares that failed to load, and its other frames vanish at the first click.
+- **The first-time notice opens on the stage** when the stage's Share screen is pressed. The agent argued for it and the owner agreed. Whoever presses the stage's button rather than the bar's is likely new, and so the one the notice is for. In the bar's foot, about 800px away, it would read as a button that did nothing.
+
+**Built.**
+- **`StageEmpty.svelte`, as A:**
+  - A heading at the title step in foreground, then one muted line.
+  - **No one else sharing:** "No one is sharing yet." ("Only you are sharing." while a share of yours is live, from this tab or another) and two large choices, Share screen and Share webcam.
+  - **Shares live:** "You're not watching anything yet." and a choice per share others have live, by name, a screen before a webcam. Each is named "Watch Bia's screen", as the row's icon is, and a click watches that one share. A large secondary "Watch everything" (eye) follows.
+  - **Unchanged:** following a member who shares nothing, and the used-up usage budget, keep today's words and size.
+- **`StageChoice.svelte`:** the choice itself.
+  - A raised 224x136 card (`--choice`, `--choice-h` in the scale block), 8px corners, raised-2 and foreground under the pointer.
+  - A 28px icon over the label. For a share, the sharer's avatar and the share's icon over the name and a dim kind.
+  - A keyed choice names its key in its tooltip and `aria-keyshortcuts`.
+- **The stage's share choices are the bar's buttons in another place:**
+  - The same names and states ("Starting", "Screen live", "Webcam live", resting muted rather than dimmed).
+  - The same flow, so the same click counts and the hand-over offer.
+  - Raised rather than filled, so the bar's Share screen stays the room's one filled button.
+  - `shareLabels` and the `Sharing` type in `$lib/share.ts` now hold the labels for both places.
+- **Where the panel opens (`Room.svelte`, `FootPanel.svelte`):**
+  - What a press asks first (the first-time notice, or the hand-over offer, which is the same panel) opens where the button pressed was: the bar's foot, beside the rail, or the stage.
+  - On the stage it floats 12px under the choices, centred, at the bar's inside width with the tooltip's drop, so nothing moves.
+  - The S key asks in the bar, as before.
+  - If the stage stops offering sharing while the panel is open (someone else starts sharing, say), the panel moves to the bar and stays open.
+  - `FootPanel`'s `floating` became `place` (`foot`, `rail`, `stage`).
+- **The docs:**
+  - **DESIGN.md:** a section "The Empty Stage", plus the panel's stage place in Screen Notice and Hand-over Offer. Raised, Title, the shapes, the icon sizes and the One Scale Rule's hand-set list name the choices.
+  - **The sidecar:** a "Stage Choice" component.
+  - **`ignore.md`:** a line for this call, naming its cost (the stage repeats the bar's buttons and icons, larger).
+
+**Tests.** Test first, at Seam 2, in `stage.spec.ts`:
+- **"While no one shares, the empty stage offers sharing as the bar does, the screen's first-time notice beside it."**
+  - It checks the heading, then one click on the stage's Share webcam shares the webcam.
+  - It checks "Only you are sharing." and "Webcam live", disabled.
+  - Share screen carries `aria-keyshortcuts="S"`. Its notice is in the stage and not in the bar, and going on shares the screen.
+  - Once someone else shares, the stage offers their share and no sharing.
+- **"With shares live, the empty stage offers each one by name, and a click watches that one alone."** The row's icon lights.
+- Both were red on the missing heading and green once built.
+
+The stage's buttons carry the bar's names, so every journey that found a share button page-wide now finds it in the bar. That is `inBar(page)` in `test/browser/app.ts`, across 13 journeys and `journeys.capture.ts`. The capture now also shoots `room--stage-notice` and `room--choices`.
+
+`pnpm typecheck` and `pnpm lint` are clean. The Workers tests (431) and the browser journeys (52) passed in full. As in tickets 40 and 41, `dist/graeae/.dev.vars` was deleted between the build and `playwright test` (ticket 46). The shots after the build are in `.impeccable/review/captures/t42-after/` (not committed), set against `t41-after`.
+
+**Review.**
+- **Standards:**
+  - The share buttons' labels were written twice: now `shareLabels`.
+  - Their four states travelled as an inline type: now `Sharing`.
+  - Vague names (`asked`, `asking`, `stagePanel`) became `pressedOn`, `askFirst` and `askFirstOnStage`.
+  - The new journey built its own bar locator beside `inBar`.
+  - `kind` became a `ShareKind`.
+  - DESIGN.md did not mention the avatar stepping back under the pointer.
+  - All fixed.
+- **Spec:** the choices' icons used a 1.5 stroke where the system's is 1.75; now 1.75. This ticket file is now updated.
+- **Left as is:**
+  - `stageOffers` in `Room.svelte` mirrors the branch of `StageEmpty` that shows the share buttons, from outside it. A comment says so.
+  - No journey covers the hand-over offer on the stage, the bar folded, or a share of yours live from another device. They run on the same code as the bar's, which the hand-over and screen journeys cover.
+  - The 8px corner in `StageChoice`'s own style stays a literal, as the shapes in DESIGN.md name it.
+
+**Rules kept.** Ticket 32's click counts (1 to watch a member, 1 to share a webcam, 3 to share a screen) and the 1080p promise hold. The empty stage shows no share, the bar's width is unchanged, and the journeys that measure them pass.

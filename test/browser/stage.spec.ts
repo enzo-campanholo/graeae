@@ -342,7 +342,6 @@ test("while no one shares, the empty stage offers sharing as the bar does, the s
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const stage = owner.getByRole("main", { name: "Stage" });
-  const bar = owner.getByRole("complementary", { name: "People" });
   await expect(stage.getByRole("heading", { name: "No one is sharing yet." })).toBeVisible();
 
   // One click shares the webcam, as in the bar.
@@ -358,7 +357,7 @@ test("while no one shares, the empty stage offers sharing as the bar does, the s
   await shareScreen.click();
   const notice = stage.getByRole("dialog", { name: "Before you pick" });
   await expect(notice).toBeVisible();
-  await expect(bar.getByRole("dialog")).toHaveCount(0);
+  await expect(inBar(owner).getByRole("dialog")).toHaveCount(0);
   await notice.getByRole("button", { name: "Choose what to share" }).click();
   await expect(owner.getByRole("button", { name: "Stop your screen" })).toBeVisible();
   await expect(stage.getByRole("button", { name: "Screen live" })).toBeDisabled();

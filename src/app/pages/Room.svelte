@@ -32,6 +32,7 @@
   import { holdUntil, viewShown } from "$lib/swap.svelte.js";
   import type { LiveShare, Person, ShareKind } from "../../shared/socket/index.ts";
   import { sameShare } from "../../shared/socket/watching.ts";
+  import type { Sharing } from "$lib/share.js";
   import type { Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
@@ -103,7 +104,7 @@
   const liveHere = (kind: ShareKind) =>
     room ? room.mine.some((share) => share.kind === kind) : mine.some((share) => share.kind === kind);
   const liveElsewhere = (kind: ShareKind) => !!view && !liveHere(kind) && isLive(view.people.you.id, kind);
-  const shareButtons = $derived({
+  const shareButtons: Sharing = $derived({
     screenLive: liveHere("screen"),
     screenStarting: starting("screen"),
     webcamLive: liveHere("webcam"),
@@ -126,11 +127,11 @@
 
   // The notice and the offer open where the button pressed was: in the bar (or beside the
   // rail), or on the empty stage while it offers sharing. A key press asks in the bar.
-  let asked = $state<"bar" | "stage">("bar");
+  let pressedOn = $state<"bar" | "stage">("bar");
 
   function shareScreen(from: "bar" | "stage" = "bar") {
     if (!client || shareButtons.screenLive || shareButtons.screenStarting) return;
-    asked = from;
+    pressedOn = from;
     if (liveElsewhere("screen")) {
       notice = false;
       offer = "screen";
@@ -139,7 +140,7 @@
 
   function shareWebcam(from: "bar" | "stage" = "bar") {
     if (!client || shareButtons.webcamLive || shareButtons.webcamStarting) return;
-    asked = from;
+    pressedOn = from;
     if (liveElsewhere("webcam")) {
       notice = false;
       offer = "webcam";
@@ -291,11 +292,13 @@
   const yoursLive = $derived(
     room ? room.mine.length > 0 : !!view && (isLive(view.people.you.id, "screen") || isLive(view.people.you.id, "webcam")),
   );
-  // The empty stage offers sharing, so what a press of its buttons asks opens there.
+  // The empty stage offers sharing, so what a press of its buttons asks opens there. This
+  // is the branch of StageEmpty that shows its share buttons; should the stage stop
+  // showing them meanwhile, what was asked moves to the bar, still open.
   const stageOffers = $derived(
     !!(room || view) && tiles.length === 0 && !client?.following && budget !== "used up" && others.length === 0,
   );
-  const askOnStage = $derived(asked === "stage" && stageOffers);
+  const askOnStage = $derived(pressedOn === "stage" && stageOffers);
 </script>
 
 {#if !refused}<PageTitle title={name ? `${name} · graeae` : "graeae"} />{/if}
@@ -327,7 +330,7 @@
         onfollow={(id) => client?.follow(id)}
       >
         {#snippet foot()}
-          {#if !askOnStage}{@render asking("rail")}{/if}
+          {#if !askOnStage}{@render askFirst("rail")}{/if}
           <ShareButtons compact {...shareButtons} onscreen={() => shareScreen()} onwebcam={() => shareWebcam()} />
           <div class="mt-3"><YouMenu name={me} {owner} side="right" large newTab /></div>
         {/snippet}
@@ -428,7 +431,7 @@
               Your {client.failed === "screen" ? "screen share" : "webcam"} didn't start. Try again.
             </p>
           {/if}
-          {#if !askOnStage}{@render asking("foot")}{/if}
+          {#if !askOnStage}{@render askFirst("foot")}{/if}
           <ShareButtons {...shareButtons} onscreen={() => shareScreen()} onwebcam={() => shareWebcam()} />
         {/snippet}
       </Bar>
@@ -457,7 +460,7 @@
             onwatch={(share) => toggle(share.member, share.kind)}
             onscreen={() => shareScreen("stage")}
             onwebcam={() => shareWebcam("stage")}
-            panel={askOnStage ? stagePanel : undefined} />{:else}<Loading />{/if}
+            panel={askOnStage ? askFirstOnStage : undefined} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
   </div>
@@ -465,7 +468,7 @@
 
 <!-- What a press of a share button asks first: the first-time notice before the picker, or
      the offer to hand a share over. -->
-{#snippet asking(place: PanelPlace)}
+{#snippet askFirst(place: PanelPlace)}
   {#if notice && client}
     <ScreenNotice {place} browser={client.browser} oncontinue={noticeRead} oncancel={() => (notice = false)} />
   {:else if offer}
@@ -473,7 +476,7 @@
   {/if}
 {/snippet}
 
-{#snippet stagePanel()}{@render asking("stage")}{/snippet}
+{#snippet askFirstOnStage()}{@render askFirst("stage")}{/snippet}
 
 <!-- The watch shortcuts, at the right of the "Here" heading. -->
 {#snippet shortcuts()}

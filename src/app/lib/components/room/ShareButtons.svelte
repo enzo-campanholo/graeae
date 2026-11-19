@@ -9,6 +9,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Kbd } from "$lib/components/ui/kbd/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { shareLabels } from "$lib/share.js";
   import IconButton from "../IconButton.svelte";
 
   let {
@@ -31,10 +32,11 @@
     onwebcam?: () => void;
   } = $props();
 
-  const screenLabel = $derived(screenStarting ? "Starting screen share" : screenLive ? "Screen live" : "Share screen");
-  // S shares a screen while there is none of this tab's to start.
-  const keyed = $derived(!screenLive && !screenStarting);
-  const webcamLabel = $derived(webcamStarting ? "Starting webcam" : webcamLive ? "Webcam live" : "Share webcam");
+  const labels = $derived(shareLabels({ screenLive, screenStarting, webcamLive, webcamStarting }));
+  // An icon alone says which share is starting.
+  const screenLabel = $derived(screenStarting ? "Starting screen share" : labels.screen);
+  const webcamLabel = $derived(webcamStarting ? "Starting webcam" : labels.webcam);
+  const keyed = $derived(labels.keyed);
 </script>
 
 {#if compact}
@@ -78,7 +80,7 @@
             aria-keyshortcuts={keyed ? "S" : undefined}
             onclick={onscreen}
           >
-            <Monitor />{#if screenStarting}Starting{:else if screenLive}Screen live{:else}Share screen{/if}
+            <Monitor />{labels.screen}
           </Button>
         {/snippet}
       </Tooltip.Trigger>
@@ -90,7 +92,7 @@
       disabled={webcamLive || webcamStarting}
       onclick={onwebcam}
     >
-      <Video />{webcamStarting ? "Starting" : webcamLive ? "Webcam live" : "Share webcam"}
+      <Video />{labels.webcam}
     </Button>
   </div>
 {/if}

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ShareKind } from "$lib/share.js";
+  import type { ShareKind, Sharing } from "$lib/share.js";
 
   /** A share someone else has live, which the empty stage offers to watch. */
   export interface LiveChoice {
@@ -23,6 +23,7 @@
   import Video from "@lucide/svelte/icons/video";
   import type { Snippet } from "svelte";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { shareLabels } from "$lib/share.js";
   import StageChoice from "./StageChoice.svelte";
 
   let {
@@ -43,7 +44,7 @@
     /** A share of yours is live, from this tab or another. */
     yoursLive?: boolean;
     /** Your shares from this tab, as the bar's share buttons have them. */
-    sharing: { screenLive: boolean; screenStarting: boolean; webcamLive: boolean; webcamStarting: boolean };
+    sharing: Sharing;
     /** The name of the member followed, if any. */
     following?: string | null;
     /** The month's usage budget is used up: watching has stopped. */
@@ -58,10 +59,7 @@
     panel?: Snippet;
   } = $props();
 
-  // S shares a screen while there is none of this tab's to start.
-  const screenKeyed = $derived(!sharing.screenLive && !sharing.screenStarting);
-  const screenLabel = $derived(sharing.screenStarting ? "Starting" : sharing.screenLive ? "Screen live" : "Share screen");
-  const webcamLabel = $derived(sharing.webcamStarting ? "Starting" : sharing.webcamLive ? "Webcam live" : "Share webcam");
+  const labels = $derived(shareLabels(sharing));
 </script>
 
 {#if usedUp}
@@ -115,14 +113,14 @@
       <!-- Raised, not filled, so the bar's Share screen stays the room's one filled button. -->
       <div class="relative flex gap-3">
         <StageChoice
-          label={screenLabel}
+          label={labels.screen}
           icon={Monitor}
-          key={screenKeyed ? "S" : undefined}
-          disabled={!screenKeyed}
+          key={labels.keyed ? "S" : undefined}
+          disabled={!labels.keyed}
           onclick={onscreen}
         />
         <StageChoice
-          label={webcamLabel}
+          label={labels.webcam}
           icon={Video}
           disabled={sharing.webcamLive || sharing.webcamStarting}
           onclick={onwebcam}
