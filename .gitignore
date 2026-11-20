@@ -17,3 +17,6 @@ playwright-report/
 
 # Logs pulled from Workers Logs: they hold friends' display names (CLAUDE.md, "Logs").
 .logs/
+
+# Screenshots of other products, used locally by the design lens; not ours to republish.
+.impeccable/reference/craft/images/
