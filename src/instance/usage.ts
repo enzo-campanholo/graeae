@@ -99,9 +99,10 @@ export class Usage {
       0,
     );
     // This total covers everything the tab received until now: watches that ended since
-    // the last report need no charge of their own, and those still going start again here.
+    // the last report need no charge of their own, and those still going start again
+    // here, from the tab's `reported_at` (see `chargeGaps`). Not writing each watch's
+    // `since` saves a row per watch on every report.
     this.sql.exec("DELETE FROM usage_watch WHERE tab_id = ? AND ended_at IS NOT NULL", tab);
-    this.sql.exec("UPDATE usage_watch SET since = ?, relayed = ? WHERE tab_id = ?", now, relayed ? 1 : 0, tab);
   }
 
   /**
@@ -133,7 +134,7 @@ export class Usage {
    */
   watchEnded(watch: string, tabReports: boolean) {
     this.sql.exec("UPDATE usage_watch SET ended_at = ? WHERE watch_id = ? AND ended_at IS NULL", Date.now(), watch);
-    if (!tabReports) this.chargeGaps("WHERE watch_id = ? AND ended_at IS NOT NULL", watch);
+    if (!tabReports) this.chargeGaps("WHERE w.watch_id = ? AND w.ended_at IS NOT NULL", watch);
   }
 
   /**
@@ -141,7 +142,13 @@ export class Usage {
    * report is charged. A watch still recorded (its close failing) is charged when it ends.
    */
   tabGone(tab: string) {
-    this.chargeGaps("WHERE tab_id = ? AND ended_at IS NOT NULL", tab);
+    this.chargeGaps("WHERE w.tab_id = ? AND w.ended_at IS NOT NULL", tab);
+    // A watch still recorded keeps the tab's last report as its own, since that goes with the tab.
+    this.sql.exec(
+      `UPDATE usage_watch SET since = MAX(since, t.reported_at), relayed = t.relayed
+       FROM usage_tab AS t WHERE usage_watch.tab_id = ? AND t.tab_id = usage_watch.tab_id`,
+      tab,
+    );
     this.sql.exec("DELETE FROM usage_tab WHERE tab_id = ?", tab);
   }
 
@@ -234,10 +241,19 @@ export class Usage {
     );
   }
 
-  /** Charges each watch `where` takes in at its maximum bitrate over its gap, and forgets it. */
+  /**
+   * Charges each watch `where` takes in (as `w`) at its maximum bitrate over its gap, and
+   * forgets it. The gap starts at the tab's last report, or the watch's start if later,
+   * and is charged as relayed when that report was.
+   */
   private chargeGaps(where: string, ...bindings: SqlStorageValue[]) {
     const gaps = this.sql
-      .exec<WatchRow>(`SELECT watch_id, max_bitrate, since, relayed, ended_at FROM usage_watch ${where}`, ...bindings)
+      .exec<WatchRow>(
+        `SELECT w.watch_id, w.max_bitrate, MAX(w.since, COALESCE(t.reported_at, w.since)) AS since,
+           COALESCE(t.relayed, w.relayed) AS relayed, w.ended_at
+         FROM usage_watch AS w LEFT JOIN usage_tab AS t ON t.tab_id = w.tab_id ${where}`,
+        ...bindings,
+      )
       .toArray();
     for (const gap of gaps) {
       const seconds = Math.max(0, (gap.ended_at ?? gap.since) - gap.since) / 1000;

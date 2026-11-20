@@ -130,6 +130,11 @@ export interface MediaClient {
    * is on the relay now, for the usage count. Null before the connection is made.
    */
   transport(): Promise<TransportTotals | null>;
+  /**
+   * How often the tab reports `transport`'s totals, in milliseconds: `USAGE_REPORT_EVERY_MS`.
+   * The fake's can be set shorter, so a journey need not wait a minute for a report.
+   */
+  readonly reportEvery: number;
   /** Lets go of the watched share on `video`, whose pull the instance has closed. */
   drop(video: string): void;
   /** Turns a live capture's sound on or off, without stopping the share. */

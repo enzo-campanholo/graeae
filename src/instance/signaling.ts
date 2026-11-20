@@ -16,7 +16,8 @@
 // seconds in which none of a present member's tabs in a room was heard, that room is
 // told the member is "reconnecting", and told again when one is heard. Lost tabs and the
 // marks the rooms were told are kept in storage, so they outlast the instance sleeping.
-// The instance's alarm wakes it for each of these moments.
+// The instance's alarm wakes it for each of these moments; for a tab falling silent, once
+// another tab's heartbeat finds it has missed a beat (`nextMoment`).
 //
 // A restart. A restart of the instance (a graeae update, or Cloudflare moving it) drops
 // every socket without the instance hearing them close. So the room tabs whose sockets
@@ -29,6 +30,7 @@
 import {
   GRACE_MS,
   HEARTBEAT,
+  HEARTBEAT_EVERY_MS,
   LOST_CLOSE_CODE,
   RECONNECTING_AFTER_MS,
   SILENT_CLOSE_CODE,
@@ -38,6 +40,12 @@ import type { ClientMessage, MediaState, RoomView, ServerMessage } from "../shar
 import type { ListMessage, ListState } from "../shared/socket/list.ts";
 import { messageSummary } from "../shared/log.ts";
 import { log, type TabTags } from "./log.ts";
+
+/**
+ * How long a tab goes unheard before it counts as having missed a heartbeat: one beat,
+ * and a second for a beat that is merely late, so a late one does not cost an alarm.
+ */
+const MISSED_BEAT_AFTER_MS = HEARTBEAT_EVERY_MS + 1_000;
 
 /** What each socket remembers about its tab, kept with it through hibernation. */
 export interface Tab {
@@ -335,6 +343,9 @@ export class Signaling {
     ) {
       this.mark(tab.room);
     }
+    // Another tab missed its beat: the alarm is to come when it falls silent (`nextMoment`).
+    // Every tab beats, so in a room with an audience for the mark this comes in time.
+    if (this.missedBeat().length > 0) this.schedule();
     return null;
   }
 
@@ -559,19 +570,38 @@ export class Signaling {
   }
 
   /**
-   * The next moment a tab's grace period runs out or a member falls silent, or null when
+   * The next moment a tab's grace period runs out or a tab falls silent, or null when
    * nothing is waiting. Heartbeats only push those moments later, so an alarm set for
    * this before a heartbeat is at worst early: it finds nothing to do.
+   *
+   * Each alarm set writes a row, of which the free plan allows 100,000 a day (ADR 0004),
+   * so the alarm does not chase every heartbeat. For an open tab it comes for the grace
+   * period's end, 25 to 30 seconds ahead while the tab beats, and so about twice a
+   * minute; for its falling silent only once it has missed a beat, which another tab's
+   * heartbeat notices (`missedBeat`). A lost tab is heard no more, so its moments stay put.
    */
   nextMoment(): number | null {
     const now = Date.now();
     const moments: number[] = [];
-    for (const tab of [...this.allTabs(), ...this.lost()]) {
-      moments.push(tab.heardAt + GRACE_MS);
-      if (isRoomTab(tab)) moments.push(tab.heardAt + RECONNECTING_AFTER_MS);
+    for (const tab of this.lost()) {
+      moments.push(tab.heardAt + GRACE_MS, tab.heardAt + RECONNECTING_AFTER_MS);
     }
-    const next = Math.min(...moments.filter((moment) => moment > now));
+    for (const tab of this.allTabs()) moments.push(tab.heardAt + GRACE_MS);
+    const upcoming = moments.filter((moment) => moment > now);
+    // Even when its moment has passed, until the alarm has marked it.
+    for (const tab of this.missedBeat()) upcoming.push(tab.heardAt + RECONNECTING_AFTER_MS);
+    const next = Math.min(...upcoming);
     return Number.isFinite(next) ? next : null;
+  }
+
+  /**
+   * The open room tabs that have missed a heartbeat and are not yet marked silent: each
+   * falls silent 10 seconds after it was last heard, unless it beats first.
+   */
+  private missedBeat(): Tab[] {
+    const now = Date.now();
+    const missed = this.roomTabs().filter((tab) => now - tab.heardAt > MISSED_BEAT_AFTER_MS);
+    return missed.filter((tab) => !this.silentTabs(tab.room).includes(tab.id));
   }
 
   /** Whether the tab `id` has a socket at all, open or closing, that the instance has not cut off. */

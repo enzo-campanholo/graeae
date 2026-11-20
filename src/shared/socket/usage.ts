@@ -1,6 +1,6 @@
 // The usage area: the month's usage against the usage budget.
 //
-// Every tab with a media connection reports, every few seconds, the running total of
+// Every tab with a media connection reports, once a minute, the running total of
 // bytes its media connection's transport has received since it opened, and whether that
 // connection is on the relay. The instance counts usage from these reports alone (spec,
 // Usage and the usage budget). A tab about to restart its media connection sends the total
@@ -39,8 +39,14 @@ export type UsageRequest =
    */
   { type: "received"; bytes: number; relayed: boolean; final?: true };
 
-/** How often a tab with a media connection reports what it has received. */
-export const USAGE_REPORT_EVERY_MS = 5_000;
+/**
+ * How often a tab with a media connection reports what it has received: once a minute.
+ * Each report writes rows, of which the free plan allows 100,000 a day (ADR 0004). A
+ * report carries the running total, so a rarer one loses nothing; what it costs is a
+ * meter and budget warnings up to a minute behind, and a tab that vanishes charged at its
+ * watches' maximum bitrate for up to a minute since its last report.
+ */
+export const USAGE_REPORT_EVERY_MS = 60_000;
 
 export function applyUsage(state: UsageState, change: UsageChange): UsageState {
   switch (change.type) {

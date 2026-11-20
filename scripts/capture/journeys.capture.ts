@@ -21,6 +21,10 @@ test.afterEach(async () => {
 
 async function newBrowser(browser: Browser, baseURL: string | undefined): Promise<BrowserContext> {
   const context = await browser.newContext({ baseURL, viewport: { width: 1920, height: 953 } });
+  // Its tabs report every 5 seconds, not once a minute, so the budget states come in time.
+  await context.addInitScript(() => {
+    (globalThis as { graeaeFakeMedia?: Partial<FakeMediaControl> }).graeaeFakeMedia = { reportEvery: 5_000 };
+  });
   opened.push(context);
   return context;
 }

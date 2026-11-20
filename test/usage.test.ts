@@ -14,7 +14,7 @@ import { openRoom, type Tab } from "./sockets.ts";
 const SECOND = 1000;
 const DAY = 86_400_000;
 
-/** What the room client sends every few seconds: its media connection's running total received. */
+/** What the room client sends once a minute: its media connection's running total received. */
 async function report(tab: Tab, received: number, { relayed = false, final = false } = {}) {
   tab.send({ type: "usage", request: { type: "received", bytes: received, relayed, ...(final ? { final: true } : {}) } });
   // The answer to a heartbeat comes once the instance has read everything sent before it.
@@ -212,6 +212,36 @@ describe("where no later total arrives", () => {
     await tab.close();
 
     expect((await usage(owner)).used).toBe(1_000_000 + gap);
+  });
+
+  it("a gap is charged from the tab's latest report, not from an earlier one or the watch's start", async () => {
+    const { instance, owner, tab } = await ownerWatchingBia();
+    await instance.clock.advance(5 * SECOND);
+    await report(tab, 1_000_000);
+    await instance.clock.advance(10 * SECOND);
+    await report(tab, 2_000_000);
+
+    await instance.clock.advance(4 * SECOND);
+    await tab.close();
+
+    // 4 seconds at 1.5 Mbps.
+    expect((await usage(owner)).used).toBe(2_000_000 + 750_000);
+  });
+
+  it("a watch whose close failed when its tab left is charged from the tab's last report until the close succeeds", async () => {
+    const { instance, owner, tab } = await ownerWatchingBia();
+    await instance.clock.advance(5 * SECOND);
+    await report(tab, 1_000_000);
+    instance.media.fail("close");
+
+    await instance.clock.advance(2 * SECOND);
+    await tab.close();
+    expect((await usage(owner)).used).toBe(1_000_000);
+    // The close is tried again a second later, and succeeds.
+    await instance.clock.advance(SECOND);
+
+    // 3 seconds at 1.5 Mbps.
+    expect((await usage(owner)).used).toBe(1_000_000 + 562_500);
   });
 
   it("a tab that falls silent is charged until its grace period runs out and the watch ends", async () => {

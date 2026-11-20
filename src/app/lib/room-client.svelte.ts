@@ -16,7 +16,7 @@
 // it: it makes a new one, starts its shares again with the captures it still holds, and
 // watches again what it watched, where those shares are still live.
 //
-// Once the tab has its media connection it reports, every few seconds, what that
+// Once the tab has its media connection it reports, once a minute, what that
 // connection's transport has received since it opened, for the usage count
 // (`usage-reports.ts`). A connection the instance dropped sends its final total before
 // the next one is made. One lost with the grace period sends none: the instance has
@@ -168,6 +168,7 @@ export class RoomClient {
     () => this.media.transport(),
     (request) => this.send({ type: "usage", request }),
     () => this.synced,
+    () => this.media.reportEvery,
   );
   /**
    * Whether this socket has brought the room's state. Until it has, the tab may be a new

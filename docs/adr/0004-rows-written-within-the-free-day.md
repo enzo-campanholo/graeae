@@ -1,0 +1,15 @@
+# Byte reports once a minute, and an alarm that does not chase heartbeats
+
+The free plan allows a Durable Object account 100,000 SQLite rows written a day; past them every write fails until 00:00 UTC, the alarm included. An evening of five friends wrote 58,000 to 76,000 ([free-plan Durable Object limits](../research/free-plan-durable-object-limits.md)): each tab's byte report every 5 seconds wrote 3 to 4 rows, and the alarm, set for the moment the least recently heard tab would fall silent, ran and was set again about every 5 seconds. Three changes bring an evening to a few thousand rows:
+
+- **A tab reports once a minute** (`USAGE_REPORT_EVERY_MS`). A report carries the tab's running total, so a rarer one loses nothing it covers. Holding totals in memory and writing them once a minute, while tabs still reported every 5 seconds, was rejected: it writes the same rows, keeps the requests and log lines, and adds state a restart would have to reason about.
+- **A report writes 2 rows**: the day's count and the tab's last report. A watch's gap is charged from its tab's last report (`usage_tab.reported_at`), or its own start if later, so no row per watch is rewritten on each report. A watch that outlives its tab, its close failing, takes the tab's last report when the tab goes.
+- **The alarm is set only when its time changes, and comes for an open tab's grace period's end**, 25 to 30 seconds ahead while the tab beats, so about twice a minute. A tab's falling silent is no longer scheduled ahead of time: when any tab's heartbeat finds another that has missed a beat (unheard for 6 seconds), the alarm is brought forward to that tab's 10-second moment. Every tab beats, so wherever someone could see a "reconnecting" mark it still comes at 10 seconds, and the grace period still ends at 30. A lost tab is heard no more, so its moments are scheduled as before.
+
+## Consequences
+
+- The owner's meter, and the 80%, 95% and stop levels, react up to a minute after the bytes arrive. At the stop, watching runs on for up to a minute: at four 12 Mbps shares watched by three that is about 1 GB, a tenth of a percent of the default 1,000 GB budget, and more of a small one.
+- A tab that vanishes without a final total (a crash, a closed laptop, a closed tab) has its watches charged at their maximum bitrate for up to a minute since its last report, not 5 seconds. That is the safe side for a budget.
+- When every tab in a room falls silent together, no heartbeat brings the alarm forward. The marks then come when the alarm next runs, which is at the latest the grace period's end; nobody is left to see them, and a tab that opens meanwhile gets them with its room.
+- A steady room writes 2 rows a tab a minute, and the alarm about 2.4 more a minute for the whole instance (a test in `test/harness.test.ts` holds four tabs to 4 rows a tab a minute; they write 2.6). Five tabs for 5 hours: about 3,700 rows, 4% of the day. Ten tabs for 8 hours: about 10,800, 11%.
+- The journeys that wait on a report set the fake media client's `reportEvery` to 5 seconds; a real tab cannot.

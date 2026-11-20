@@ -85,6 +85,18 @@ describe("a tab that falls silent", () => {
     expect(ownerTab.queued()).toEqual([reconnecting(biaId)]);
   });
 
+  it("shows the mark at 10 seconds even when the others' heartbeats fall either side of it", async () => {
+    const { instance, biaId, ownerTab } = await ownerAndBia();
+
+    await instance.clock.advance(7 * SECOND);
+    await ownerTab.heartbeat();
+    await instance.clock.advance(3 * SECOND - 1);
+    expect(ownerTab.queued()).toEqual([]);
+
+    await instance.clock.advance(1);
+    expect(await ownerTab.next()).toEqual(reconnecting(biaId));
+  });
+
   it("loses the mark when it is heard again, and stays present", async () => {
     const { instance, biaId, ownerTab, biaTab } = await ownerAndBia();
     await pass(instance, 15 * SECOND, [ownerTab]);

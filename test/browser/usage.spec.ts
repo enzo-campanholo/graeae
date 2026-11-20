@@ -16,6 +16,10 @@ test.afterEach(async () => {
 
 async function newBrowser(browser: Browser, baseURL: string | undefined): Promise<BrowserContext> {
   const context = await browser.newContext({ baseURL });
+  // Its tabs report every 5 seconds, not once a minute, so the journey need not wait for them.
+  await context.addInitScript(() => {
+    (globalThis as { graeaeFakeMedia?: Partial<FakeMediaControl> }).graeaeFakeMedia = { reportEvery: 5_000 };
+  });
   opened.push(context);
   return context;
 }
@@ -82,7 +86,7 @@ test("a tab reports what its media connection has received, and its final total 
   await owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Watch Lia's webcam" }).click();
   await expect(owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Lia's webcam, with no picture" })).toBeVisible();
 
-  // Every few seconds, the running total since the connection opened.
+  // Every few seconds here (once a minute in a real tab), the running total since the connection opened.
   await received(owner, 1_234);
   await expect.poll(() => sent, { timeout: 10_000 }).toContainEqual({ type: "received", bytes: 1_234, relayed: false });
   await received(owner, 5_000, true);

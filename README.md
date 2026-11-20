@@ -24,7 +24,7 @@ Every share goes through Cloudflare's media server in the owner's account. graea
 - **Expected cost: $0.** The instance runs on Cloudflare's free Workers plan, and Cloudflare's media server and relay include 1,000 GB a month.
 - **Cloudflare requires a card on file** before it turns on Realtime, the product that holds the media server and the relay.
 - **The media server and the relay share the 1,000 GB.** Past it, Cloudflare charges $0.05 per GB, billed to the card automatically. Only what Cloudflare sends out counts; what members send in is free.
-- **The usage budget defaults to 1,000 GB**, so no media bill arrives unless you raise it. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live.
+- **The usage budget defaults to 1,000 GB**, so no media bill arrives unless you raise it. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live. Browsers report what they receive once a minute, so the count, its warnings and the stop run up to a minute behind.
 - **The usage budget bounds what members watch, not the whole bill.** Relay traffic graeae never sees, such as a removed device using an unexpired relay credential, is not counted. **Set a budget alert in Cloudflare.** In the dashboard, go to Manage Account › Billing › Billable Usage and select **Create budget alert**. It emails you once a billing period when the account's usage-based spend passes the figure you set. It does not stop anything.
 - **The usage count reads a little above Cloudflare's.** graeae counts the bytes each browser reports receiving. On a real 2 GB session the browsers' totals read 7.9% above Cloudflare's own figure, since browsers count packet overhead that Cloudflare leaves out. Watching through the relay is counted twice. Cloudflare says it bills relayed media once, so that reads well above the bill, but one session on the relay showed Cloudflare's media server sending more than the browser received, and Cloudflare's billing shows the media server and the relay as one figure, so it cannot tell which of the two it charges. The doubling stays: it errs high, the safe side for a budget.
 
@@ -38,7 +38,7 @@ What the 1,000 GB buys, by the estimate graeae was designed to: 30 hours a month
 - Hardware encoding at 1080p60 has been proven on two recent NVIDIA graphics cards only. The effect of sharing on a game is unmeasured on a weaker machine.
 - **The 144 Hz caveat:** on Windows, a sharer whose monitor runs at 144 Hz gets 48 fps instead of 60, until Chrome's fix for it ships. graeae notices and tells the sharer; setting the monitor to 120 Hz gives 60.
 - No phone layout, no sharing from a phone, no voice or text chat, no recording.
-- The instance runs on Cloudflare's free plan. Whether one busy instance stays inside the free plan's daily Durable Object allowance has not yet been measured.
+- The instance runs on Cloudflare's free plan, as one Durable Object. A busy evening uses a small part of its daily allowances (about 11% of the rows written for ten tabs over eight hours). A second instance on the same account shares those allowances.
 
 ## Platforms
 

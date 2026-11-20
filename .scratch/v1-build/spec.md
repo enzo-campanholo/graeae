@@ -318,7 +318,7 @@ One routine serves every case:
 
 ### Usage and the usage budget
 
-- **What is counted.** Each tab reports, every few seconds over the signaling connection, the running total of bytes its media connection's transport has received since it opened. The backend charges the difference between reports, so nothing is skipped at the start and a lost report is made up by the next. A tab sends a final total before a connection restart, which resets the total.
+- **What is counted.** Each tab reports, once a minute over the signaling connection, the running total of bytes its media connection's transport has received since it opened. The backend charges the difference between reports, so nothing is skipped at the start and a lost report is made up by the next. A tab sends a final total before a connection restart, which resets the total.
 - **Safety margin.** The backend adds a fixed margin to every reported byte. It is a constant, not a setting, and 0% since the usage comparison: the browser's own total read 7.9% above Cloudflare's media server egress, since it counts packet overhead that Cloudflare leaves out.
 - **Gaps.** Where no later total arrives (a closed or crashed tab), the backend charges each watched share's maximum bitrate from the last report until it records the watch as ended: 12 Mbps for a Chromium screen share, 6 for a Firefox one, 1.5 for a webcam.
 - **Relayed watching** is counted twice. Cloudflare bills the traffic between its relay and its media server once, but in the usage comparison, on a TCP relay, the media server's egress read 16% above what the browser received and the relay's 1% above, so counting it once could read below the bill. The doubling stays: Cloudflare's Billable Usage gives the media server and the relay one combined row, in quantities only for a whole billing period, so it cannot show which figure is billed (ticket 27). Counting high is the safe side for a budget, and few members need the relay.
@@ -512,7 +512,7 @@ Not designed, and free for the implementer to settle without reopening a decisio
 - Exact sizes, icons, the key that collapses the bar, and visual polish. The owner prefers a home icon over a back arrow for returning to the list of rooms, with the room's name centred between the header's icons. The prototype's bar was too narrow for its two share buttons.
 - The software codec offered last.
 - The form of an invite's address and of the device cookie's value, beyond being unguessable.
-- How often byte reports are sent ("every few seconds").
+- How often byte reports are sent: once a minute since [ticket 49](issues/49-rows-written-budget.md), to keep within the free plan's rows written a day (ADR 0004).
 - How a reset day of 29, 30 or 31 behaves in a shorter month.
 - Whether a room can be deleted. No ticket decided it, so v1 creates and renames only.
 
