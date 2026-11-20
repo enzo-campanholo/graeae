@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-18T17:26:46Z",
+  "generatedAt": "2026-11-20T15:51:57Z",
   "title": "Design System: graeae",
   "extensions": {
     "colorMeta": {
@@ -429,9 +429,9 @@
       "name": "Stage with Tile",
       "kind": "card",
       "refersTo": "stage",
-      "description": "The inset stage panel holding a watched share: a 16:9 frame with the picture at its own aspect inside on the letterbox (a portrait window sits between bars), captioned with name and kind.",
-      "html": "<div class=\"ds-stage\"><figure class=\"ds-tile\"><div class=\"ds-picture\"><div class=\"ds-feed\"></div></div><figcaption><span class=\"ds-tile-name\">Caio</span><span class=\"ds-tile-kind\">screen</span></figcaption></figure></div>",
-      "css": ".ds-stage { display: grid; place-items: center; padding: 12px; border-radius: 12px; background: var(--stage, #111113); } .ds-tile { display: grid; gap: 6px; width: 320px; margin: 0; animation: ds-arrive 240ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-picture { aspect-ratio: 16 / 9; border-radius: 8px; background: var(--letterbox, #050506); } .ds-tile figcaption { display: flex; align-items: baseline; gap: 6px; height: 20px; padding: 0 2px; } .ds-tile-name { color: var(--soft, #b9b9bf); font: 500 13px/19px 'Geist Variable', ui-sans-serif, sans-serif; } .ds-tile-kind { color: var(--dim, #808087); font: 400 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; } @keyframes ds-arrive { from { opacity: 0; transform: scale(0.985); } } @media (prefers-reduced-motion: reduce) { .ds-tile { animation: none; } } .ds-picture { display: grid; place-items: center; overflow: hidden; } .ds-feed { height: 100%; aspect-ratio: 9 / 16; background: linear-gradient(160deg, #3a3a3f, #18181b); }"
+      "description": "The inset stage panel holding a watched share: a 16:9 frame with the picture at its own aspect inside on the letterbox (a portrait window sits between bars), captioned with name and kind; where the caption is narrow the kind truncates first and the name gives way last.",
+      "html": "<div class=\"ds-stage\"><figure class=\"ds-tile\"><div class=\"ds-picture\"><div class=\"ds-feed\"></div></div><figcaption><span class=\"ds-tile-name\">Caio</span><span class=\"ds-tile-kind\">screen · video only</span></figcaption></figure></div>",
+      "css": ".ds-stage { display: grid; place-items: center; padding: 12px; border-radius: 12px; background: var(--stage, #111113); } .ds-tile { display: grid; gap: 6px; width: 320px; margin: 0; animation: ds-arrive 240ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-picture { aspect-ratio: 16 / 9; border-radius: 8px; background: var(--letterbox, #050506); } .ds-tile figcaption { display: flex; align-items: baseline; gap: 6px; height: 20px; min-width: 0; padding: 0 2px; } .ds-tile-name { flex-shrink: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--soft, #b9b9bf); font: 500 13px/19px 'Geist Variable', ui-sans-serif, sans-serif; } .ds-tile-kind { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim, #808087); font: 400 12px/16px 'Geist Variable', ui-sans-serif, sans-serif; } @keyframes ds-arrive { from { opacity: 0; transform: scale(0.985); } } @media (prefers-reduced-motion: reduce) { .ds-tile { animation: none; } } .ds-picture { display: grid; place-items: center; overflow: hidden; } .ds-feed { height: 100%; aspect-ratio: 9 / 16; background: linear-gradient(160deg, #3a3a3f, #18181b); }"
     },
     {
       "name": "Stage Choice",
