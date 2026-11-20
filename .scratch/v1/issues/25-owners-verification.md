@@ -16,7 +16,13 @@ This is the owner's work on a deployed instance, once every ticket in [the build
 - [x] When the comparison passes, remove "unverified" from the README's cost section (it no longer says it)
 - [ ] macOS: the nine-step pass in current stable Chromium, with browser and operating system versions recorded
 - [ ] Linux: the same
-- [ ] The Durable Object stays under the free plan's daily duration quota across a real evening, with the heartbeat and byte reports running
-- [ ] Which CPU limit applies to a free-plan Durable Object
-- [ ] A deploy leaves a dashboard-attached custom hostname in place; if not, the README documents the deploy flag
+- [x] The Durable Object stays under the free plan's daily duration quota across a real evening, with the heartbeat and byte reports running (settled without a measurement: one object awake 24 hours uses at most 10,800 of the 13,000 GB-s, see [the research](../../../docs/research/free-plan-durable-object-limits.md). The same research found rows written can run out in an evening: build ticket 49)
+- [x] Which CPU limit applies to a free-plan Durable Object (30 s per request, socket message or alarm by Cloudflare's limits table, one FAQ line implying 10 ms; no graeae path comes near either, by reading the code. Not measured: graeae-test's invocation logs are off, so its lines carry no CPU time)
+- [x] A deploy leaves a dashboard-attached custom hostname in place; if not, the README documents the deploy flag (2026-11-20: attached through the Custom Domains API to a throwaway instance, two deploys as Updating says, kept and serving both times; `wrangler delete` removed it and its DNS record)
 - [ ] Results from Remaining browser checks are applied: the platform table, two qualities on or off, restart or reconnect at 11 hours
+
+## Comments
+
+**2026-11-20: what agents did without the owner.**
+
+- **The README walkthrough.** A fresh clone of v1-build, deployed as `graeae-readme-check` with a new setup secret, followed Deploying step by step: becoming the owner, the reset day, the budget, an invite and a second member joining, rotating `SETUP_SECRET` as written, a custom hostname, then Deleting. All worked as written. The README now gives `--name` wherever a second instance needs it (Updating and Rotating would have deployed over `graeae`), says what a wrong media value looks like, follows Cloudflare's current billing paths, and says a hostname added after people are in makes each of them a stranger there. Not proven: shares on a fresh instance, because the media values in `.dev.vars` are placeholders and wrangler's login cannot reach Realtime (graeae-test proves the same code with real values); the dashboard steps for the card, the SFU application and the TURN key, checked against Cloudflare's docs only (the docs give no dashboard path for creating a TURN key); and a stranger's clone and checkout, which need the repo public and a tag on `main`. Nothing created is left on the account, except possibly an edge certificate for `graeae-readme-check.campanholo.dev` in the zone's SSL/TLS › Edge Certificates, which the token could not read.

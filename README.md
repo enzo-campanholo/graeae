@@ -25,7 +25,7 @@ Every share goes through Cloudflare's media server in the owner's account. graea
 - **Cloudflare requires a card on file** before it turns on Realtime, the product that holds the media server and the relay.
 - **The media server and the relay share the 1,000 GB.** Past it, Cloudflare charges $0.05 per GB, billed to the card automatically. Only what Cloudflare sends out counts; what members send in is free.
 - **The usage budget defaults to 1,000 GB**, so no media bill arrives unless you raise it. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live.
-- **The usage budget bounds what members watch, not the whole bill.** Relay traffic graeae never sees, such as a removed device using an unexpired relay credential, is not counted. **Keep Cloudflare's billing alert on**: in the dashboard, Manage Account › Billing › Billable Usage › Budget alerts. It emails you when the account's usage-based spend passes the figure you set. It does not stop anything.
+- **The usage budget bounds what members watch, not the whole bill.** Relay traffic graeae never sees, such as a removed device using an unexpired relay credential, is not counted. **Set a budget alert in Cloudflare.** In the dashboard, go to Manage Account › Billing › Billable Usage and select **Create budget alert**. It emails you once a billing period when the account's usage-based spend passes the figure you set. It does not stop anything.
 - **The usage count reads a little above Cloudflare's.** graeae counts the bytes each browser reports receiving. On a real 2 GB session the browsers' totals read 7.9% above Cloudflare's own figure, since browsers count packet overhead that Cloudflare leaves out. Watching through the relay is counted twice. Cloudflare says it bills relayed media once, so that reads well above the bill, but one session on the relay showed Cloudflare's media server sending more than the browser received, and Cloudflare's billing shows the media server and the relay as one figure, so it cannot tell which of the two it charges. The doubling stays: it errs high, the safe side for a budget.
 
 What the 1,000 GB buys, by the estimate graeae was designed to: 30 hours a month with one screen and one webcam live, each watched by three people, comes to about 550 GB. A heavy night of four screens and four webcams, each watched by three, uses about 73 GB an hour.
@@ -122,7 +122,7 @@ Always deploy with `pnpm run deploy`. Do not run `wrangler deploy` yourself: it 
 rm .secrets
 ```
 
-To run a second instance on the same Cloudflare account, give it its own name each time you deploy it: `pnpm run deploy --name <other name>`.
+To run a second instance on the same Cloudflare account, give it its own name every time you deploy it, updates and secret changes included: `pnpm run deploy --name <other name>`. Its address is `https://<other name>.<your subdomain>.workers.dev`. A deploy without the name goes to the `graeae` Worker.
 
 The instance keeps 3 days of logs (7 from 1 December 2026), for debugging, in your Cloudflare account's Workers Logs: what each page and the instance did, with members' display names but never a secret, an IP address or anything shared.
 
@@ -130,11 +130,11 @@ The instance keeps 3 days of logs (7 from 1 December 2026), for debugging, in yo
 
 Open `https://graeae.<your subdomain>.workers.dev/setup#<your setup secret>` in the browser you will use. That browser becomes the owner's first device, the first room is made, and you land in it. The part after `#` never leaves your browser in an address.
 
-If the page says secrets are missing, the media server or relay is not set up: put the missing ones in a new `.secrets` (see [Rotating a secret](#rotating-a-secret)) and deploy again.
+If the page says secrets are missing, the media server or relay is not set up: put the missing ones in a new `.secrets` (see [Rotating a secret](#rotating-a-secret)) and deploy again. If every share fails with "Your webcam share didn't start. Try again.", a media server or relay value is probably wrong. Check them in the dashboard and deploy the right ones the same way.
 
 ### 6. Set the reset day
 
-Open the gear in the room's bar, then **Usage**. Set **Reset day** to the day your Cloudflare billing period starts (in the dashboard, Manage Account › Billing). The usage budget then runs over the same month as the bill. Raise the usage budget here too if you choose to pay for more than 1,000 GB.
+Open the gear in the room's bar, then **Usage**. Set **Reset day** to the day your Cloudflare billing period starts (in the dashboard, Manage Account › Billing › Billable Usage shows the current billing period). The usage budget then runs over the same month as the bill. Raise the usage budget here too if you choose to pay for more than 1,000 GB.
 
 ### 7. Invite people
 
@@ -142,7 +142,9 @@ On the owner page, under **Invites**: type a display name, tick the rooms, and p
 
 ### Optional: a custom hostname
 
-graeae runs on its `workers.dev` address; you need no domain. To use your own hostname instead, your domain must be on Cloudflare. In the dashboard, go to **Workers & Pages**, pick the `graeae` Worker, then **Settings › Domains & Routes › Add › Custom Domain**, and type the hostname. Do not add it to `wrangler.jsonc`: the repo's config names no routes, so nobody edits a tracked file.
+graeae runs on its `workers.dev` address; you need no domain. To add your own hostname, your domain must be on Cloudflare. In the dashboard, go to **Workers & Pages**, pick the `graeae` Worker, then **Settings › Domains & Routes › Add › Custom Domain**, type the hostname, and select **Add Custom Domain**. Cloudflare makes its DNS record. Do not add it to `wrangler.jsonc`: the repo's config names no routes, so nobody edits a tracked file. Later deploys leave the hostname in place.
+
+The `workers.dev` address keeps working beside it. Browsers are remembered per address, so a device remembered on one address is a stranger on the other. Add the hostname before you invite anyone. If people are already in, open the setup address on the new hostname, then let each member back in from the owner page there (**People**, pick the member, **Let back in**) and send them the new link.
 
 ## Updating
 
@@ -153,7 +155,7 @@ pnpm install --frozen-lockfile
 pnpm run deploy
 ```
 
-Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first: a release that needs a step by hand says so there. You need no secrets file; the Worker keeps its secrets.
+Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first: a release that needs a step by hand says so there. You need no secrets file; the Worker keeps its secrets. For a second instance, add `--name <other name>` to the deploy.
 
 You can deploy while people are watching. Cloudflare holds the new release back for up to 5 minutes while a room is busy, so pages already open can keep showing the old one until then. When the switch comes, open pages reconnect in under a second, and what people share and watch carries on.
 
@@ -177,7 +179,7 @@ pnpm run deploy
 rm .secrets
 ```
 
-Secrets left out of the file keep their values on the Worker.
+Secrets left out of the file keep their values on the Worker. For a second instance, add `--name <other name>` to the deploy.
 
 - **`SETUP_SECRET`**: generate a new one with the command under [step 3](#3-fill-in-the-secrets-file). The old one stops working at once. Owner devices stay remembered.
 - **`SFU_APP_ID` and `SFU_APP_SECRET`**: create a new media server application under Realtime › Serverless SFU, deploy both of its values together, then delete the old application. Do this when nobody has a room open: shares and watching on the old application end when it goes.
@@ -193,7 +195,7 @@ graeae cannot see relay traffic, and a removed member's browser may hold a relay
 pnpm exec wrangler delete
 ```
 
-This deletes the `graeae` Worker (add `--name <other name>` for a second instance). Cloudflare describes it as deleting the Worker and all its associated resources: the instance's address, and the Durable Object that holds its members, devices, rooms and usage. Then, in the dashboard, delete the media server application and the TURN key, and check that a custom hostname, if you added one, has gone from your domain's DNS.
+This deletes the `graeae` Worker (add `--name <other name>` for a second instance). Cloudflare describes it as deleting the Worker and all its associated resources: the instance's address, and the Durable Object that holds its members, devices, rooms and usage. It also removes a custom hostname, if you added one, and its DNS record. It may warn that it could not check for Container applications; graeae deploys none, so ignore it. Then, in the dashboard, delete the media server application and the TURN key.
 
 ### No backup
 
