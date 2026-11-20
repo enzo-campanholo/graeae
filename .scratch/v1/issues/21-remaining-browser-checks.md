@@ -1,6 +1,7 @@
 # Remaining browser checks
 
 Type: task
+Status: ready-for-human
 Map: ../map.md
 
 ## Question

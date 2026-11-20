@@ -10,7 +10,7 @@ UI: the choice and the mark are built (ticket 17) and stay, tested, behind the s
 
 **Blocked by:** 17
 
-**Status:** needs-triage
+**Status:** ready-for-agent (after 0.1)
 
 - [ ] A Chromium screen share publishes two tracks, 1080p60 at 12 Mbps and 720p60 at 4 Mbps, each H.264 baseline on the hardware encoder; a viewer pulls one
 - [ ] A viewer's choice of "1080p" or "720p" moves their pull to the other track mid-watch, with the shortest freeze the media server allows
@@ -27,3 +27,5 @@ UI: the choice and the mark are built (ticket 17) and stay, tested, behind the s
 - Whether the media server pads a track of one quality too. Ticket 17 saw no freezes on the 1080p quality of a simulcast share, which suggests not, but nobody has tried two separate tracks.
 - How long a move from one track to the other freezes the picture, against simulcast's switch.
 - The ticket 17 switch: whether the instance keeps the simulcast path (`setQuality` with a preferred rid) for anything, or this ticket replaces it.
+
+**2026-11-20: triage for the 0.1 release.** Not in 0.1. Two qualities are switched off (`TWO_QUALITIES`), and the spec, README and CHANGELOG already describe one 1080p60 quality per Chromium screen share, so 0.1 loses nothing it promises. After the release, this starts with an experiment on Cloudflare that answers the open questions above (does the media server pad a track of one quality, and how long does a move between tracks freeze) before anything is built. An agent can run that experiment with two Chromium members on `graeae-test`; only the last check, no freezes on a real game share, needs the owner.
