@@ -64,12 +64,12 @@
     const saved = await usage.setResetDay(value);
     saving = false;
     if (saved) draft = null;
-    else problem = "Not saved. Try again.";
+    else problem = "Couldn't save the reset day. Try again.";
   }
 
   // The usage budget, in whole GB, as typed until it is saved. Raising it asks first, in
   // a confirm that names the most it can add to the bill; lowering it saves at once.
-  const BUDGET_PROBLEM = "Pick a whole number of GB from 1.";
+  const BUDGET_PROBLEM = "Pick a whole number of GB, 1 or more.";
   let budgetDraft = $state<string | null>(null);
   let budgetSaving = $state(false);
   let budgetProblem = $state<string | null>(null);
@@ -103,7 +103,7 @@
     budgetSaving = false;
     confirming = false;
     if (saved) budgetDraft = null;
-    else budgetProblem = "Not saved. Try again.";
+    else budgetProblem = "Couldn't save the usage budget. Try again.";
   }
 </script>
 
@@ -156,7 +156,7 @@
           ></span>
         </div>
         <p class="text-muted-foreground text-xs tabular-nums">
-          {Math.round((figures.used / figures.budget) * 100)}% of the usage budget used, on day {month.today} of {month.days}.
+          Members have used {Math.round((figures.used / figures.budget) * 100)}% of the usage budget by day {month.today} of {month.days}.
         </p>
       </div>
 
@@ -176,8 +176,8 @@
           <p class="text-muted-foreground">At this rate the usage budget runs out before the month ends.</p>
         {/if}
         <p>
-          The usage budget bounds what members watch, not the whole Cloudflare bill. Usage here reads a little above
-          Cloudflare's own figure, and well above it for watching through the relay.
+          The usage budget limits what members watch, not the whole Cloudflare bill. graeae counts a little more usage than
+          Cloudflare does, and much more for watching through the relay.
         </p>
       </div>
     </section>
@@ -221,13 +221,13 @@
             <p class="text-muted-foreground" role="alert">{budgetProblem}</p>
           {:else if stopsWatching}
             <p class="text-warn flex items-center gap-2" role="status">
-              <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />That is no more than is used already: watching stops
-              for everyone once it is saved.
+              <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />Members have already used that much. Saving it stops watching
+              for everyone.
             </p>
           {/if}
           <p class="text-dim">
-            Cloudflare includes {INCLUDED_GIGABYTES.toLocaleString("en")} GB a month; watched media past that costs $0.05 per GB.
-            When the month reaches the budget, watching stops and shares stay live.
+            Cloudflare includes {INCLUDED_GIGABYTES.toLocaleString("en")} GB a month. Watched media past that costs $0.05 per GB.
+            When usage reaches the budget, watching stops, but shares stay live.
           </p>
         </div>
       </form>

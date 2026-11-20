@@ -114,7 +114,7 @@ test("a screen share goes straight to the picker after a notice shown once, carr
   await expect(mia.getByText("Owner watching")).toHaveCount(2);
 
   // Stop ends it for everyone.
-  await mia.getByRole("button", { name: "Stop your screen" }).click();
+  await mia.getByRole("button", { name: "Stop sharing your screen" }).click();
   await expect(miasScreen).toHaveCount(0);
   await expect(stage.getByRole("img", { name: "Mia's screen, with no picture" })).toHaveCount(0);
 
@@ -175,7 +175,7 @@ test("on Firefox the notice says a screen share is video only, and the collapsed
   await rail.getByRole("button", { name: "Share screen" }).click();
   const notice = oli.getByRole("dialog", { name: "Before you pick" });
   await expect(notice).toContainText(
-    "In Firefox a screen share is video only, and it may be less smooth. A Chromium browser such as Chrome does better.",
+    "In Firefox, a screen share is video only and may be less smooth. A Chromium browser such as Chrome sends sound too.",
   );
   await expect(notice).not.toContainText("A tab or a game's window sends its sound");
   await notice.getByRole("button", { name: "Choose what to share" }).click();

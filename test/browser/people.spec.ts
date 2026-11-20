@@ -102,12 +102,12 @@ test("the owner grants a room, then removes a present member from a room and fro
   const final = admin.getByRole("alertdialog", { name: "Remove Jo from graeae?" });
   // The confirm asks the instance afresh, so it knows where Jo is now.
   await expect(final).toContainText("Jo is present in Late nights.");
-  await expect(final).toContainText("They share nothing now.");
+  await expect(final).toContainText("They aren't sharing anything.");
   await expect(final).toContainText("Their device is forgotten. Coming back takes a new invite.");
   await final.getByRole("button", { name: "Remove" }).click();
   await expect(jo.getByRole("heading", { name: "Nothing here" })).toBeVisible({ timeout: CUT_OFF_MS });
   await expect(members.getByRole("button", { name: /^Jo\b/ })).toHaveCount(0);
-  await expect(members.getByRole("status").filter({ hasText: "removed" })).toHaveText("Jo is removed from graeae, and their devices are forgotten.");
+  await expect(members.getByRole("status").filter({ hasText: "removed" })).toHaveText("You removed Jo from graeae. Their devices are forgotten.");
 
   // The browser is a stranger now, everywhere.
   await jo.goto("/you");
@@ -139,7 +139,7 @@ test("the owner is warned beneath the list when a cut-off could not be confirmed
   await admin.goto("/owner/people");
 
   const warning = admin.getByRole("region", { name: "Members" }).getByRole("status").filter({ hasText: "confirm" });
-  await expect(warning).toHaveText("Couldn't confirm that Jo was cut off. Still trying.");
+  await expect(warning).toHaveText("Still trying to stop what Jo was sharing and watching.");
   if (process.env.GRAEAE_SCREENSHOTS) {
     for (const colorScheme of ["dark", "light"] as const) {
       // The app is dark unless "You" says otherwise, whatever the system prefers.

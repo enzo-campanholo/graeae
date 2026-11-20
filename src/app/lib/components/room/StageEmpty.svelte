@@ -79,8 +79,8 @@
   </div>
 {:else if following}
   <div class="grid gap-1 text-center">
-    <p class="text-soft font-medium">{following} isn't sharing anything right now.</p>
-    <p class="text-muted-foreground">What they share next will show here.</p>
+    <p class="text-soft font-medium">{following} isn't sharing anything now.</p>
+    <p class="text-muted-foreground">What they share next appears here.</p>
   </div>
 {:else}
   <div class="grid justify-items-center gap-6 text-center">

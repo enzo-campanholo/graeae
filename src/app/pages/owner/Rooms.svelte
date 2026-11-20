@@ -279,7 +279,7 @@
           <div class="grid gap-2">
             <Button type="submit" class="w-fit" disabled={!ready}>Create room</Button>
             {#if createFailed}
-              <p class="text-muted-foreground text-xs" role="alert">The room was not made. Check its name, then try again.</p>
+              <p class="text-muted-foreground text-xs" role="alert">Couldn't make the room. Check its name, then try again.</p>
             {:else}
               <p class="text-dim text-xs">Only you have access to a new room at first.</p>
             {/if}
@@ -313,7 +313,7 @@
               <Button variant="ghost" class="hover:bg-raised-2" onclick={() => (renaming = null)}>Cancel</Button>
             </div>
             {#if renaming.failed}
-              <p class="text-muted-foreground text-xs" role="alert">Not renamed. Check the name, then try again.</p>
+              <p class="text-muted-foreground text-xs" role="alert">Couldn't rename the room. Check the name, then try again.</p>
             {:else}
               <p class="text-dim truncate text-xs">The address stays {shown(room)}</p>
             {/if}

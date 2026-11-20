@@ -21,7 +21,7 @@
 
 <FootPanel id="screen-notice-title" title="Before you pick" action="Choose what to share" {place} {oncontinue} {oncancel}>
   {#if browser === "firefox"}
-    In Firefox a screen share is video only, and it may be less smooth. A Chromium browser such as Chrome does better.
+    In Firefox, a screen share is video only and may be less smooth. A Chromium browser such as Chrome sends sound too.
   {:else}
     A tab or a game's window sends its sound. A whole screen is video only.
   {/if}

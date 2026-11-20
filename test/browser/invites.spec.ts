@@ -79,7 +79,7 @@ test("an invite, from the owner page to the new member standing in the room", as
   await late.goto(link);
   await expect(late.getByRole("heading", { name: "Nothing here" })).toBeVisible();
   await owner.reload();
-  await expect(pending.getByText("No invites waiting.", { exact: false })).toBeVisible();
+  await expect(pending.getByText("No unused invites.", { exact: false })).toBeVisible();
 });
 
 test("the owner cancels an invite, and its link shows nothing here", async ({ browser, baseURL }) => {

@@ -13,8 +13,8 @@ import { inBar, SETUP_SECRET } from "./app.ts";
 /** The page's global, as a journey reads it inside `page.evaluate`. */
 type Fake = { graeaeFakeMedia: FakeMediaControl };
 
-const AT_48 = "Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60";
-const UPLOAD = "Your upload can't carry 1080p";
+const AT_48 = "Capturing at 48 fps. Windows limits capture on a 144 Hz monitor. Set it to 120 Hz for 60 fps.";
+const UPLOAD = "Your upload is too slow for 1080p";
 const SOFTWARE = "Encoded in software";
 
 const opened: BrowserContext[] = [];
@@ -99,7 +99,7 @@ test("a sharer is told, on their own share alone, of capture stuck at 48 fps and
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const quim = await join("Quim");
-  const own = quim.getByRole("figure").filter({ has: quim.getByRole("button", { name: "Stop your screen" }) });
+  const own = quim.getByRole("figure").filter({ has: quim.getByRole("button", { name: "Stop sharing your screen" }) });
   await expect(quim.getByText(AT_48)).toHaveCount(0);
 
   await shareScreen(quim);
@@ -147,7 +147,7 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const rosa = await join("Rosa");
-  const own = rosa.getByRole("figure").filter({ has: rosa.getByRole("button", { name: "Stop your screen" }) });
+  const own = rosa.getByRole("figure").filter({ has: rosa.getByRole("button", { name: "Stop sharing your screen" }) });
   // Sent at two qualities, so the 1080p one is the first to stop, with the step-down
   // switched on (`STEP_DOWN`, off since the owner's check).
   await rosa.evaluate(() => {
@@ -166,18 +166,18 @@ test("on a weak upload a share gives up 1080p, then 60 fps, steps back up, and n
   await readings(rosa, 11, sent({ limited: true }), 10);
   expect(await sending(rosa)).toEqual({ full: true, offers });
   await readings(rosa, 1, sent({ limited: true }), 32);
-  await expect(own.getByText(`${UPLOAD}, so this share goes out at 720p.`)).toBeVisible();
+  await expect(own.getByText(`${UPLOAD}, so this share is at 720p.`)).toBeVisible();
   expect(await sending(rosa)).toEqual({ full: false, offers });
   await expect(owner.getByText(UPLOAD)).toHaveCount(0);
 
   // Still limited once 720p has settled: frame rate drops to 30.
   await readings(rosa, 16, sent({ limited: true, f: false }), 34);
-  await expect(own.getByText(`${UPLOAD}, so this share goes out at 720p and 30 fps.`)).toBeVisible();
+  await expect(own.getByText(`${UPLOAD}, so this share is at 720p and 30 fps.`)).toBeVisible();
 
   // The note never blocks: it is dismissed, and the share is still live and can be stopped.
   await own.getByRole("button", { name: "Dismiss the note on your upload" }).click();
   await expect(rosa.getByText(UPLOAD)).toHaveCount(0);
-  await expect(own.getByRole("button", { name: "Stop your screen" })).toBeEnabled();
+  await expect(own.getByRole("button", { name: "Stop sharing your screen" })).toBeEnabled();
 
   // However long it stays weak, the share stays live for its viewer.
   await readings(rosa, 30, sent({ limited: true, f: false }), 66);

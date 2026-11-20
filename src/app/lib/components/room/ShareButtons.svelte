@@ -35,7 +35,7 @@
   const labels = $derived(shareLabels({ screenLive, screenStarting, webcamLive, webcamStarting }));
   // An icon alone says which share is starting.
   const screenLabel = $derived(screenStarting ? "Starting screen share" : labels.screen);
-  const webcamLabel = $derived(webcamStarting ? "Starting webcam" : labels.webcam);
+  const webcamLabel = $derived(webcamStarting ? "Starting webcam share" : labels.webcam);
   const keyed = $derived(labels.keyed);
 </script>
 

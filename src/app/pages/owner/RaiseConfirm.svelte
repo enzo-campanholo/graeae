@@ -40,11 +40,11 @@
     </span>
     <span class="text-muted-foreground block">
       Watched media past {INCLUDED_GIGABYTES.toLocaleString("en")} GB costs $0.05 per GB.
-      {#if budgetCost(from) > 0}At {amount} GB a month can cost up to {dollars(budgetCost(to))} in all.{/if}
+      {#if budgetCost(from) > 0}At {amount} GB, a month costs at most {dollars(budgetCost(to))}.{/if}
     </span>
   {:else}
     <span class="block">
-      This adds <span class="text-fg font-medium tabular-nums">{dollars(0)}</span> to your Cloudflare bill: it stays
+      This adds <span class="text-fg font-medium tabular-nums">{dollars(0)}</span> to your Cloudflare bill. It stays
       within the {INCLUDED_GIGABYTES.toLocaleString("en")} GB Cloudflare includes each month.
     </span>
   {/if}

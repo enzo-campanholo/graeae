@@ -114,7 +114,7 @@
   <div class="owner-columns">
     <section class="grid gap-1" aria-label="Pending invites">
       <h2 class="text-muted-foreground flex h-control-sm items-center justify-between text-xs font-normal">
-        <span>Waiting to be used</span>
+        <span>Not used yet</span>
         <span class="text-dim tabular-nums">{invites.length}</span>
       </h2>
       <button
@@ -129,7 +129,7 @@
         <Plus />New invite
       </button>
       {#if invites.length === 0}
-        <p class="text-dim py-2">No invites waiting. Someone you invite shows up nowhere until they press Join.</p>
+        <p class="text-dim py-2">No unused invites. Someone you invite appears in People once they press Join.</p>
       {:else}
         <ul class="-mx-3 grid gap-0.5">
           {#each invites as invite (invite.code)}
@@ -194,7 +194,7 @@
             <Button type="submit" class="w-fit" disabled={!ready}><Copy />Create and copy link</Button>
             {#if failed}
               <p class="text-muted-foreground text-xs" role="alert">
-                The invite was not made. Check the name and rooms, then try again.
+                Couldn't make the invite. Check the name and rooms, then try again.
               </p>
             {/if}
           </div>
@@ -206,13 +206,13 @@
           <h2 class="text-base font-medium">{chosen.name}</h2>
           <p class="text-muted-foreground text-xs">
             {#if copied}
-              {chosen.name}'s link is on your clipboard. Paste it to them.
+              {chosen.name}'s link is on your clipboard. Send it to them.
             {:else if fresh}
               {chosen.name}'s link is ready. Copy it and send it to them.
             {:else}
               Nobody has used this invite yet.
             {/if}
-            It works once, and expires {timeLeft(chosen.expiresAt, now)}.
+            It works once and expires {timeLeft(chosen.expiresAt, now)}.
           </p>
         </header>
         <!-- The whole link, wrapped, so the owner can see it is the one they sent. -->

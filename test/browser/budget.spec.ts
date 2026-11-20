@@ -159,7 +159,7 @@ test("the warnings, the stop at the usage budget, and the confirm that raises it
 
     // Setting it below what is used says so before it is saved, and stops watching at once.
     await field.fill(String(budget - 5));
-    await expect(form.getByRole("status")).toHaveText(/watching stops\s+for everyone once it is saved\./);
+    await expect(form.getByRole("status")).toHaveText(/Members have already used that much\. Saving it stops watching\s+for everyone\./);
     await form.getByRole("button", { name: "Save" }).click();
     await expect(ownerStage.getByText("This month's usage budget is used up.")).toBeVisible({ timeout: 10_000 });
     await expect(picture).toHaveCount(0);

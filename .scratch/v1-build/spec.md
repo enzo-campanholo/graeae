@@ -302,7 +302,7 @@ One routine serves every case:
 
 - Every close is forced, ordinary stops and clean leaves included. There is one close path and none that depends on a browser cooperating. The browser tidies its own side when told a share or watch has ended.
 - A failed forced close keeps its record and is retried on a backoff (1s, 2s, 4s, up to 30s between tries) until it succeeds or a sweep shows the track gone.
-- The owner's page shows a removal as done at once. If closes are still failing after 1 minute it warns: "Couldn't confirm that <name> was cut off. Still trying."
+- The owner's page shows a removal as done at once. If closes are still failing after 1 minute it warns: "Still trying to stop what <name> was sharing and watching."
 - **Sweep.** At each cut-off and after a backend restart, the backend asks the media server which tracks the affected media connections really have and force-closes anything its records do not account for. There is no timed sweep.
 - A cut-off browser may keep an empty media connection open. It carries no tracks and cannot gain any, so it is left alone and its record dropped.
 - Removal from the instance also forgets all the member's devices. A removed or forgotten device's page becomes the plain "nothing here" page with no message.
@@ -340,7 +340,7 @@ One routine serves every case:
 - **Bar foot.** The member's own shares as small previews, each with the names of the members watching and a stop button, plus the share buttons.
 - **Following a member.** Clicking a name watches everything that member shares and keeps doing so: a share they start later joins the stage by itself. Following ends when the viewer changes what they watch in any other way (a single icon, a shortcut, stop watching, another name). The shortcuts are one-off and follow nobody.
 - **Stage grid.** 1 column for one share, 2 for up to four, 3 for up to six, 4 beyond. Focusing a share makes it large and drops the others to a strip beneath.
-- **Notes to a sharer** appear on or beside their own share, are shown only to them, and are driven by measurement: video only; software encoded; capturing at 48 fps on a 144 Hz monitor ("Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60"); upload cannot carry 1080p (switched off with the step-down; ticket 30).
+- **Notes to a sharer** appear on or beside their own share, are shown only to them, and are driven by measurement: video only; software encoded; capturing at 48 fps on a 144 Hz monitor ("Capturing at 48 fps. Windows limits capture on a 144 Hz monitor. Set it to 120 Hz for 60 fps."); upload cannot carry 1080p (switched off with the step-down; ticket 30).
 - **The first-time notice** before the picker is shown once per device. On Chromium it gives the audio tip; on Firefox it gives the Firefox line instead. It carries no borderless-mode tip.
 - **Click counts to hold:** 1 to watch a member, 1 to share a webcam, 3 to share a screen (4 the first time on a device).
 - No phone layout is designed.

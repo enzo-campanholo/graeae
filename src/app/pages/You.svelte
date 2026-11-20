@@ -169,7 +169,7 @@
         </div>
         {#if nameFailed}
           <p class="text-muted-foreground text-xs" role="alert">
-            That name was not saved. A name is 1 to {NAME_MAX} characters.
+            Couldn't save that name. A name is 1 to {NAME_MAX} characters.
           </p>
         {/if}
       </form>
@@ -199,7 +199,7 @@
                 <span class="truncate font-medium">{label}</span>
                 <span class="text-muted-foreground truncate text-xs">
                   {#if asking}
-                    Coming back on this browser will take a new invite.
+                    Coming back on this browser takes a new invite.
                   {:else if device.current}
                     This device
                   {:else}
@@ -237,7 +237,7 @@
         <div class="flex items-center gap-3">
           <Button variant="secondary" disabled={!you || adding} onclick={addDevice}><Plus />Add a device</Button>
           {#if addFailed}
-            <p class="text-muted-foreground text-xs" role="alert">The link was not made. Try again.</p>
+            <p class="text-muted-foreground text-xs" role="alert">Couldn't make the link. Try again.</p>
           {/if}
         </div>
 
@@ -246,15 +246,15 @@
           <section class="bg-raised grid gap-3 rounded-lg p-3" aria-label="Link for another browser" aria-live="polite">
             {#if expired}
               <div class="grid gap-0.5">
-                <p class="font-medium">That link has run out</p>
-                <p class="text-muted-foreground text-xs">Press Add a device again for a fresh one.</p>
+                <p class="font-medium">That link has expired</p>
+                <p class="text-muted-foreground text-xs">Press Add a device for a new one.</p>
               </div>
             {:else}
               <div class="grid gap-0.5">
                 <p class="font-medium">{copied ? "The link is on your clipboard" : "Your link is ready"}</p>
                 <p class="text-muted-foreground text-xs">
-                  {copied ? "Open it in your other browser." : "Copy it to your other browser."}
-                  It works once, and expires {timeLeft(invite.expiresAt, now)}.
+                  {copied ? "Open it in your other browser." : "Copy it and open it in your other browser."}
+                  It works once and expires {timeLeft(invite.expiresAt, now)}.
                 </p>
               </div>
               <!-- The whole link, wrapped, so it can be checked against the one pasted. -->

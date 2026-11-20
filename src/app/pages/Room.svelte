@@ -428,7 +428,7 @@
           {/if}
           {#if client?.failed}
             <p class="text-muted-foreground px-0.5 pb-2 text-xs" role="status">
-              Your {client.failed === "screen" ? "screen share" : "webcam"} didn't start. Try again.
+              Your {client.failed === "screen" ? "screen share" : "webcam share"} didn't start. Try again.
             </p>
           {/if}
           {#if !askOnStage}{@render askFirst("foot")}{/if}

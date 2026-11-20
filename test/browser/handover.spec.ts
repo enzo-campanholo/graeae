@@ -84,7 +84,7 @@ test("a share moves to another device on an offer, carrying its viewer, and the 
   await expect(inBar(phone).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(phone.getByText("Owner watching")).toBeVisible();
   await expect(laptop.getByText("Now sharing from your other device.")).toBeVisible();
-  await expect(laptop.getByRole("button", { name: "Stop your webcam" })).toHaveCount(0);
+  await expect(laptop.getByRole("button", { name: "Stop sharing your webcam" })).toHaveCount(0);
   await expect(inBar(laptop).getByRole("button", { name: "Share webcam" })).toBeEnabled();
 
   if (process.env.GRAEAE_SCREENSHOTS) {

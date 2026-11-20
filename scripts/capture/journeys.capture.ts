@@ -30,14 +30,14 @@ const hereOf = (page: Page) => page.getByRole("region", { name: "Here", exact: t
 
 async function shareWebcam(page: Page) {
   await inBar(page).getByRole("button", { name: "Share webcam" }).click();
-  await expect(page.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop sharing your webcam" })).toBeVisible();
 }
 
 /** Shares a screen through the first-time notice, on the fake picker's default: a tab with its sound. */
 async function shareScreen(page: Page) {
   await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(page.getByRole("button", { name: "Stop your screen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop sharing your screen" })).toBeVisible();
 }
 
 /** The browser's statistics of `page`'s live screen share, `count` readings 2 seconds apart from `from` seconds. */
@@ -177,7 +177,7 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   await owner.getByRole("button", { name: "Show the bar" }).click();
 
   // The sharer's side: own previews with their watchers, and the notes.
-  const own = bia.getByRole("figure").filter({ has: bia.getByRole("button", { name: "Stop your screen" }) });
+  const own = bia.getByRole("figure").filter({ has: bia.getByRole("button", { name: "Stop sharing your screen" }) });
   await expect(bia.getByText("Owner watching").first()).toBeVisible();
   await shoot(bia, "room--sharer");
   await readings(bia, 5, sent({ fps: 48, software: true }), 0);

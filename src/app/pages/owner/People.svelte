@@ -134,7 +134,7 @@
       if (done !== null && known.state === "loaded") {
         known.data.people = known.data.people.filter((entry) => entry.id !== what.member);
         if (picked === what.member) picked = null;
-        note = `${name} is removed from graeae, and their devices are forgotten.`;
+        note = `You removed ${name} from graeae. Their devices are forgotten.`;
       } else await refresh();
     }
     removing = false;
@@ -258,14 +258,14 @@
         {#each unconfirmed as cutOff (cutOff.member)}
           <p class="text-warn flex items-center gap-2 text-xs">
             <CircleAlert class="size-icon-sm shrink-0" aria-hidden="true" />
-            <span>Couldn't confirm that {cutOff.name} was cut off. Still trying.</span>
+            <span>Still trying to stop what {cutOff.name} was sharing and watching.</span>
           </p>
         {/each}
       </div>
       {#if note}
         <p class="text-muted-foreground py-2 text-xs" role="status">{note}</p>
       {:else if people.length === 1}
-        <p class="text-dim py-2">Nobody else yet. Invite someone, and they show up here once they press Join.</p>
+        <p class="text-dim py-2">Nobody else yet. Someone you invite appears here once they press Join.</p>
       {/if}
     </section>
 
@@ -314,7 +314,7 @@
         <section class="grid gap-1.5" aria-label="Devices">
           <h3 class="text-muted-foreground text-xs font-normal">Devices</h3>
           {#if entry.devices.length === 0}
-            <p class="text-dim">No device left. "Let back in" gives them a way back.</p>
+            <p class="text-dim">No device left. "Let back in" makes them a new invite.</p>
           {:else}
             <ul class="-mx-2 grid gap-0.5">
               {#each entry.devices as device (device.id)}
@@ -331,7 +331,7 @@
                     <span class="truncate font-medium">{label}</span>
                     <span class="text-muted-foreground truncate text-xs">
                       {#if asking}
-                        This page becomes “nothing here”.
+                        This page will then say "Nothing here".
                       {:else if device.current}
                         This device
                       {:else}
@@ -375,7 +375,7 @@
                 <div class="grid gap-0.5">
                   <p class="font-medium">{done ? `${entry.name}'s link is on your clipboard` : `${entry.name}'s link is ready`}</p>
                   <p class="text-muted-foreground text-xs">
-                    Using it forgets their other devices and keeps their name and rooms. It works once, and expires
+                    Using it forgets their other devices and keeps their name and rooms. It works once and expires
                     {timeLeft(invite.expiresAt, now)}.
                   </p>
                 </div>
@@ -401,7 +401,7 @@
                 <Button variant="destructive" onclick={() => askToRemove(entry)}>Remove from graeae</Button>
               </div>
               {#if inviteFailed}
-                <p class="text-muted-foreground text-xs" role="alert">The invite was not made. Try again.</p>
+                <p class="text-muted-foreground text-xs" role="alert">Couldn't make the invite. Try again.</p>
               {/if}
             </div>
           </div>

@@ -76,7 +76,7 @@
             {#if audio === "on"}<Volume2 />{:else}<VolumeOff />{/if}
           </IconButton>
         {/if}
-        <Button variant="destructive" size="xs" class="bg-raised px-2" aria-label="Stop your {kind}" disabled={stopping} onclick={onstop}>
+        <Button variant="destructive" size="xs" class="bg-raised px-2" aria-label="Stop sharing your {kind}" disabled={stopping} onclick={onstop}>
           Stop
         </Button>
       </span>
@@ -84,19 +84,19 @@
     <div class="grid" aria-live="polite">
       {#if notes?.at48 && !dismissed.at48}
         <SharerNote label="Dismiss the note on 48 fps" ondismiss={() => (dismissed.at48 = true)}>
-          Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60.
+          Capturing at 48 fps. Windows limits capture on a 144 Hz monitor. Set it to 120 Hz for 60 fps.
         </SharerNote>
       {/if}
       {#if notes?.upload && !dismissed.upload}
         <SharerNote label="Dismiss the note on your upload" ondismiss={() => (dismissed.upload = true)}>
-          Your upload can't carry 1080p, so this share goes out at {notes.upload === "720p30" ? "720p and 30 fps" : "720p"}.
+          Your upload is too slow for 1080p, so this share is at {notes.upload === "720p30" ? "720p and 30 fps" : "720p"}.
         </SharerNote>
       {/if}
       {#if kind === "screen" && audio === null}
         <SharerNote>Video only. No one hears this share.</SharerNote>
       {/if}
       {#if notes?.software}
-        <SharerNote>Encoded in software, so it costs your game more.</SharerNote>
+        <SharerNote>Encoded in software, which uses more CPU and can slow your game.</SharerNote>
       {/if}
     </div>
   </figcaption>

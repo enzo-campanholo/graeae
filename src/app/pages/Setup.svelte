@@ -59,8 +59,7 @@
       <div class="grid justify-items-center gap-1.5">
         <h1 class="text-base font-medium text-balance">This browser is yours, but secrets are missing</h1>
         <p class="text-muted-foreground text-balance">
-          Sharing and watching will not work until the deploy has {one ? "this secret" : "these"}. Add
-          {one ? "it" : "them"} to
+          Sharing and watching need {one ? "this secret" : "these secrets"}. Add {one ? "it" : "them"} to
           <span class="text-soft">.secrets</span> and deploy again.
         </p>
       </div>

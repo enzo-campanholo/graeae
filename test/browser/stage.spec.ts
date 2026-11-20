@@ -55,18 +55,18 @@ async function ownerInRoom(browser: Browser, baseURL: string | undefined, viewpo
 
 async function shareWebcam(page: Page) {
   await inBar(page).getByRole("button", { name: "Share webcam" }).click();
-  await expect(page.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop sharing your webcam" })).toBeVisible();
 }
 
 /** Shares a screen, through the first-time notice, on the fake picker's default: a tab with its sound. */
 async function shareScreen(page: Page) {
   await inBar(page).getByRole("button", { name: "Share screen" }).click();
   await page.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
-  await expect(page.getByRole("button", { name: "Stop your screen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop sharing your screen" })).toBeVisible();
 }
 
 async function stopWebcam(page: Page) {
-  await page.getByRole("button", { name: "Stop your webcam" }).click();
+  await page.getByRole("button", { name: "Stop sharing your webcam" }).click();
   await expect(inBar(page).getByRole("button", { name: "Share webcam" })).toBeEnabled();
 }
 
@@ -101,7 +101,7 @@ test("a name watches everything that member shares, and keeps following them unt
   // Following: a share Rui starts later joins the stage by itself.
   await stopWebcam(rui);
   await expect(ruis).toHaveCount(0);
-  await expect(stage.getByText("Rui isn't sharing anything right now.")).toBeVisible();
+  await expect(stage.getByText("Rui isn't sharing anything now.")).toBeVisible();
   await shareWebcam(rui);
   await expect(ruis).toBeVisible();
 
@@ -206,7 +206,7 @@ test("the shortcuts and the empty stage's offer are one-off picks, and the rail 
   // stage follows a person, not "nothing".
   await stopWebcam(ugo);
   await expect(ugos).toHaveCount(0);
-  await expect(stage.getByText("Ugo isn't sharing anything right now.")).toBeVisible();
+  await expect(stage.getByText("Ugo isn't sharing anything now.")).toBeVisible();
   await lit(null);
   await shareWebcam(ugo);
   await expect(ugos).toBeVisible();
@@ -346,7 +346,7 @@ test("while no one shares, the empty stage offers sharing as the bar does, the s
 
   // One click shares the webcam, as in the bar.
   await stage.getByRole("button", { name: "Share webcam" }).click();
-  await expect(owner.getByRole("button", { name: "Stop your webcam" })).toBeVisible();
+  await expect(owner.getByRole("button", { name: "Stop sharing your webcam" })).toBeVisible();
   await expect(stage.getByRole("heading", { name: "Only you are sharing." })).toBeVisible();
   await expect(stage.getByRole("button", { name: "Webcam live" })).toBeDisabled();
 
@@ -359,7 +359,7 @@ test("while no one shares, the empty stage offers sharing as the bar does, the s
   await expect(notice).toBeVisible();
   await expect(inBar(owner).getByRole("dialog")).toHaveCount(0);
   await notice.getByRole("button", { name: "Choose what to share" }).click();
-  await expect(owner.getByRole("button", { name: "Stop your screen" })).toBeVisible();
+  await expect(owner.getByRole("button", { name: "Stop sharing your screen" })).toBeVisible();
   await expect(stage.getByRole("button", { name: "Screen live" })).toBeDisabled();
 
   // Once someone else shares, the stage offers what they share instead of sharing.

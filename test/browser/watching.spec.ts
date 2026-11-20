@@ -74,7 +74,7 @@ test("a share is watched in one click, its sharer sees who watches, and it leave
   await bar.getByRole("button", { name: "Watch Jade's webcam" }).click();
   await expect(picture).toBeVisible();
   await expect(jade.getByText("Owner watching")).toBeVisible();
-  await jade.getByRole("button", { name: "Stop your webcam" }).click();
+  await jade.getByRole("button", { name: "Stop sharing your webcam" }).click();
   await expect(picture).toHaveCount(0);
   await expect(stage.getByText("No one is sharing yet.")).toBeVisible();
 });

@@ -54,7 +54,7 @@
         <Mark size="lg" />
         <div class="grid justify-items-center gap-3">
           <Button size="lg" class="min-w-48" disabled={joining} onclick={join}>Join as {known.data.name}</Button>
-          <p class="text-muted-foreground max-w-72 text-xs">This browser will be remembered as yours.</p>
+          <p class="text-muted-foreground max-w-72 text-xs">graeae will remember this browser as yours.</p>
         </div>
       {/if}
     </div>

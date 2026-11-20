@@ -31,7 +31,7 @@ async function slowStranger(page: Page): Promise<() => Promise<string[]>> {
   return () => page.evaluate<string[]>("window.seen");
 }
 
-const NOTHING_HERE = "Nothing here If someone sent you a link, ask them for a fresh one.";
+const NOTHING_HERE = "Nothing here If someone sent you a link, ask them for a new one.";
 
 // A used, expired or cancelled invite answers exactly as one that never existed does
 // (`test/invites.test.ts`), so the made-up one stands for them all.

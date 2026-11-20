@@ -139,7 +139,7 @@ test("the owner's meter shows what members have watched, members see nothing of 
   await expect(month.getByLabel("Usage budget")).toHaveText("1,000 GB");
   await expect(month.getByLabel("Projected by the month's end")).toHaveText(/^[\d,.]+ GB$/);
   // The pace beside it, and what the month costs past what Cloudflare includes.
-  await expect(month.getByText(/^\d+% of the usage budget used, on day \d+ of \d+\.$/)).toBeVisible();
+  await expect(month.getByText(/^Members have used \d+% of the usage budget by day \d+ of \d+\.$/)).toBeVisible();
   await expect(month.getByLabel("Included by Cloudflare")).toHaveText("1,000 GB");
   await expect(month.getByLabel("Cost so far")).toHaveText("$0.00");
   if (process.env.GRAEAE_SCREENSHOTS) {

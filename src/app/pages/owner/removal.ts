@@ -25,7 +25,7 @@ export function removalFromRoom(person: MemberEntry, address: string, rooms: rea
     lines: [
       ...(person.present.includes(address)
         ? [
-            `${name} is in ${room} now. Their page there becomes “nothing here” within about 2 seconds.`,
+            `${name} is in ${room} now. Within about 2 seconds, their page there will say "Nothing here".`,
             sharingLine(person, rooms, address),
           ]
         : [`${name} is not in ${room} now.`]),
@@ -52,11 +52,11 @@ export function removalFromInstance(person: MemberEntry, rooms: readonly RoomSum
     lines: [
       ...(person.present.length > 0
         ? [
-            `${name} is present in ${named(person.present)}. Every page of theirs becomes “nothing here” within about 2 seconds.`,
+            `${name} is in ${named(person.present)} now. Within about 2 seconds, every page of theirs will say "Nothing here".`,
             sharingLine(person, rooms),
           ]
         : [`${name} is not in any room now.`]),
-      person.rooms.length > 0 ? `They lose ${named(person.rooms)} and keep no room.` : "They have no room to lose.",
+      person.rooms.length > 0 ? `They lose ${named(person.rooms)}.` : "They have no room to lose.",
       `${forgotten} Coming back takes a new invite.`,
     ],
   };
@@ -69,7 +69,7 @@ export function removalFromInstance(person: MemberEntry, rooms: readonly RoomSum
  */
 function sharingLine(person: MemberEntry, rooms: readonly RoomSummary[], address?: string): string {
   const shares = person.sharing.filter((share) => address === undefined || share.room === address);
-  if (shares.length === 0) return address === undefined ? "They share nothing now." : "They share nothing there now.";
+  if (shares.length === 0) return address === undefined ? "They aren't sharing anything." : "They aren't sharing anything there.";
   // Grouped by room, so two shares in one room read "screen and webcam shares in First room".
   const sharesPhrase = (list: typeof shares) =>
     `${andList(list.map((share) => share.kind))} ${list.length > 1 ? "shares" : "share"}`;
