@@ -11,8 +11,15 @@
 // A message sent while a socket is still opening waits for it to open, so a click in the
 // moment before the room arrives is not lost. One sent while the connection is lost, with
 // no socket opening, is not sent at all, and `send` says so.
+//
+// The connection also carries the page's log batches (`log.ts`), one before each
+// heartbeat, and records its own life there: each socket opened, closed, lost and tried
+// again, every message in and out but heartbeats, and the heartbeats answered late.
 
+import { messageSummary } from "../../shared/log.ts";
 import { HEARTBEAT, HEARTBEAT_EVERY_MS, LOST_CLOSE_CODE } from "../../shared/socket/heartbeat.ts";
+import type { LogRequest } from "../../shared/socket/log.ts";
+import { tabLog, type LogSocket } from "./log.ts";
 import { every } from "./ticker.ts";
 
 /** How often the connection looks at itself. */
@@ -23,8 +30,12 @@ const ANSWER_WITHIN_MS = 4_000;
 const RETRY_MS = [250, 1_000, 2_000, 4_000, 5_000];
 /** How long the instance may go unheard before the page says it is reconnecting. */
 const RECONNECTING_AFTER_MS = 3_000;
+/** An answer to a heartbeat slower than this is logged as late. */
+const LATE_AFTER_MS = 1_000;
 
 export interface ConnectionOptions<Message> {
+  /** Which signaling connection this is, for the logs. */
+  kind: "room" | "list";
   /** The socket's path, such as `roomSocketPath(address)`, asked again for each new socket. */
   path: () => string;
   /** Each message the instance sends, other than answers to heartbeats and `gone`. */
@@ -35,7 +46,7 @@ export interface ConnectionOptions<Message> {
   lost?: () => void;
 }
 
-export class Connection<Message extends { type: string }> {
+export class Connection<Message extends { type: string }> implements LogSocket {
   /** Whether the instance refused this page, so it shows "nothing here". Final. */
   refused = $state(false);
   /**
@@ -56,12 +67,15 @@ export class Connection<Message extends { type: string }> {
   /** Messages sent while the socket was opening, to send once it is open. */
   private queued: string[] = [];
   private lastBeat = 0;
+  /** When the heartbeat waiting for its answer was sent. */
+  private beatAt: number | null = null;
   private tries = 0;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private ended = false;
   private readonly stopTicking: () => void;
 
   constructor(private readonly options: ConnectionOptions<Message>) {
+    tabLog.attach(this);
     this.connect();
     this.stopTicking = every(TICK_MS, () => this.tick());
     window.addEventListener("online", this.retryNow);
@@ -74,22 +88,38 @@ export class Connection<Message extends { type: string }> {
    */
   send(message: unknown): boolean {
     const socket = this.socket;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
+    const text = JSON.stringify(message);
+    const state = socket?.readyState === WebSocket.OPEN ? "sent" : socket?.readyState === WebSocket.CONNECTING ? "queued" : "not sent";
+    (state === "not sent" ? tabLog.warn : tabLog.info).call(tabLog, "ws.out", { ...this.fields(), message: messageSummary(message, text.length), state });
+    if (state === "sent") {
+      socket!.send(text);
       return true;
     }
-    if (socket?.readyState === WebSocket.CONNECTING) {
-      this.queued.push(JSON.stringify(message));
+    if (state === "queued") {
+      this.queued.push(text);
       return true;
     }
     return false;
   }
 
+  /** Sends a batch of the page's log now, only on an open socket. */
+  sendLog(request: LogRequest): boolean {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    this.socket.send(JSON.stringify({ type: "log", request }));
+    return true;
+  }
+
   /** Leaves: a clean close, which ends the tab's presence at once. */
   close() {
+    tabLog.info("ws.close", { ...this.fields(), code: 1000, reason: "left", by: "page" });
     this.end();
     this.socket?.close(1000, "left");
     this.socket = null;
+  }
+
+  /** What every line about this connection says of it. */
+  private fields() {
+    return { socket: this.options.kind };
   }
 
   private connect() {
@@ -100,22 +130,34 @@ export class Connection<Message extends { type: string }> {
     this.queued = [];
     this.waitingSince = Date.now();
     this.lastBeat = Date.now();
+    this.beatAt = null;
+    const opening = Date.now();
 
     socket.addEventListener("open", () => {
       if (socket !== this.socket) return;
+      tabLog.info("ws.open", { ...this.fields(), tries: this.tries, ms: Date.now() - opening, queued: this.queued.length });
       for (const message of this.queued.splice(0)) socket.send(message);
     });
     socket.addEventListener("message", (event) => {
       if (socket !== this.socket || typeof event.data !== "string") return;
       this.waitingSince = null;
       const message = JSON.parse(event.data) as Message;
-      if (message.type === HEARTBEAT.answer.type) return;
+      if (message.type === HEARTBEAT.answer.type) {
+        const waited = this.beatAt === null ? null : Date.now() - this.beatAt;
+        if (waited !== null && waited > LATE_AFTER_MS) tabLog.warn("ws.late", { ...this.fields(), ms: waited });
+        this.beatAt = null;
+        tabLog.heard(this);
+        return;
+      }
+      tabLog.info("ws.in", { ...this.fields(), message: messageSummary(message, event.data.length) });
       if (message.type === "gone") {
+        tabLog.warn("ws.refused", { ...this.fields(), gone: true });
         this.refused = true;
         this.close();
         return;
       }
       if (message.type === "state") {
+        if (this.reconnecting) tabLog.info("reconnecting.cleared", { ...this.fields(), after: Date.now() - (this.lostSince ?? Date.now()) });
         this.tries = 0;
         this.hadState = true;
         this.lostSince = null;
@@ -123,8 +165,9 @@ export class Connection<Message extends { type: string }> {
       }
       this.options.receive(message);
     });
-    socket.addEventListener("close", () => {
-      if (socket === this.socket) void this.lost();
+    socket.addEventListener("close", (event) => {
+      tabLog.info("ws.close", { ...this.fields(), code: event.code, reason: event.reason, clean: event.wasClean, current: socket === this.socket });
+      if (socket === this.socket) void this.lost("closed");
     });
   }
 
@@ -132,29 +175,45 @@ export class Connection<Message extends { type: string }> {
     if (this.ended) return;
     const now = Date.now();
     const unheardSince = this.lostSince ?? (this.hadState ? this.waitingSince : null);
-    this.reconnecting = unheardSince !== null && now - unheardSince >= RECONNECTING_AFTER_MS;
+    const reconnecting = unheardSince !== null && now - unheardSince >= RECONNECTING_AFTER_MS;
+    if (reconnecting && !this.reconnecting) tabLog.warn("reconnecting.shown", { ...this.fields(), unheardFor: now - unheardSince });
+    if (!reconnecting && this.reconnecting) tabLog.info("reconnecting.cleared", this.fields());
+    this.reconnecting = reconnecting;
 
     const socket = this.socket;
     if (!socket) return;
     if (this.waitingSince !== null && now - this.waitingSince > ANSWER_WITHIN_MS) {
       // Closing a dead connection can take minutes to be noticed, so it is let go now.
+      tabLog.warn("ws.lost", {
+        ...this.fields(),
+        why: this.beatAt === null ? "not opened in time" : "heartbeat unanswered",
+        waited: now - this.waitingSince,
+        readyState: socket.readyState,
+      });
       this.socket = null;
       socket.close(LOST_CLOSE_CODE, "lost");
       void this.lost();
       return;
     }
     if (socket.readyState === WebSocket.OPEN && now - this.lastBeat >= HEARTBEAT_EVERY_MS) {
+      // The page's log goes first, so the heartbeat's answer says it arrived.
+      tabLog.beat(this);
       socket.send(JSON.stringify(HEARTBEAT.beat));
       this.lastBeat = now;
+      this.beatAt = now;
       this.waitingSince ??= now;
     }
   }
 
-  private async lost() {
+  private async lost(why?: string) {
+    if (why) tabLog.warn("ws.lost", { ...this.fields(), why });
+    // What the lost socket may not have carried goes on the next one.
+    tabLog.lost(this);
     // Unheard since the heartbeat that went unanswered, or since now.
     if (this.hadState) this.lostSince ??= this.waitingSince ?? Date.now();
     this.socket = null;
     this.queued = [];
+    this.beatAt = null;
     if (this.ended) return;
     this.options.lost?.();
     // An answer that does not come is no answer, so a hung request cannot stop the retries.
@@ -165,11 +224,13 @@ export class Connection<Message extends { type: string }> {
     // Back online meanwhile, and already connecting again.
     if (this.ended || this.socket) return;
     if (refused) {
+      tabLog.warn("ws.refused", this.fields());
       this.refused = true;
       this.end();
       return;
     }
     const wait = RETRY_MS[Math.min(this.tries, RETRY_MS.length - 1)]!;
+    tabLog.info("ws.retry", { ...this.fields(), wait, tries: this.tries + 1, online: navigator.onLine });
     this.tries += 1;
     clearTimeout(this.retry);
     this.retry = setTimeout(() => this.connect(), wait);
@@ -188,5 +249,7 @@ export class Connection<Message extends { type: string }> {
     clearTimeout(this.retry);
     this.stopTicking();
     window.removeEventListener("online", this.retryNow);
+    // The page's log goes by post from now on, if at all.
+    tabLog.detach(this);
   }
 }

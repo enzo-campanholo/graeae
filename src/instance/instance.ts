@@ -23,14 +23,17 @@ import { encodingPlan } from "../shared/encoding.ts";
 import type { BudgetLevel, ClientMessage, LiveShare, RoomView, UsageState } from "../shared/socket/index.ts";
 import { checkRequest, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
+import { LOG_PATH } from "../shared/socket/log.ts";
+import { routeOf } from "../shared/log.ts";
 import { done, json, nothingHere, page, redirect } from "./answers.ts";
+import { log } from "./log.ts";
 import { mediaLayer } from "./media/index.ts";
 import { applyMigrations, migrations, type Migration } from "./migrations.ts";
 import { FORGET_DEVICE_COOKIE, People, type Forgotten, type Member, type Visitor } from "./people.ts";
 import { Relay, RELAY_LIVES, type RelayLives } from "./relay.ts";
 import { isSetupSecret, missingSecrets } from "./setup-secret.ts";
 import { Shares, type Covered, type Ended } from "./shares.ts";
-import { Signaling, type Cut, type Tab } from "./signaling.ts";
+import { Signaling, tagsOf, type Cut, type Tab } from "./signaling.ts";
 import { Usage } from "./usage.ts";
 
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
@@ -41,6 +44,9 @@ const OWNER_SECTIONS = ["people", "invites", "rooms", "usage"];
 
 /** Where the instance keeps the level of the usage budget it last told the room of. */
 const BUDGET_TOLD_KEY = "usage:told";
+
+/** Why each refused answer was refused, for its line in the logs. The visitor never learns it. */
+const refusals = new WeakMap<Response, string>();
 
 /** The instance: one Durable Object holding all of its state (ADR 0002). */
 export class Instance extends DurableObject<Env> {
@@ -57,6 +63,7 @@ export class Instance extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    log.knowSecrets(env);
     this.people = new People(ctx.storage.sql);
     this.usage = new Usage(ctx.storage.sql);
     const media = mediaLayer(env);
@@ -104,14 +111,15 @@ export class Instance extends DurableObject<Env> {
     // Nothing reaches the instance until its storage is on this code's schema, and until
     // whoever a restart dropped is in their grace period.
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx.storage, Instance.migrations);
+      const applied = applyMigrations(ctx.storage, Instance.migrations);
+      log.info("instance.start", { build: __GRAEAE_BUILD__, migrations: applied });
       try {
         this.restored();
       } catch (error) {
         // A failure here would leave the instance refusing every request. Better it
         // starts: the tabs simply come back as new ones. (An instance started on an older
         // schema than this code's, as the migration tests do, has no records to restore.)
-        console.error("The instance could not restore the tabs a restart dropped", error);
+        log.error("error", error, { during: "restoring the tabs a restart dropped" });
       }
     });
   }
@@ -129,6 +137,7 @@ export class Instance extends DurableObject<Env> {
       return member ? [{ ...tab, member }] : [];
     });
     const dropped = this.signaling.restore(recorded);
+    log.info("restart.restored", { woke, recorded: recorded.length, lost: dropped.map((tab) => tab.id) });
     if (!woke || dropped.length > 0) this.ctx.waitUntil(this.afterRestart());
     // A stop a restart broke off runs again; a month that reset while asleep is told.
     this.checkBudget();
@@ -140,9 +149,14 @@ export class Instance extends DurableObject<Env> {
    * tracks turn out to be gone end.
    */
   private async afterRestart() {
-    const ended: Ended[] = await this.shares.sweep().catch(() => []);
+    const failed = (during: string) => (error: unknown) => {
+      log.error("error", error, { during });
+      return [];
+    };
+    const ended: Ended[] = await this.shares.sweep().catch(failed("the sweep after a restart"));
     // A hand-over the restart cut short after its new share went live ends its old one.
-    ended.push(...(await this.shares.finishHandOvers().catch(() => [])));
+    ended.push(...(await this.shares.finishHandOvers().catch(failed("finishing hand-overs after a restart"))));
+    log.info("restart.swept", { ended: ended.map(({ share }) => share) });
     this.sharesEnded(ended);
   }
 
@@ -168,17 +182,67 @@ export class Instance extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    const visitor = await this.people.recognise(request);
-    // Every visit from a remembered device renews it, whatever the address.
-    if (visitor) this.people.visited(visitor);
-    const response = await this.answer(request, visitor);
-    return visitor ? this.people.renewCookie(request, response) : response;
+    const started = Date.now();
+    const { method } = request;
+    const { route, room, member: subject, device: subjectDevice } = routeOf(new URL(request.url).pathname);
+    let visitor: Visitor | null = null;
+    try {
+      visitor = await this.people.recognise(request);
+      // Every visit from a remembered device renews it, whatever the address.
+      if (visitor) this.people.visited(visitor);
+      const response = await this.answer(request, visitor);
+      const refused = refusals.get(response);
+      (refused ? log.warn : log.info)("http", {
+        method,
+        route,
+        status: response.status,
+        ms: Date.now() - started,
+        ...(visitor ? { member: visitor.member.id, device: visitor.deviceId } : {}),
+        ...(room ? { room } : {}),
+        ...(subject ? { subject } : {}),
+        ...(subjectDevice ? { subjectDevice } : {}),
+        ...(refused ? { refused } : {}),
+      });
+      return visitor ? this.people.renewCookie(request, response) : response;
+    } catch (error) {
+      log.error("error", error, {
+        during: "http",
+        method,
+        route,
+        ms: Date.now() - started,
+        ...(visitor ? { member: visitor.member.id, device: visitor.deviceId } : {}),
+      });
+      throw error;
+    }
+  }
+
+  /** The one "nothing here" answer, with why it was given kept for the logs alone. */
+  private async refuse(request: Request, why: string): Promise<Response> {
+    const response = await nothingHere(this.env.ASSETS, request);
+    refusals.set(response, why);
+    return response;
+  }
+
+  /**
+   * `POST /api/log` from a remembered device: a page with no socket sends its record of
+   * what it did, written tagged as the device's. Answered with nothing.
+   */
+  private async postedLog(request: Request, visitor: Visitor): Promise<Response> {
+    const text = await request.text().catch(() => null);
+    let batch: unknown = null;
+    try {
+      batch = text === null ? null : JSON.parse(text);
+    } catch {
+      // Not JSON: refused below.
+    }
+    const written = log.tabBatch({ member: visitor.member.id, device: visitor.deviceId }, batch, text?.length);
+    return written ? done() : this.refuse(request, "not a batch of events");
   }
 
   private async answer(request: Request, visitor: Visitor | null): Promise<Response> {
     const { pathname, searchParams } = new URL(request.url);
     const { method } = request;
-    const refuse = () => nothingHere(this.env.ASSETS, request);
+    const refuse = (why: string) => this.refuse(request, why);
 
     if (method === "POST" && pathname === "/api/setup") return this.setup(request, visitor);
 
@@ -187,23 +251,24 @@ export class Instance extends DurableObject<Env> {
     const invitePage = /^\/invite\/([^/]+)$/.exec(pathname);
     if (invitePage) {
       const pending = method === "GET" && this.people.openInvite(invitePage[1]!);
-      return pending ? page(this.env.ASSETS, request) : refuse();
+      return pending ? page(this.env.ASSETS, request) : refuse("no such invite");
     }
     const inviteData = /^\/api\/invites\/([^/]+)$/.exec(pathname);
     if (inviteData) {
       const code = inviteData[1]!;
       if (method === "POST") return this.join(request, visitor, code);
       const pending = method === "GET" && this.people.openInvite(code);
-      return pending ? json({ name: pending.name } satisfies InviteAnswer) : refuse();
+      return pending ? json({ name: pending.name } satisfies InviteAnswer) : refuse("no such invite");
     }
 
-    if (!visitor) return refuse();
+    if (!visitor) return refuse("not a remembered device");
     const { member } = visitor;
+    if (pathname === LOG_PATH) return method === "POST" ? this.postedLog(request, visitor) : refuse("not a post");
     if (pathname === "/owner" || pathname.startsWith("/owner/") || pathname.startsWith("/api/owner/")) {
-      return member.owner ? this.ownerAnswer(request, pathname, visitor) : refuse();
+      return member.owner ? this.ownerAnswer(request, pathname, visitor) : refuse("not the owner");
     }
     if (pathname === "/api/me" || pathname.startsWith("/api/me/")) return this.youAnswer(request, pathname, visitor);
-    if (method !== "GET") return refuse();
+    if (method !== "GET") return refuse("not a get");
     if (pathname === "/you") return page(this.env.ASSETS, request);
 
     if (pathname === "/") {
@@ -212,7 +277,7 @@ export class Instance extends DurableObject<Env> {
     }
     const roomPage = /^\/r\/([^/]+)$/.exec(pathname);
     if (roomPage) {
-      return this.people.room(member, roomPage[1]!) ? page(this.env.ASSETS, request) : refuse();
+      return this.people.room(member, roomPage[1]!) ? page(this.env.ASSETS, request) : refuse("no access to the room");
     }
     const me: Me = { name: member.name, owner: member.owner };
     if (pathname === "/api/rooms") {
@@ -221,16 +286,16 @@ export class Instance extends DurableObject<Env> {
     const roomData = /^\/api\/rooms\/([^/]+)$/.exec(pathname);
     if (roomData) {
       const room = this.people.room(member, roomData[1]!);
-      return room ? json({ room, me } satisfies RoomAnswer) : refuse();
+      return room ? json({ room, me } satisfies RoomAnswer) : refuse("no access to the room");
     }
     const upgrade = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
     if (pathname === LIST_SOCKET_PATH) {
-      return upgrade ? this.signaling.openList(member.id, visitor.deviceId, this.list(member)) : refuse();
+      return upgrade ? this.signaling.openList(member.id, visitor.deviceId, this.list(member), member.name) : refuse("not a socket");
     }
     const socket = /^\/api\/socket\/([^/]+)$/.exec(pathname);
     if (socket) {
       const room = this.people.room(member, socket[1]!);
-      if (!room || !upgrade) return refuse();
+      if (!room || !upgrade) return refuse(room ? "not a socket" : "no access to the room");
       return this.signaling.open(
         member.id,
         visitor.deviceId,
@@ -240,16 +305,17 @@ export class Instance extends DurableObject<Env> {
           media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
         }),
         searchParams.get("tab") ?? undefined,
+        member.name,
       );
     }
-    return refuse();
+    return refuse("no such address");
   }
 
   /** The "You" page's data and actions, the same for every member and the owner. */
   private async youAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
     const { method } = request;
     const { member } = visitor;
-    const refuse = () => nothingHere(this.env.ASSETS, request);
+    const refuse = (why: string) => this.refuse(request, why);
 
     if (pathname === "/api/me" && method === "GET") {
       const devices = this.people.devices(member).map((device) => ({
@@ -261,7 +327,8 @@ export class Instance extends DurableObject<Env> {
     if (pathname === "/api/me/name" && method === "POST") {
       const body = await request.json<{ name?: unknown }>().catch(() => null);
       const renamed = body && this.people.rename(member, body.name);
-      if (!renamed) return refuse();
+      if (!renamed) return refuse("not a display name");
+      log.info("member.renamed", { member: member.id, device: visitor.deviceId, name: renamed.name });
       this.signaling.toLists(new Set([renamed.id]), { type: "you", you: { name: renamed.name, owner: renamed.owner } });
       for (const room of this.people.rooms(renamed)) {
         this.signaling.toRoom(room.address, {
@@ -274,11 +341,12 @@ export class Instance extends DurableObject<Env> {
       return json({ name: renamed.name, owner: renamed.owner } satisfies Me);
     }
     if (pathname === "/api/me/devices" && method === "POST") {
+      log.info("invite.made", { member: member.id, device: visitor.deviceId, kind: "device" });
       return json({ invite: this.people.createDeviceInvite(member) } satisfies DeviceInviteAnswer);
     }
     const device = /^\/api\/me\/devices\/([^/]+)$/.exec(pathname);
-    if (device && method === "DELETE") return (await this.forget(member, device[1]!, visitor)) ?? refuse();
-    return refuse();
+    if (device && method === "DELETE") return (await this.forget(member, device[1]!, visitor)) ?? refuse("no such device");
+    return refuse("no such address");
   }
 
   /**
@@ -298,23 +366,40 @@ export class Instance extends DurableObject<Env> {
    * sending and watching through the cut-off routine, which the answer does not wait for.
    */
   private devicesForgotten(forgotten: readonly Forgotten[]) {
+    for (const { device, member } of forgotten) log.info("device.forgotten", { device, member: member.id });
     const cuts = forgotten.map(({ device, member }) => ({ device, member, cut: this.signaling.cutDevice(device) }));
     for (const { device, member, cut } of cuts) this.inBackground(this.cutOff({ device }, cut, member));
   }
 
   override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
-    const received = this.signaling.received(socket, data);
-    if (received) await this.request(received.tab, received.message);
+    try {
+      const received = this.signaling.received(socket, data);
+      if (received) await this.request(received.tab, received.message);
+    } catch (error) {
+      log.error("error", error, { during: "a socket message", ...tabFields(socket) });
+      throw error;
+    }
   }
 
   override async webSocketClose(socket: WebSocket, code: number, reason: string) {
-    const tab = this.signaling.closed(socket, code, reason);
-    if (tab) await this.left(tab);
+    try {
+      const tab = this.signaling.closed(socket, code, reason);
+      if (tab) await this.left(tab);
+    } catch (error) {
+      log.error("error", error, { during: "a socket closing", ...tabFields(socket) });
+      throw error;
+    }
   }
 
-  override async webSocketError(socket: WebSocket) {
-    const tab = this.signaling.closed(socket);
-    if (tab) await this.left(tab);
+  override async webSocketError(socket: WebSocket, error: unknown) {
+    log.warn("ws.error", { ...tabFields(socket), error });
+    try {
+      const tab = this.signaling.closed(socket);
+      if (tab) await this.left(tab);
+    } catch (failure) {
+      log.error("error", failure, { during: "a socket failing", ...tabFields(socket) });
+      throw failure;
+    }
   }
 
   /**
@@ -351,12 +436,14 @@ export class Instance extends DurableObject<Env> {
     "media.answer": async (tab, { answer }) => {
       // An answer only completes the tab's own negotiation, so it needs no check. A failed
       // one leaves the pull with no media flowing; the watch stays, as on any media trouble.
-      await this.shares.renegotiate(tab, answer);
+      const answered = await this.shares.renegotiate(tab, answer);
+      (answered ? log.info : log.warn)("media.answered", { ...tagsOf(tab), ok: answered });
       this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
     },
     // A restart needs no check: like an answer, it only renews the tab's own path to the media server.
     "media.restart": async (tab, { offer, mid }) => {
       const answer = await this.shares.restart(tab, offer, mid);
+      (answer !== null ? log.info : log.warn)("media.restarted", { ...tagsOf(tab), ok: answer !== null, mid });
       if (answer !== null) this.usage.newTotal(tab.id);
       this.signaling.toTab(
         tab.id,
@@ -369,14 +456,21 @@ export class Instance extends DurableObject<Env> {
     "media.faltering": (tab) => this.shares.faltering(tab.id),
     "media.recovered": (tab) => this.shares.recovered(tab.id),
     "media.connect": async (tab, _, allowed) => {
-      if (!allowed) return;
+      if (!allowed) {
+        log.warn("media.unavailable", { ...tagsOf(tab), why: "not allowed" });
+        return;
+      }
       const iceServers = await this.shares.connect(tab, () => this.relay.mint());
-      if (iceServers === "already") return;
+      if (iceServers === "already") {
+        log.info("media.connected", { ...tagsOf(tab), already: true });
+        return;
+      }
       if (iceServers) {
+        log.info("media.connected", tagsOf(tab));
         this.usage.newTotal(tab.id);
         this.relay.minted(tab.id);
         this.schedule();
-      }
+      } else log.warn("media.unavailable", { ...tagsOf(tab), why: "the media server or the relay failed" });
       // The socket was lost while the connection was being made: the tab may ask again.
       if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id);
       this.signaling.toTab(
@@ -387,6 +481,9 @@ export class Instance extends DurableObject<Env> {
     "watching.watch": async (tab, { share }, allowed) => {
       // Refused while the usage budget is used up, including a pull that was under way when it ran out.
       const budgetAllows = () => this.usage.level() !== "used up";
+      if (!allowed || !budgetAllows()) {
+        log.warn("watch.refused", { ...tagsOf(tab), share, why: allowed ? "the usage budget is used up" : "not allowed" });
+      }
       const watched =
         allowed && budgetAllows()
           ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id) && budgetAllows())
@@ -407,6 +504,7 @@ export class Instance extends DurableObject<Env> {
     "watching.quality": async (tab, { share, quality }, allowed) => {
       // The tab hears the quality it now watches at: the one it chose, or the one it had.
       const now = allowed ? await this.shares.setQuality(tab, share, quality) : this.shares.quality(tab, share);
+      log.info("quality.set", { ...tagsOf(tab), share, asked: quality, now, allowed });
       if (now !== null) this.signaling.toTab(tab.id, { type: "watching", change: { type: "quality", share, quality: now } });
     },
     "shares.start": async (tab, { kind, details }, allowed) => {
@@ -425,6 +523,9 @@ export class Instance extends DurableObject<Env> {
               { handOver: details.handOver },
             )
           : { live: false as const };
+      if (!allowed || !details || !family) {
+        log.warn("share.refused", { ...tagsOf(tab), kind, why: !allowed ? "not allowed" : !details ? "malformed" : "no browser family" });
+      }
       if (!started.live) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });
         return;
@@ -473,6 +574,7 @@ export class Instance extends DurableObject<Env> {
    * still reports what it receives, so its usage is left to its own totals.
    */
   private async reconnectMedia(tab: Tab) {
+    log.info("media.reconnect", tagsOf(tab));
     try {
       const ended = await this.shares.cutOff({ tabId: tab.id });
       for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
@@ -480,6 +582,7 @@ export class Instance extends DurableObject<Env> {
       this.checkBudget();
       // A close that failed keeps the connection on record, and is tried again. Until the
       // tab leaves, its next `connect` then gets no answer, as for any tab that has one.
+      log.info("media.dropped", { ...tagsOf(tab), why: "asked" });
       this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped" } });
     }
   }
@@ -495,12 +598,14 @@ export class Instance extends DurableObject<Env> {
    * whose device was forgotten.
    */
   private async cutOff(covered: Covered, cut?: Cut, subject?: Member) {
+    log.info("cutoff.start", { covered, tabs: cut?.tabs.map((tab) => tab.id) ?? [], ...(subject ? { subject: subject.id } : {}) });
     try {
       const ended = await this.shares.cutOff(
         covered,
         cut?.tabs.map((tab) => tab.id),
         subject && { member: subject.id, name: subject.name, at: Date.now() },
       );
+      log.info("cutoff.done", { covered, ended: ended.map(({ share }) => share) });
       this.sharesEnded(ended);
     } finally {
       // The tabs cut off report no more: what they watched since their last report is charged.
@@ -527,7 +632,9 @@ export class Instance extends DurableObject<Env> {
     const told = this.told();
     if (level === told) return;
     if (level === "used up") {
+      log.warn("budget.stop", { budget: this.usage.budget() });
       this.stopping = this.cutOff({ everyWatch: true }).finally(() => {
+        log.info("budget.stopped", { level: this.usage.level() });
         this.stopping = null;
         this.tellBudget(this.usage.level() === "used up" ? "used up" : told);
         // The budget may have changed while the closes were under way.
@@ -543,6 +650,7 @@ export class Instance extends DurableObject<Env> {
   private tellBudget(level: BudgetLevel | null) {
     const told = this.told();
     if (level === told) return;
+    log.info("budget.told", { level, before: told });
     if (level === null) this.ctx.storage.kv.delete(BUDGET_TOLD_KEY);
     else this.ctx.storage.kv.put(BUDGET_TOLD_KEY, level);
     const owners = new Map<string, boolean>();
@@ -565,7 +673,7 @@ export class Instance extends DurableObject<Env> {
    * owner has their answer. A failure there is already kept as a record to try again.
    */
   private inBackground(work: Promise<void>) {
-    this.ctx.waitUntil(work.catch(() => {}));
+    this.ctx.waitUntil(work.catch((error: unknown) => log.error("error", error, { during: "work after the answer" })));
   }
 
   /** Tells the room and the lists of rooms that a share started or ended. */
@@ -579,12 +687,24 @@ export class Instance extends DurableObject<Env> {
    * again, shares whose media has faltered for too long, and fresh relay credentials.
    */
   override async alarm() {
+    try {
+      await this.alarmed();
+    } catch (error) {
+      log.error("error", error, { during: "the alarm" });
+      throw error;
+    }
+  }
+
+  private async alarmed() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
     const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
     const faltered = await this.shares.faltered();
     ended.push(...faltered.ended);
     this.sharesEnded(ended);
-    for (const tab of faltered.dropped) this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
+    for (const tab of faltered.dropped) {
+      log.info("media.dropped", { tab, why: "faltered" });
+      this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
+    }
     await this.relay.renew((tab, iceServers) =>
       this.signaling.toTab(tab, { type: "media", change: { type: "renewed", iceServers } }),
     );
@@ -651,12 +771,12 @@ export class Instance extends DurableObject<Env> {
   private async ownerAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
     const owner = visitor.member;
     const { method } = request;
-    const refuse = () => nothingHere(this.env.ASSETS, request);
+    const refuse = (why: string) => this.refuse(request, why);
 
     const section = /^\/owner(?:\/([^/]+))?$/.exec(pathname);
     if (section) {
       const known = section[1] === undefined || OWNER_SECTIONS.includes(section[1]);
-      return method === "GET" && known ? page(this.env.ASSETS, request) : refuse();
+      return method === "GET" && known ? page(this.env.ASSETS, request) : refuse(known ? "not a get" : "no such section");
     }
     if (pathname === "/api/owner/invites") {
       if (method === "GET") {
@@ -668,16 +788,18 @@ export class Instance extends DurableObject<Env> {
       if (method === "POST") {
         const body = await request.json<{ name?: unknown; rooms?: unknown }>().catch(() => null);
         const invite = body && this.people.createInvite(body.name, body.rooms);
-        return invite ? json({ invite } satisfies CreateInviteAnswer) : refuse();
+        if (invite) log.info("invite.made", { member: owner.id, device: visitor.deviceId, kind: "member", rooms: invite.rooms.map((room) => room.address) });
+        return invite ? json({ invite } satisfies CreateInviteAnswer) : refuse("not an invite");
       }
-      return refuse();
+      return refuse("not a get or a post");
     }
     if (pathname === "/api/owner/rooms") {
       if (method === "GET") return json({ rooms: this.people.allRooms() } satisfies OwnerRoomsAnswer);
-      if (method !== "POST") return refuse();
+      if (method !== "POST") return refuse("not a get or a post");
       const body = await request.json<{ name?: unknown }>().catch(() => null);
       const room = body && this.people.newRoom(body.name);
-      if (!room) return refuse();
+      if (!room) return refuse("not a room name");
+      log.info("room.made", { member: owner.id, room: room.address, name: room.name });
       // The owner has every room by rule, so only the owner gained access.
       this.signaling.toMember(owner.id, {
         type: "people",
@@ -690,45 +812,51 @@ export class Instance extends DurableObject<Env> {
     if (ownerRoom && method === "PATCH") {
       const body = await request.json<{ name?: unknown }>().catch(() => null);
       const room = body && this.people.renameRoom(ownerRoom[1]!, body.name);
-      if (!room) return refuse();
+      if (!room) return refuse("no such room, or not a room name");
+      log.info("room.renamed", { member: owner.id, room: room.address, name: room.name });
       this.signaling.toRoom(room.address, { type: "room", change: { type: "renamed", name: room.name } });
       this.relist(room.address);
       return json({ room } satisfies RenameRoomAnswer);
     }
     const invite = /^\/api\/owner\/invites\/([^/]+)$/.exec(pathname);
     if (invite && method === "DELETE") {
-      return this.people.cancelInvite(invite[1]!) ? done() : refuse();
+      const cancelled = this.people.cancelInvite(invite[1]!);
+      if (cancelled) log.info("invite.cancelled", { member: owner.id });
+      return cancelled ? done() : refuse("no such invite");
     }
     if (pathname === "/api/owner/usage") {
-      return method === "GET" ? json(this.usage.answer() satisfies UsageAnswer) : refuse();
+      return method === "GET" ? json(this.usage.answer() satisfies UsageAnswer) : refuse("not a get");
     }
     // A new reset day or budget may move the month past a warning, or back below one. Raising
     // the budget allows watching at once; setting it below what is used stops it at once.
     if (pathname === "/api/owner/usage/reset-day" && method === "PUT") {
       const body = await request.json<{ day?: unknown }>().catch(() => null);
-      if (!body || !this.usage.setResetDay(body.day)) return refuse();
+      if (!body || !this.usage.setResetDay(body.day)) return refuse("not a reset day");
+      log.info("usage.reset-day", { member: owner.id, day: body.day });
       this.checkBudget();
       return json(this.usage.answer() satisfies UsageAnswer);
     }
     if (pathname === "/api/owner/usage/budget" && method === "PUT") {
       const body = await request.json<{ gigabytes?: unknown }>().catch(() => null);
-      if (!body || !this.usage.setBudget(body.gigabytes)) return refuse();
+      if (!body || !this.usage.setBudget(body.gigabytes)) return refuse("not a budget");
+      log.info("usage.budget", { member: owner.id, gigabytes: body.gigabytes });
       this.checkBudget();
       return json(this.usage.answer() satisfies UsageAnswer);
     }
     if (pathname === "/api/owner/people" || pathname.startsWith("/api/owner/people/")) {
       return this.peopleAnswer(request, pathname, visitor);
     }
-    return refuse();
+    return refuse("no such address");
   }
 
   /** The owner page's People section: every member, and what the owner can do to each. */
   private async peopleAnswer(request: Request, pathname: string, visitor: Visitor): Promise<Response> {
     const { method } = request;
-    const refuse = () => nothingHere(this.env.ASSETS, request);
+    const refuse = (why: string) => this.refuse(request, why);
+    const owner = visitor.member.id;
 
     if (pathname === "/api/owner/people") {
-      if (method !== "GET") return refuse();
+      if (method !== "GET") return refuse("not a get");
       const entries = this.people.everyone().map((member) => this.memberEntry(member, visitor.deviceId));
       return json({
         rooms: this.people.allRooms(),
@@ -740,39 +868,43 @@ export class Instance extends DurableObject<Env> {
     if (access) {
       const member = this.people.member(access[1]!);
       const address = access[2]!;
-      if (!member) return refuse();
+      if (!member) return refuse("no such member");
       if (method === "PUT") {
         const granted = this.people.grant(member, address);
-        if (granted === null) return refuse();
+        if (granted === null) return refuse("no such room");
+        if (granted) log.info("access.granted", { member: owner, subject: member.id, room: address });
         if (granted) this.accessGranted(member, address);
         return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
       }
       if (method === "DELETE") {
         // Storage first: from this instant every request of theirs for the room is refused.
         const revoked = this.people.revoke(member, address);
-        if (revoked === null) return refuse();
+        if (revoked === null) return refuse("no such room");
+        if (revoked) log.info("access.revoked", { member: owner, subject: member.id, room: address });
         if (revoked) this.accessRemoved(member, address);
         return json({ person: this.memberEntry(member, visitor.deviceId) } satisfies GrantAnswer);
       }
-      return refuse();
+      return refuse("not a put or a delete");
     }
     const device = /^\/api\/owner\/people\/([^/]+)\/devices\/([^/]+)$/.exec(pathname);
     if (device && method === "DELETE") {
       const member = this.people.member(device[1]!);
-      return (member && (await this.forget(member, device[2]!, visitor))) ?? refuse();
+      return (member && (await this.forget(member, device[2]!, visitor))) ?? refuse("no such device");
     }
     const letBackIn = /^\/api\/owner\/people\/([^/]+)\/invite$/.exec(pathname);
     if (letBackIn && method === "POST") {
       const member = this.people.member(letBackIn[1]!);
       const invite = member && this.people.createLetBackIn(member);
-      return invite ? json({ invite } satisfies CreateInviteAnswer) : refuse();
+      if (invite) log.info("invite.made", { member: owner, subject: member.id, kind: "let back in" });
+      return invite ? json({ invite } satisfies CreateInviteAnswer) : refuse("no such member, or the owner");
     }
     const person = /^\/api\/owner\/people\/([^/]+)$/.exec(pathname);
     if (person && method === "DELETE") {
       const member = this.people.member(person[1]!);
       // Storage first: from this instant every device of theirs is a stranger.
       const rooms = member && this.people.remove(member);
-      if (!member || !rooms) return refuse();
+      if (!member || !rooms) return refuse("no such member, or the owner");
+      log.info("member.removed", { member: owner, subject: member.id, rooms });
       const cut = this.signaling.cutMember(member.id);
       for (const address of rooms) {
         this.signaling.toRoom(address, { type: "people", change: { type: "removed", member: member.id } });
@@ -781,7 +913,7 @@ export class Instance extends DurableObject<Env> {
       this.inBackground(this.cutOff({ member: member.id }, cut, member));
       return done();
     }
-    return refuse();
+    return refuse("no such address");
   }
 
   /**
@@ -832,10 +964,11 @@ export class Instance extends DurableObject<Env> {
   /** `POST /api/setup` with `{ secret }`: the setup page sends the secret here itself. */
   private async setup(request: Request, visitor: Visitor | null): Promise<Response> {
     const body = await request.json<{ secret?: unknown }>().catch(() => null);
-    if (!(await isSetupSecret(this.env, body?.secret))) return nothingHere(this.env.ASSETS, request);
+    if (!(await isSetupSecret(this.env, body?.secret))) return this.refuse(request, "not the setup secret");
 
     // Every other device of the owner's is forgotten, and the browser's own old one.
     const { owner, cookie, forgotten } = await this.people.becomeOwner(request, visitor);
+    log.info("owner.setup", { member: owner.id, forgotten: forgotten.length, missing: missingSecrets(this.env) });
     this.devicesForgotten(forgotten);
     return withCookie(
       json({ to: this.landing(owner), missing: missingSecrets(this.env) } satisfies SetupAnswer),
@@ -846,7 +979,8 @@ export class Instance extends DurableObject<Env> {
   /** `POST /api/invites/<code>`: the press of the invite page's one button. */
   private async join(request: Request, visitor: Visitor | null, code: string): Promise<Response> {
     const joined = await this.people.join(request, visitor, code);
-    if (!joined) return nothingHere(this.env.ASSETS, request);
+    if (!joined) return this.refuse(request, "no such invite");
+    log.info("invite.used", { member: joined.member.id, name: joined.member.name, forgotten: joined.forgotten.length });
     // "Let back in" forgot the member's other devices, and a remembered browser its old one,
     // whoever's it was: their tabs close as on forgetting one.
     this.devicesForgotten(joined.forgotten);
@@ -861,6 +995,16 @@ export class Instance extends DurableObject<Env> {
   private landing(member: Member): string {
     const rooms = this.people.rooms(member);
     return rooms.length === 1 ? roomPath(rooms[0]!.address) : "/";
+  }
+}
+
+/** The ids a line about the tab behind `socket` is tagged with, whatever state it is in. */
+function tabFields(socket: WebSocket): Record<string, unknown> {
+  try {
+    const tab = socket.deserializeAttachment() as { id?: string; member?: string; device?: string; room?: string } | null;
+    return tab ? { member: tab.member, device: tab.device, tab: tab.id, room: tab.room } : {};
+  } catch {
+    return {};
   }
 }
 

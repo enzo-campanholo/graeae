@@ -11,11 +11,12 @@
 // starting or ending, or the member gaining or losing access to a room. A `you` message
 // says the member renamed themselves. A list that connects
 // again gets the whole list again. The list sends only the heartbeat, which the instance
-// answers, as on a room's socket (`heartbeat.ts`); a list's lost connection has no
-// presence to keep.
+// answers, as on a room's socket (`heartbeat.ts`), and its log batches (`log.ts`); a
+// list's lost connection has no presence to keep.
 
 import { unknownChange } from "./area.ts";
 import type { Heard, Heartbeat } from "./heartbeat.ts";
+import type { LogRequest } from "./log.ts";
 
 export const LIST_SOCKET_PATH = "/api/socket";
 
@@ -56,7 +57,7 @@ export type ListMessage =
   | Heard;
 
 /** A message from the list to the instance. */
-export type ListClientMessage = Heartbeat;
+export type ListClientMessage = Heartbeat | { type: "log"; request: LogRequest };
 
 export function applyList(state: ListState, change: ListChange): ListState {
   switch (change.type) {

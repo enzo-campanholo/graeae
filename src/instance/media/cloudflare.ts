@@ -76,11 +76,16 @@ interface Answer {
   errorDescription?: string;
 }
 
-/** A call the media server refused, with its HTTP status. */
+/**
+ * A call the media server refused, with its HTTP status, its answer in full, and the
+ * tracks it failed with their error codes, which the logs keep (`logged.ts`).
+ */
 export class MediaServerError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly body?: string,
+    readonly tracks?: readonly TrackResult[],
   ) {
     super(message);
   }
@@ -179,7 +184,7 @@ export class CloudflareMediaServer implements MediaLayer {
     // if the session itself no longer has it open.
     const open = new Set((await this.tracks(connection)).map((track) => track.mid));
     const stillOpen = failed.filter((track) => track.mid !== undefined && open.has(track.mid));
-    if (stillOpen.length > 0) throw new Error(`The media server did not close ${describe(stillOpen)}`);
+    if (stillOpen.length > 0) throw new MediaServerError(200, `The media server did not close ${describe(stillOpen)}`, undefined, stillOpen);
   }
 
   async relayCredential(ttlSeconds: number): Promise<IceServer[]> {
@@ -189,7 +194,10 @@ export class CloudflareMediaServer implements MediaLayer {
       body: JSON.stringify({ ttl: ttlSeconds }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!response.ok) throw new MediaServerError(response.status, `The relay refused a credential: ${response.status}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new MediaServerError(response.status, `The relay refused a credential: ${response.status}`, body);
+    }
     const { iceServers } = await response.json<{ iceServers: IceServer | IceServer[] }>();
     // Every address the relay gives: STUN, and TURN over UDP, TCP and TLS. Port 53 is
     // left out, since browsers block it and it only slows the connection down.
@@ -231,7 +239,7 @@ export class CloudflareMediaServer implements MediaLayer {
     }
     if (!response.ok || answer.errorCode) {
       const reason = answer.errorDescription ?? answer.errorCode ?? text.slice(0, 200);
-      throw new MediaServerError(response.status, `The media server refused ${method} ${path}: ${response.status} ${reason}`);
+      throw new MediaServerError(response.status, `The media server refused ${method} ${path}: ${response.status} ${reason}`, text, answer.tracks);
     }
     return answer;
   }
@@ -240,7 +248,7 @@ export class CloudflareMediaServer implements MediaLayer {
 /** Throws if the media server refused any track of a call, though the call itself succeeded. */
 function failedTracks(tracks: readonly TrackResult[] = []) {
   const failed = tracks.filter((track) => track.errorCode);
-  if (failed.length > 0) throw new Error(`The media server refused ${describe(failed)}`);
+  if (failed.length > 0) throw new MediaServerError(200, `The media server refused ${describe(failed)}`, undefined, failed);
 }
 
 function describe(tracks: readonly TrackResult[]): string {

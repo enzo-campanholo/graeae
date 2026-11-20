@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
@@ -11,7 +12,11 @@ const FAKE_MEDIA_MODE = "fake-media";
 export default defineConfig(({ command, mode }) => ({
   // Seam 2 builds with `--mode fake-media`; every other build, the deploy's included, gets
   // the real media layer and media client, and the fakes are left out of it.
-  define: { __GRAEAE_FAKE_MEDIA__: JSON.stringify(mode === FAKE_MEDIA_MODE) },
+  // The build's stamp goes into every log line's source: the instance's and the page's.
+  define: {
+    __GRAEAE_FAKE_MEDIA__: JSON.stringify(mode === FAKE_MEDIA_MODE),
+    __GRAEAE_BUILD__: JSON.stringify(build()),
+  },
   plugins: [
     svelte(),
     tailwindcss(),
@@ -31,6 +36,15 @@ export default defineConfig(({ command, mode }) => ({
     },
   },
 }));
+
+/** The commit this build is made from, marked dirty when the checkout has changes; "unknown" outside git. */
+function build(): string {
+  try {
+    return execSync("git describe --always --dirty", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 /**
  * Leaves `.dev.vars` out of the build. The Cloudflare plugin copies the root one, which

@@ -1,23 +1,47 @@
 // The page's requests to its instance. The instance answers anything it refuses with
-// "nothing here", so a page only learns that it was refused, never why.
+// "nothing here", so a page only learns that it was refused, never why. Each refusal, and
+// each request that got no answer at all, goes in the page's log.
+
+import { tabLog } from "./log.ts";
 
 /** What the instance answers, or null when it refused. */
 export async function getJson<T>(path: string): Promise<T | null> {
-  return answer<T>(await fetch(path, { headers: { Accept: "application/json" } }));
+  return answer<T>(path, await logged(path, "GET", fetch(path, { headers: { Accept: "application/json" } })));
 }
 
 /** Sends `body` as JSON. What the instance answers, or null when it refused. */
 export async function postJson<T>(path: string, body: unknown): Promise<T | null> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  return answer<T>(response);
+  return send<T>("POST", path, body);
 }
 
-async function answer<T>(response: Response): Promise<T | null> {
-  if (!response.ok) return null;
+async function send<T>(method: string, path: string, body: unknown): Promise<T | null> {
+  const response = await logged(
+    path,
+    method,
+    fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+  return answer<T>(path, response);
+}
+
+/** `request`, with its failure to get any answer logged. */
+async function logged(path: string, method: string, request: Promise<Response>): Promise<Response> {
+  try {
+    return await request;
+  } catch (error) {
+    tabLog.warn("http.failed", { ...tabLog.where(new URL(path, window.location.href).pathname), method, error });
+    throw error;
+  }
+}
+
+async function answer<T>(path: string, response: Response): Promise<T | null> {
+  if (!response.ok) {
+    tabLog.warn("http.refused", { ...tabLog.where(new URL(path, window.location.href).pathname), status: response.status });
+    return null;
+  }
   return (await response.json()) as T;
 }
 
@@ -33,20 +57,10 @@ export function load<T>(path: string, set: (value: Load<T>) => void) {
 
 /** Sends `body` as JSON to set something. What the instance answers, or null when it refused. */
 export async function putJson<T>(path: string, body: unknown): Promise<T | null> {
-  const response = await fetch(path, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  return answer<T>(response);
+  return send<T>("PUT", path, body);
 }
 
 /** Sends `body` as JSON to change something. What the instance answers, or null when it refused. */
 export async function patchJson<T>(path: string, body: unknown): Promise<T | null> {
-  const response = await fetch(path, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  return answer<T>(response);
+  return send<T>("PATCH", path, body);
 }

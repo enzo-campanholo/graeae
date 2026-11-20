@@ -46,6 +46,7 @@ import {
 import { qualityOf, sameShare } from "../../shared/socket/watching.ts";
 import { getJson } from "./api.ts";
 import { Connection } from "./connection.svelte.ts";
+import { tabLog } from "./log.ts";
 import {
   createMediaClient,
   type BrowserFamily,
@@ -182,6 +183,7 @@ export class RoomClient {
 
   constructor(address: string) {
     this.socket = new Connection<ServerMessage>({
+      kind: "room",
       path: () => roomSocketPath(address, this.tab),
       receive: (message) => this.receive(message),
       // A refusal is the "nothing here" answer; a failed request is no answer.
@@ -252,20 +254,27 @@ export class RoomClient {
     this.failed = null;
     this.handedOver = this.handedOver.filter((handed) => handed !== kind);
     this.mine = [...this.mine, { kind, state: "starting", capture: null, audio: null, notes: null }];
+    tabLog.info("share.asked", { kind, handOver });
+    tabLog.info("capture.asked", { kind });
     let capture: Capture | null;
     try {
       capture = await captured();
-    } catch {
+    } catch (error) {
+      tabLog.warn("capture.refused", { kind, error });
       this.mine = this.mine.filter((share) => share.kind !== kind);
       this.failed = kind;
+      tabLog.warn("share.failed", { kind, why: "capture refused" });
       return;
     }
     if (!capture) {
+      tabLog.info("capture.refused", { kind, why: "the picker was closed" });
       this.mine = this.mine.filter((share) => share.kind !== kind);
       return;
     }
+    tabLog.info("capture.granted", { kind, audio: capture.audio });
     const own = capture;
     void own.ended.then(() => {
+      tabLog.info("capture.ended", { kind, by: "the browser" });
       const share = this.mine.find((candidate) => candidate.capture === own);
       if (share?.state === "live") this.stop(kind);
       else if (share) this.over.add(own);
@@ -285,6 +294,7 @@ export class RoomClient {
       if (!(await this.connected())) throw new Error("no media connection");
       const live = await this.negotiate(async () => {
         const offer = await this.media.offer(capture);
+        tabLog.info("share.offered", { kind, offer: offer.sdp, video: offer.video, ...(offer.audio ? { audio: offer.audio } : {}) });
         const answer = await this.request(
           // A share that starts again by itself sends the browser family too, through here.
           { type: "shares", request: startRequest(kind, offer, this.media, handOver) },
@@ -295,13 +305,15 @@ export class RoomClient {
         return true;
       });
       if (!live) throw new Error("the share was refused");
+      tabLog.info("share.confirmed", { kind });
       this.update(kind, { state: "live" });
       this.media.notes(capture, (notes) => {
         this.mine = this.mine.map((share) => (share.capture === capture ? { ...share, notes } : share));
       });
       // The browser ended it while it was starting: it stops now that it can.
       if (this.over.has(capture)) this.stop(kind);
-    } catch {
+    } catch (error) {
+      tabLog.warn("share.failed", { kind, error });
       this.media.stop(capture);
       this.mine = this.mine.filter((share) => share.capture !== capture);
       this.failed = kind;
@@ -315,6 +327,7 @@ export class RoomClient {
   stop(kind: ShareKind) {
     const share = this.mine.find((own) => own.kind === kind);
     if (share?.state !== "live") return;
+    tabLog.info("share.stopped", { kind });
     if (share.capture) this.media.stop(share.capture);
     this.update(kind, { state: "stopping" });
     // Sent again on the next socket if this one is lost.
@@ -339,6 +352,7 @@ export class RoomClient {
   chooseQuality(share: LiveShare, quality: QualityChoice) {
     if (!this.watches(share) || this.quality(share) === quality) return;
     share = { member: share.member, kind: share.kind };
+    tabLog.info("quality.chosen", { share, quality });
     this.choosing = [...this.choosing.filter((candidate) => !sameShare(candidate.share, share)), { share, quality }];
     this.send({ type: "watching", request: { type: "quality", share, quality } });
   }
@@ -375,6 +389,8 @@ export class RoomClient {
    * the timings a watch leaves in the browser's performance timeline (`timed`).
    */
   shown(share: LiveShare) {
+    const asked = this.askedAt.get(keyOf(share));
+    tabLog.info("watch.shown", { share, ...(asked === undefined ? {} : { ms: Math.round(performance.now() - asked) }) });
     this.timed(share, "first frame");
     this.askedAt.delete(keyOf(share));
   }
@@ -450,11 +466,15 @@ export class RoomClient {
     if (this.view?.usage.budget === "used up") return;
     // Asked for by its name alone, whatever else the room's list says of it.
     share = { member: share.member, kind: share.kind };
+    tabLog.info("watch.asked", { share });
     this.asking = [...this.asking, share];
     this.askedAt.set(keyOf(share), performance.now());
     let lost = false;
     try {
-      if (!(await this.connected())) return;
+      if (!(await this.connected())) {
+        tabLog.warn("watch.failed", { share, why: "no media connection" });
+        return;
+      }
       this.timed(share, "media connection");
       await this.negotiate(async () => {
         this.timed(share, "turn");
@@ -463,7 +483,11 @@ export class RoomClient {
           (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
         );
         this.timed(share, "pull");
-        if (pulled.type !== "pulled") return;
+        if (pulled.type !== "pulled") {
+          tabLog.warn("watch.refused", { share });
+          return;
+        }
+        tabLog.info("watch.pulled", { share, offer: pulled.offer, video: pulled.video, ...(pulled.audio ? { audio: pulled.audio } : {}) });
         const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
         this.pictures = [
           ...this.pictures.filter((picture) => !sameShare(picture.share, share)),
@@ -472,9 +496,11 @@ export class RoomClient {
         this.listen(share, pulled.video);
         await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
         this.timed(share, "answer");
+        tabLog.info("watch.confirmed", { share, answer, ms: Math.round(performance.now() - (this.askedAt.get(keyOf(share)) ?? 0)) });
       });
-    } catch {
+    } catch (error) {
       // The connection was lost on the way: the stage comes back with the room's state.
+      tabLog.warn("watch.failed", { share, error });
       lost = true;
     } finally {
       // Let go of a share the tab stopped wanting on the way, now that its negotiation is
@@ -513,6 +539,7 @@ export class RoomClient {
   private drop(share: LiveShare) {
     if (!this.wants(share)) return;
     share = { member: share.member, kind: share.kind };
+    tabLog.info("watch.left", { share });
     if (this.rewatch.some((candidate) => sameShare(candidate, share))) {
       this.rewatch = this.rewatch.filter((candidate) => !sameShare(candidate, share));
       if (this.watches(share)) this.leaving = [...this.leaving, share];
@@ -541,6 +568,7 @@ export class RoomClient {
       }
       // Its media faltered too long and the instance let go of it: the next share or watch makes a new one.
       if (message.change.type === "dropped") {
+        tabLog.warn("media.dropped", { made: this.made });
         if (this.made) this.usage.report({ final: true });
         this.resetMedia();
       }
@@ -595,6 +623,7 @@ export class RoomClient {
    * its shares before is carried over: for them those shares ended.
    */
   private rejoined(before: RoomView, media: MediaState) {
+    tabLog.info("media.rejoined", { connected: media.connected, made: this.made, sending: media.sending, rebuild: !media.connected && this.made });
     const view = this.view!;
     const you = view.people.you.id;
     const liveOfYours = (kind: ShareKind) =>
@@ -641,6 +670,7 @@ export class RoomClient {
    * or follows again the member it followed. Settles once each has been asked for.
    */
   private rebuild(before: RoomView["watching"]): Promise<unknown> {
+    tabLog.warn("media.rebuild", { stage: before.stage, mine: this.mine.map((own) => ({ kind: own.kind, state: own.state })) });
     const view = this.view!;
     const you = view.people.you.id;
     const liveOfYours = (kind: ShareKind) =>
@@ -687,6 +717,7 @@ export class RoomClient {
     this.iceServers = iceServers;
     const totals = await this.media.transport().catch(() => null);
     const how = renewal(totals?.relayed ?? false);
+    tabLog.info("media.renew", { how, relayed: totals?.relayed ?? null });
     if (how === "silently") {
       this.media.renew(iceServers);
       return;
@@ -706,6 +737,7 @@ export class RoomClient {
       this.usage.report({ final: true, restarting: true });
       await this.usage.sent();
       const { sdp: offer, mid } = await this.media.restart(iceServers);
+      tabLog.info("pc.restart", { offer, mid });
       const answer = await this.request(
         { type: "media", request: { type: "restart", offer, mid } },
         (change) => change.type === "restarted" || change.type === "restart-refused",
@@ -714,12 +746,17 @@ export class RoomClient {
         throw error;
       });
       if (answer.type !== "restarted") {
+        tabLog.warn("pc.restart-failed", { why: "refused" });
         await this.media.abandonRestart();
         return false;
       }
       await this.media.restarted(answer.answer);
+      tabLog.info("pc.restarted");
       return true;
-    }).catch(() => false);
+    }).catch((error: unknown) => {
+      tabLog.warn("pc.restart-failed", { error });
+      return false;
+    });
   }
 
   /**
@@ -730,6 +767,7 @@ export class RoomClient {
    */
   private async reconnectMedia() {
     if (!this.made || this.rebuilding || !this.view) return;
+    tabLog.warn("media.reconnect");
     this.rebuilding = true;
     const before = this.view.watching;
     // Its own shares end on the old connection, but keep their captures for the new one.
@@ -744,9 +782,10 @@ export class RoomClient {
       );
       this.carrying.clear();
       await this.rebuild(before);
-    } catch {
+    } catch (error) {
       // The socket was lost on the way: the room's state on the next one says whether
       // the instance let the connection go, and the tab rebuilds from that.
+      tabLog.warn("media.reconnect-failed", { error });
     } finally {
       this.carrying.clear();
       this.rebuilding = false;
@@ -789,8 +828,10 @@ export class RoomClient {
       ];
       this.listen(share, video);
       await this.request({ type: "media", request: { type: "answer", answer: pulled.answer } }, (change) => change.type === "answered");
-    }).catch(() => {
+      tabLog.info("watch.moved", { share, video });
+    }).catch((error: unknown) => {
       // The connection was lost on the way: the stage comes back with the room's state.
+      tabLog.warn("watch.failed", { share, error, during: "a hand-over" });
     });
   }
 
@@ -799,6 +840,7 @@ export class RoomClient {
    * instance has closed it here. The tab lets go of its capture, and the page says why.
    */
   private handedOverFrom(kind: ShareKind) {
+    tabLog.info("share.handed-over", { kind });
     const own = this.mine.find((candidate) => candidate.kind === kind && candidate.state !== "starting");
     if (own) this.tidy(own);
     if (!this.handedOver.includes(kind)) this.handedOver = [...this.handedOver, kind];
@@ -870,16 +912,19 @@ export class RoomClient {
         (change) => change.type === "connected" || change.type === "unavailable",
       );
       if (change.type !== "connected") {
+        tabLog.warn("media.unavailable");
         this.connection = null;
         return false;
       }
+      tabLog.info("media.connected");
       this.iceServers = change.iceServers;
       this.media.connect(change.iceServers, (health) => this.healthChanged(health));
       this.made = true;
       this.usage.start();
       return true;
-    })().catch(() => {
+    })().catch((error: unknown) => {
       // The socket was lost before the answer came: the next share or watch asks again.
+      tabLog.warn("media.unavailable", { error });
       this.connection = null;
       return false;
     });
@@ -892,6 +937,7 @@ export class RoomClient {
    * given up on is restarted (`recover`).
    */
   private healthChanged(health: MediaHealth) {
+    (health === "fine" ? tabLog.info : tabLog.warn).call(tabLog, "media.health", { health });
     const faltering = health !== "fine";
     if (faltering !== this.faltering) {
       this.faltering = faltering;

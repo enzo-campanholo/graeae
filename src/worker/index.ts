@@ -3,6 +3,8 @@
 // each visitor may see.
 
 import { INSTANCE_NAME } from "../instance/instance.ts";
+import { log } from "../instance/log.ts";
+import { routeOf } from "../shared/log.ts";
 
 // Only handlers and Durable Object classes may be exported from here; workerd refuses
 // to start a Worker that exports anything else.
@@ -25,6 +27,12 @@ export default {
       const file = await env.ASSETS.fetch(request);
       if (file.ok || file.status === 304) return file;
     }
-    return env.INSTANCE.getByName(INSTANCE_NAME).fetch(request);
+    try {
+      return await env.INSTANCE.getByName(INSTANCE_NAME).fetch(request);
+    } catch (error) {
+      // The instance could not be reached, or failed: its own line may never have been written.
+      log.error("error", error, { during: "reaching the instance", method: request.method, route: routeOf(pathname).route });
+      throw error;
+    }
   },
 } satisfies ExportedHandler<Env>;

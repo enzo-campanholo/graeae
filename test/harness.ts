@@ -4,7 +4,9 @@
 // the test advances that clock past them.
 //
 // The media server is the in-memory fake (`src/instance/media/fake.ts`), which a test reads
-// and steers through `instance.media`.
+// and steers through `instance.media`. The instance's log lines, which a deploy writes to
+// Workers Logs, are kept in memory instead, so the test output stays readable, and a test
+// reads them through `instance.logs`.
 
 import {
   reset,
@@ -17,6 +19,8 @@ import { Instance, INSTANCE_NAME } from "../src/instance/instance.ts";
 import type { Migration } from "../src/instance/migrations.ts";
 import type { RelayLives } from "../src/instance/relay.ts";
 import { fakeMediaControl, type FakeMediaControl } from "../src/instance/media/fake.ts";
+import { logControl } from "../src/instance/log.ts";
+import type { LogLine } from "../src/shared/log.ts";
 
 const ORIGIN = "https://graeae.test";
 
@@ -81,6 +85,11 @@ export interface TestInstance extends Client {
    */
   media: FakeMediaControl;
   /**
+   * Every line the instance has written to its logs since it started, in order, its own
+   * and its tabs'. A line written at a level above "info" carries its `level`.
+   */
+  logs(): readonly LogLine[];
+  /**
    * Stops the instance and starts it again on the same storage, as after a deploy or a
    * Cloudflare restart, at any point in a test. Every socket drops without the instance
    * hearing it close, and a call to the media server still under way is never answered;
@@ -101,6 +110,7 @@ export interface TestClock {
 export async function startInstance(options: StartOptions = {}): Promise<TestInstance> {
   await reset();
   fakeMediaControl.reset();
+  const lines = logControl.capture();
 
   // A new stub each time: one that has seen the instance restart stays broken.
   const stub = () => env.INSTANCE.getByName(INSTANCE_NAME);
@@ -170,6 +180,7 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
     },
     clock,
     media: fakeMediaControl,
+    logs: () => [...lines],
     async restart(restartOptions = {}) {
       if (restartOptions.migrations) Instance.migrations = restartOptions.migrations;
       // Aborting drops the sockets too, which evicting alone would keep, as hibernation does.

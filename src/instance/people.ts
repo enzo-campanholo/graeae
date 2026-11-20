@@ -2,6 +2,7 @@
 // their devices, the rooms they have access to, and the invites that let them in.
 
 import { describeBrowser } from "./browser.ts";
+import { log } from "./log.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -94,6 +95,7 @@ export class People {
       .toArray()[0];
     if (!row) return null;
     if (Date.now() - row.last_used_at >= DEVICE_LIFE_MS) {
+      log.info("device.expired", { device: row.device_id, member: row.member_id, lastUsed: row.last_used_at });
       this.sql.exec("DELETE FROM device WHERE id = ?", row.device_id);
       return null;
     }
@@ -512,10 +514,12 @@ export class People {
           forgotten.push({ device: id, member });
         }
       }
+      const device = crypto.randomUUID();
+      log.info("device.remembered", { device, member: member.id, browser, os });
       this.sql.exec(
         `INSERT INTO device (id, member_id, token_hash, browser, os, created_at, last_used_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        crypto.randomUUID(),
+        device,
         member.id,
         tokenHash,
         browser,

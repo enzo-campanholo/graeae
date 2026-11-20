@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 // Worker answers with the app's page.
 export default defineConfig({
   // Seam 1 runs on the fake media server, which the tests read and steer.
-  define: { __GRAEAE_FAKE_MEDIA__: "true" },
+  define: { __GRAEAE_FAKE_MEDIA__: "true", __GRAEAE_BUILD__: JSON.stringify("test") },
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })],
   // Two at a time, to leave the machine room for other work. Seam 2 (test/browser) runs
   // under Playwright instead.

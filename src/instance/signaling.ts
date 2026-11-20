@@ -36,6 +36,8 @@ import {
 } from "../shared/socket/heartbeat.ts";
 import type { ClientMessage, MediaState, RoomView, ServerMessage } from "../shared/socket/index.ts";
 import type { ListMessage, ListState } from "../shared/socket/list.ts";
+import { messageSummary } from "../shared/log.ts";
+import { log, type TabTags } from "./log.ts";
 
 /** What each socket remembers about its tab, kept with it through hibernation. */
 export interface Tab {
@@ -158,13 +160,19 @@ export class Signaling {
     address: string,
     view: (tab: string) => { state: RoomView; media: MediaState },
     previous?: string,
+    name?: string,
   ): Response {
     const arrived = !this.present(address).has(member);
-    if (arrived) this.toRoom(address, { type: "presence", change: { type: "arrived", member } });
+    if (arrived) {
+      log.info("presence.arrived", { member, device, room: address });
+      this.toRoom(address, { type: "presence", change: { type: "arrived", member } });
+    }
     const resumed = this.resume(device, address, previous);
 
     const { 0: browserEnd, 1: ours } = new WebSocketPair();
     const tab: Tab = { id: resumed?.id ?? crypto.randomUUID(), member, device, room: address, heardAt: Date.now() };
+    // The one line that says whose id this is.
+    log.info("ws.open", { ...tagsOf(tab), name, resumed: resumed !== undefined, ...(previous ? { asked: previous } : {}) });
     this.ctx.acceptWebSocket(ours, [roomTag(address), memberTag(member), deviceTag(device), tabTag(tab.id)]);
     ours.serializeAttachment(tab);
     this.saveOpen([...this.openTabs().filter((other) => other.id !== tab.id), tab]);
@@ -179,9 +187,10 @@ export class Signaling {
    * Opens a socket for a tab of `member` on `device` showing the list of rooms, and sends
    * it the whole list. The member becomes present nowhere.
    */
-  openList(member: string, device: string, list: ListState): Response {
+  openList(member: string, device: string, list: ListState, name?: string): Response {
     const { 0: browserEnd, 1: ours } = new WebSocketPair();
     const tab: ListTab = { id: crypto.randomUUID(), member, device, list: true, heardAt: Date.now() };
+    log.info("ws.open", { ...tagsOf(tab), name });
     this.ctx.acceptWebSocket(ours, [LIST_TAG, memberTag(member), deviceTag(device)]);
     ours.serializeAttachment(tab);
     send(ours, { type: "state", state: list });
@@ -206,11 +215,15 @@ export class Signaling {
       // Already closed.
     }
     const tab = attachment(socket);
+    const isLost = code === undefined || code === 1006 || code === LOST_CLOSE_CODE;
+    const how = !tab ? "unknown" : tab.cutOff ? "closed by the instance" : !isRoomTab(tab) ? "list" : isLost ? "lost" : "left";
+    log.info("ws.close", { ...(tab ? tagsOf(tab) : {}), code: code ?? null, reason: reason ?? null, how });
     if (!tab || !isRoomTab(tab) || tab.cutOff) return null;
     this.forgetOpen([tab.id]);
     // A restart may have counted it lost already, before its close came through.
     const lost = this.lost().filter((other) => other.id !== tab.id);
-    if (code === undefined || code === 1006 || code === LOST_CLOSE_CODE) {
+    if (isLost) {
+      log.info("grace.start", { ...tagsOf(tab), heardAt: tab.heardAt });
       this.saveLost([...lost, tab]);
       this.schedule();
       return null;
@@ -250,12 +263,16 @@ export class Signaling {
     const lost = this.lost();
     const ended = lost.filter((tab) => tagged(tab) && covers(tab));
     if (ended.length > 0) this.saveLost(lost.filter((tab) => !ended.includes(tab)));
-    for (const tab of ended) this.left(tab);
+    for (const tab of ended) {
+      log.info("ws.cut", { ...tagsOf(tab), lost: true });
+      this.left(tab);
+    }
 
     const sockets: WebSocket[] = [];
     for (const socket of this.ctx.getWebSockets(tag)) {
       const tab = tabOf(socket);
       if (!tab || !covers(tab)) continue;
+      log.info("ws.cut", tagsOf(tab));
       socket.serializeAttachment({ ...tab, cutOff: true });
       sockets.push(socket);
       if (isRoomTab(tab)) {
@@ -296,7 +313,16 @@ export class Signaling {
       return null;
     }
     if (typeof message !== "object" || message === null) return null;
-    if ((message as { type?: unknown }).type !== HEARTBEAT.beat.type) {
+    const { type } = message as { type?: unknown };
+    // A tab's record of what it did: written, and nothing else.
+    if (type === "log") {
+      if (!log.tabBatch(tagsOf(tab), (message as { request?: unknown }).request, data.length)) {
+        log.warn("ws.in", { ...tagsOf(tab), message: { type, malformed: true } });
+      }
+      return null;
+    }
+    if (type !== HEARTBEAT.beat.type) {
+      log.info("ws.in", { ...tagsOf(tab), message: messageSummary(message, data.length) });
       return isRoomTab(tab) ? { tab, message: message as ClientMessage } : null;
     }
 
@@ -325,12 +351,16 @@ export class Signaling {
     const lost = this.lost();
     const ended = lost.filter(expired);
     if (ended.length > 0) this.saveLost(lost.filter((tab) => !expired(tab)));
-    for (const tab of ended) this.left(tab);
+    for (const tab of ended) {
+      log.info("grace.expired", { ...tagsOf(tab), heardAt: tab.heardAt });
+      this.left(tab);
+    }
 
     const silent: Tab[] = [];
     for (const socket of this.ctx.getWebSockets()) {
       const tab = tabOf(socket);
       if (!tab || !expired(tab)) continue;
+      log.info("ws.silent", { ...tagsOf(tab), heardAt: tab.heardAt });
       socket.serializeAttachment({ ...tab, cutOff: true });
       try {
         socket.close(SILENT_CLOSE_CODE, "");
@@ -433,6 +463,7 @@ export class Signaling {
       return;
     }
     this.unmark(tab.room, tab.member);
+    log.info("presence.left", { member: tab.member, device: tab.device, tab: tab.id, room: tab.room });
     this.toRoom(tab.room, { type: "presence", change: { type: "left", member: tab.member } }, tab.id);
     this.presenceChanged(tab.room);
   }
@@ -452,6 +483,7 @@ export class Signaling {
     for (const socket of this.ctx.getWebSockets(tabTag(previous))) {
       const tab = tabOf(socket);
       if (!ours(tab)) continue;
+      log.info("ws.taken-back", { ...tagsOf(tab), heardAt: tab.heardAt });
       socket.serializeAttachment({ ...tab, cutOff: true });
       try {
         socket.close(TAKEN_BACK_CLOSE_CODE, "");
@@ -462,7 +494,10 @@ export class Signaling {
     }
     const lost = this.lost();
     const resumed = lost.find(ours);
-    if (resumed) this.saveLost(lost.filter((tab) => tab !== resumed));
+    if (resumed) {
+      log.info("grace.end", { ...tagsOf(resumed), heardAt: resumed.heardAt });
+      this.saveLost(lost.filter((tab) => tab !== resumed));
+    }
     return resumed;
   }
 
@@ -485,9 +520,11 @@ export class Signaling {
     if (marked.length > 0 || back.length > 0 || gone.length > 0) {
       this.saveMarks(address, silent);
       for (const member of marked) {
+        log.info("presence.reconnecting", { member, room: address });
         this.toRoom(address, { type: "presence", change: { type: "reconnecting", member } }, exceptTab);
       }
       for (const member of back) {
+        log.info("presence.reconnected", { member, room: address });
         this.toRoom(address, { type: "presence", change: { type: "reconnected", member } }, exceptTab);
       }
     }
@@ -500,8 +537,14 @@ export class Signaling {
     const tabsGone = tabsBefore.filter((id) => !tabs.some((tab) => tab.id === id));
     if (tabsMarked.length === 0 && tabsBack.length === 0 && tabsGone.length === 0) return;
     this.saveMarks(address, silentTabs, SILENT_KEY);
-    for (const tab of tabsMarked) this.tabSilence(address, tab, true, exceptTab);
-    for (const tab of tabsBack) this.tabSilence(address, tab, false, exceptTab);
+    for (const tab of tabsMarked) {
+      log.info("tab.silent", { tab, room: address });
+      this.tabSilence(address, tab, true, exceptTab);
+    }
+    for (const tab of tabsBack) {
+      log.info("tab.heard", { tab, room: address });
+      this.tabSilence(address, tab, false, exceptTab);
+    }
   }
 
   /** Forgets that the room at `address` was told `member` is "reconnecting", without telling it. */
@@ -615,9 +658,21 @@ function attachment(socket: WebSocket): Tab | ListTab | null {
   return (socket.deserializeAttachment() as Tab | ListTab | null) ?? null;
 }
 
+/** The ids a line about `tab` is tagged with. */
+export function tagsOf(tab: Tab | ListTab): TabTags & { list?: true; [field: string]: unknown } {
+  return isRoomTab(tab)
+    ? { member: tab.member, device: tab.device, tab: tab.id, room: tab.room }
+    : { member: tab.member, device: tab.device, tab: tab.id, list: true };
+}
+
 function send(socket: WebSocket, message: ServerMessage | ListMessage) {
+  const text = JSON.stringify(message);
+  if (message.type !== HEARTBEAT.answer.type) {
+    const tab = attachment(socket);
+    log.info("ws.out", { ...(tab ? tagsOf(tab) : {}), message: messageSummary(message, text.length) });
+  }
   try {
-    socket.send(JSON.stringify(message));
+    socket.send(text);
   } catch {
     // Closing as we speak: its close handler deals with it.
   }

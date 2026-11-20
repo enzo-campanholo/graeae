@@ -124,6 +124,8 @@ rm .secrets
 
 To run a second instance on the same Cloudflare account, give it its own name each time you deploy it: `pnpm run deploy --name <other name>`.
 
+The instance keeps 3 days of logs, for debugging, in your Cloudflare account's Workers Logs: what each page and the instance did, with members' display names but never a secret, an IP address or anything shared.
+
 ### 5. Open the setup address
 
 Open `https://graeae.<your subdomain>.workers.dev/setup#<your setup secret>` in the browser you will use. That browser becomes the owner's first device, the first room is made, and you land in it. The part after `#` never leaves your browser in an address.

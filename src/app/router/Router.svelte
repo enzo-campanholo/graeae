@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Component } from "svelte";
   import Swap from "$lib/components/Swap.svelte";
+  import { tabLog } from "$lib/log.ts";
   import { location, match, type Params, type Route } from "./router.svelte.ts";
 
   let { routes, fallback }: { routes: readonly Route[]; fallback: Component } = $props();
@@ -13,7 +14,13 @@
       Page: (found?.route.component ?? fallback) as Component<{ params: Params }>,
       params,
       view: found?.route.view?.(params) ?? location.pathname,
+      page: found?.route.path ?? "nothing here",
     };
+  });
+
+  // Each page the router chooses, for the page's log.
+  $effect(() => {
+    tabLog.info("page.route", { ...tabLog.where(location.pathname), shows: current.page });
   });
 </script>
 

@@ -76,7 +76,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   await first.click();
   const confirm = admin.getByRole("alertdialog", { name: "Remove Jo from First room?" });
   await expect(confirm).toContainText("Jo is in First room now.");
-  await expect(confirm).toContainText("within about 2 seconds");
+  await expect(confirm).toContainText("Within about 2 seconds");
   await expect(confirm).toContainText("Their webcam share there ends for everyone watching.");
   await expect(confirm).toContainText("They keep Late nights.");
   await expect(first).toBeChecked();
@@ -101,7 +101,7 @@ test("the owner grants a room, then removes a present member from a room and fro
   await panel.getByRole("button", { name: "Remove from graeae" }).click();
   const final = admin.getByRole("alertdialog", { name: "Remove Jo from graeae?" });
   // The confirm asks the instance afresh, so it knows where Jo is now.
-  await expect(final).toContainText("Jo is present in Late nights.");
+  await expect(final).toContainText("Jo is in Late nights now.");
   await expect(final).toContainText("They aren't sharing anything.");
   await expect(final).toContainText("Their device is forgotten. Coming back takes a new invite.");
   await final.getByRole("button", { name: "Remove" }).click();
@@ -138,7 +138,7 @@ test("the owner is warned beneath the list when a cut-off could not be confirmed
 
   await admin.goto("/owner/people");
 
-  const warning = admin.getByRole("region", { name: "Members" }).getByRole("status").filter({ hasText: "confirm" });
+  const warning = admin.getByRole("region", { name: "Members" }).getByRole("status").filter({ hasText: "Still trying" });
   await expect(warning).toHaveText("Still trying to stop what Jo was sharing and watching.");
   if (process.env.GRAEAE_SCREENSHOTS) {
     for (const colorScheme of ["dark", "light"] as const) {

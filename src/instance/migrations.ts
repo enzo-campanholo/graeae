@@ -12,8 +12,8 @@ export const migrations: readonly Migration[] = fromFiles(
   import.meta.glob<string>("./migrations/*.sql", { query: "?raw", import: "default", eager: true }),
 );
 
-/** Applies every migration the instance has not yet had, each in its own transaction. */
-export function applyMigrations(storage: DurableObjectStorage, list: readonly Migration[]) {
+/** Applies every migration the instance has not yet had, each in its own transaction. Returns the names of those it applied. */
+export function applyMigrations(storage: DurableObjectStorage, list: readonly Migration[]): string[] {
   checkNumbering(list);
   const { sql } = storage;
   sql.exec(`CREATE TABLE IF NOT EXISTS _migrations (
@@ -22,8 +22,10 @@ export function applyMigrations(storage: DurableObjectStorage, list: readonly Mi
     applied_at INTEGER NOT NULL
   )`);
   const latest = sql.exec<{ latest: number | null }>("SELECT MAX(number) AS latest FROM _migrations").one().latest ?? 0;
+  const applied: string[] = [];
   for (const migration of list) {
     if (migration.number <= latest) continue;
+    applied.push(migration.name);
     storage.transactionSync(() => {
       sql.exec(migration.sql);
       sql.exec(
@@ -34,6 +36,7 @@ export function applyMigrations(storage: DurableObjectStorage, list: readonly Mi
       );
     });
   }
+  return applied;
 }
 
 /** Throws unless the migrations are numbered 1, 2, 3… in order, with none shared or skipped. */

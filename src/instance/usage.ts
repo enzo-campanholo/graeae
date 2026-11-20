@@ -36,6 +36,7 @@
 
 import { GIGABYTE, type UsageAnswer } from "../shared/api.ts";
 import type { BudgetLevel } from "../shared/socket/usage.ts";
+import { log } from "./log.ts";
 
 /**
  * The share of every reported byte added on top, in percent. A constant, not a setting;
@@ -240,7 +241,9 @@ export class Usage {
       .toArray();
     for (const gap of gaps) {
       const seconds = Math.max(0, (gap.ended_at ?? gap.since) - gap.since) / 1000;
-      this.charge(((gap.max_bitrate / 8) * seconds) * relayFactor(gap.relayed === 1));
+      const bytes = (gap.max_bitrate / 8) * seconds * relayFactor(gap.relayed === 1);
+      log.info("usage.gap-charged", { watch: gap.watch_id, seconds, bytes: Math.round(bytes), relayed: gap.relayed === 1 });
+      this.charge(bytes);
       this.sql.exec("DELETE FROM usage_watch WHERE watch_id = ?", gap.watch_id);
     }
   }

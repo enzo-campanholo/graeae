@@ -12,6 +12,7 @@
 
 import type { IceServer } from "../shared/socket/media.ts";
 import type { MediaLayer } from "./media/index.ts";
+import { log } from "./log.ts";
 
 /** How long a relay credential lasts: 12 hours. */
 export const RELAY_CREDENTIAL_TTL_SECONDS = 12 * 60 * 60;
@@ -60,6 +61,7 @@ export class Relay {
 
   /** `tab` was handed a credential just now: it is due a fresh one in 11 hours. */
   minted(tab: string) {
+    log.info("relay.minted", { tab });
     this.save({ ...this.renewals(), [tab]: Date.now() + this.lives.renewalAfterMs });
   }
 
@@ -85,12 +87,14 @@ export class Relay {
       try {
         iceServers = await this.mint();
       } catch {
+        log.warn("relay.failed", { tab, next: Date.now() + RENEWAL_RETRY_MS });
         this.save({ ...this.renewals(), [tab]: Date.now() + RENEWAL_RETRY_MS });
         continue;
       }
       // The tab may have let go of its connection while the relay answered.
       if (!this.tabs.connected(tab)) continue;
       this.minted(tab);
+      log.info("relay.renewed", { tab });
       renewed(tab, iceServers);
     }
   }

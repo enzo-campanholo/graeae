@@ -18,6 +18,8 @@
 //   understand is ignored.
 // - The tab sends `{ type: "heartbeat" }` every 5 seconds and the instance answers each
 //   with `{ type: "heard" }` (`heartbeat.ts`).
+// - The log area carries the tab's record of what it did, for the instance's logs. It
+//   changes nothing and is never answered (`log.ts`).
 // - The media area is the exception: it is this tab's own conversation about its media
 //   connection. It holds no part of the room and changes nothing in `RoomView`.
 // - A clean close by the tab (closed, reloaded, navigated away) ends its presence at once.
@@ -31,6 +33,7 @@
 //   instance closes its socket. Its page becomes "nothing here", saying nothing more.
 
 import type { Heard, Heartbeat } from "./heartbeat.ts";
+import type { LogRequest } from "./log.ts";
 import type { MediaChange, MediaRequest, MediaState } from "./media.ts";
 import { applyPeople, type PeopleChange, type PeopleState } from "./people.ts";
 import { applyPresence, type PresenceChange, type PresenceRequest, type PresenceState } from "./presence.ts";
@@ -39,6 +42,7 @@ import { applyShares, type SharesChange, type SharesRequest, type SharesState } 
 import { applyUsage, type UsageChange, type UsageRequest, type UsageState } from "./usage.ts";
 import { applyWatching, type WatchingChange, type WatchingRequest, type WatchingState } from "./watching.ts";
 
+export type * from "./log.ts";
 export type * from "./media.ts";
 export type * from "./people.ts";
 export type * from "./presence.ts";
@@ -88,7 +92,9 @@ export type ClientMessage =
   | { type: "shares"; request: SharesRequest }
   | { type: "watching"; request: WatchingRequest }
   | { type: "usage"; request: UsageRequest }
-  | { type: "media"; request: MediaRequest };
+  | { type: "media"; request: MediaRequest }
+  /** The tab's own record of what it did, for the instance's logs (`log.ts`). Never answered. */
+  | { type: "log"; request: LogRequest };
 
 /** The room after `message`. A full state replaces whatever the tab held. */
 export function applyMessage(view: RoomView | null, message: ServerMessage): RoomView | null {

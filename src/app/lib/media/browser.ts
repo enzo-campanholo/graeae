@@ -17,7 +17,9 @@ import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
+import { pairSummary, STATS_EVERY_MS, streamSummaries, type Counted } from "./stats.ts";
 import { every } from "../ticker.ts";
+import { tabLog } from "../log.ts";
 
 /** How often a watched share's statistics are read for the quality it arrives at. */
 const RECEIVED_EVERY_MS = 2000;
@@ -46,6 +48,8 @@ export class BrowserMediaClient implements MediaClient {
   private readonly following = new Map<Capture, () => void>();
   /** The notes on each live share, for its sharer. */
   private readonly board = new NotesBoard<Capture>();
+  /** Stops the media connection's statistics going in the page's log, while they do. */
+  private stopStats: (() => void) | null = null;
 
   plan(kind: Capture["kind"]): EncodingPlan {
     return encodingPlan(this.browser, kind);
@@ -57,6 +61,7 @@ export class BrowserMediaClient implements MediaClient {
       video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: frameRate, max: frameRate } },
       audio: false,
     });
+    watchTracks("webcam", stream);
     return { kind: "webcam", stream, audio: false, ended: endedOf(stream) };
   }
 
@@ -67,9 +72,13 @@ export class BrowserMediaClient implements MediaClient {
       stream = await navigator.mediaDevices.getDisplayMedia(screenCapture(this.browser) as DisplayMediaStreamOptions);
     } catch (error) {
       // The member closed the picker without picking, or said no: nothing to share.
-      if (error instanceof DOMException && error.name === "NotAllowedError") return null;
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        tabLog.info("capture.refused", { kind: "screen", error });
+        return null;
+      }
       throw error;
     }
+    watchTracks("screen", stream);
     // A game moves: the encoder treats the picture as motion rather than a still document,
     // and gives up resolution before frame rate.
     for (const track of stream.getVideoTracks()) track.contentHint = "motion";
@@ -87,9 +96,41 @@ export class BrowserMediaClient implements MediaClient {
     let was: MediaHealth = "fine";
     connection.addEventListener("connectionstatechange", () => {
       if (connection !== this.connection) return;
-      const now = HEALTH[connection.connectionState] ?? was;
+      const state = connection.connectionState;
+      (state === "failed" || state === "disconnected" ? tabLog.warn : tabLog.info).call(tabLog, "pc.connection", { state });
+      const now = HEALTH[state] ?? was;
       if (now !== was) health(now);
       was = now;
+    });
+    // Every state change goes in the page's log, and the pair in use once there is one.
+    let pair = "";
+    const logPair = async () => {
+      const stats = await connection.getStats().catch(() => null);
+      const now = stats && pairSummary(stats.values() as Iterable<StatsEntry>);
+      if (now && JSON.stringify(now) !== pair) {
+        pair = JSON.stringify(now);
+        tabLog.info("pc.pair", { ...now });
+      }
+    };
+    connection.addEventListener("iceconnectionstatechange", () => {
+      const state = connection.iceConnectionState;
+      (state === "failed" || state === "disconnected" ? tabLog.warn : tabLog.info).call(tabLog, "pc.ice", { state });
+      if (state === "connected" || state === "completed") void logPair();
+    });
+    connection.addEventListener("icegatheringstatechange", () => tabLog.info("pc.gathering", { state: connection.iceGatheringState }));
+    connection.addEventListener("signalingstatechange", () => tabLog.info("pc.signaling", { state: connection.signalingState }));
+    // A summary of every stream every 15 seconds, while there is any.
+    const counted: Counted = new Map();
+    this.stopStats?.();
+    this.stopStats = every(STATS_EVERY_MS, () => {
+      if (connection !== this.connection) return;
+      void connection
+        .getStats()
+        .then((stats) => {
+          for (const summary of streamSummaries(stats.values() as Iterable<StatsEntry>, counted)) tabLog.info("stats", { ...summary });
+          return logPair();
+        })
+        .catch(() => undefined);
     });
   }
 
@@ -289,6 +330,8 @@ export class BrowserMediaClient implements MediaClient {
   }
 
   reset() {
+    this.stopStats?.();
+    this.stopStats = null;
     for (const capture of [...this.following.keys()]) this.unfollow(capture);
     this.connection?.close();
     this.connection = null;
@@ -330,6 +373,20 @@ function preferCodecs(transceiver: RTCRtpTransceiver, plan: EncodingPlan) {
     transceiver.setCodecPreferences(codecs);
   } catch {
     // Left to the browser's own order.
+  }
+}
+
+/**
+ * Puts what the browser captured in the page's log, and each track it later ends, mutes
+ * or unmutes by itself. Never a track's label: a window's title may say anything.
+ */
+function watchTracks(kind: Capture["kind"], stream: MediaStream) {
+  for (const track of stream.getTracks()) {
+    const { width, height, frameRate, displaySurface } = track.getSettings() as MediaTrackSettings & { displaySurface?: string };
+    tabLog.info("capture.track", { kind, track: track.kind, width, height, frameRate, displaySurface });
+    track.addEventListener("ended", () => tabLog.info("capture.track-ended", { kind, track: track.kind }));
+    track.addEventListener("mute", () => tabLog.warn("capture.muted", { kind, track: track.kind }));
+    track.addEventListener("unmute", () => tabLog.info("capture.unmuted", { kind, track: track.kind }));
   }
 }
 

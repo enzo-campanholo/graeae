@@ -14,3 +14,6 @@ dist/
 # Seam 2 output.
 test-results/
 playwright-report/
+
+# Logs pulled from Workers Logs: they hold friends' display names (CLAUDE.md, "Logs").
+.logs/

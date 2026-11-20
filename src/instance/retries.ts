@@ -4,6 +4,7 @@
 // (there are few, and briefly), so they outlast a restart.
 
 import type { Track } from "./media/index.ts";
+import { log } from "./log.ts";
 
 /** Where retries are kept. */
 const RETRIES_KEY = "shares:retries";
@@ -62,12 +63,16 @@ export class Retries {
       ...((before?.subject ?? subject) ? { subject: before?.subject ?? subject } : {}),
     };
     this.save([...retries.filter((other) => other.id !== what.id), retry]);
+    log.warn("retry.scheduled", { kind: retry.kind, id: retry.id, tries, next: retry.next, ...(retry.subject ? { subject: retry.subject.member } : {}) });
   }
 
   /** A close succeeded, or a sweep showed its track gone: it is tried no more. */
   confirmed(id: string) {
     const retries = this.all();
-    if (retries.some((retry) => retry.id === id)) this.save(retries.filter((retry) => retry.id !== id));
+    const retry = retries.find((candidate) => candidate.id === id);
+    if (!retry) return;
+    log.info("retry.confirmed", { kind: retry.kind, id, tries: retry.tries });
+    this.save(retries.filter((other) => other.id !== id));
   }
 
   /** The retries whose time has come. */

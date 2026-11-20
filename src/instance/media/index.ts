@@ -6,9 +6,11 @@
 import { CloudflareMediaServer } from "./cloudflare.ts";
 import { fakeMediaServer } from "./fake.ts";
 import type { MediaLayer } from "./layer.ts";
+import { logged } from "./logged.ts";
 
 export type { MediaConnectionId, MediaLayer, Pulled, Track } from "./layer.ts";
 
+/** The media layer, with every call written to the logs (`logged.ts`). */
 export function mediaLayer(env: Env): MediaLayer {
-  return __GRAEAE_FAKE_MEDIA__ ? fakeMediaServer : new CloudflareMediaServer(env);
+  return logged(__GRAEAE_FAKE_MEDIA__ ? fakeMediaServer : new CloudflareMediaServer(env));
 }

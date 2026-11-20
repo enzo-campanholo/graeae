@@ -3,6 +3,8 @@
 // recover, and end once that time is up unless it recovers first. Kept in the instance's
 // key-value storage under one key, like retries: few, and briefly.
 
+import { log } from "./log.ts";
+
 /** Where the faltering tabs are kept. */
 const FALTERING_KEY = "shares:faltering";
 
@@ -20,6 +22,7 @@ export class Falterings {
   falters(tabId: string) {
     const faltering = this.all();
     if (faltering[tabId] !== undefined) return;
+    log.warn("falter.start", { tab: tabId });
     this.save({ ...faltering, [tabId]: Date.now() });
     this.schedule();
   }
@@ -28,6 +31,7 @@ export class Falterings {
   recovered(tabId: string) {
     const faltering = this.all();
     if (faltering[tabId] === undefined) return;
+    log.info("falter.end", { tab: tabId, after: Date.now() - faltering[tabId] });
     delete faltering[tabId];
     this.save(faltering);
     this.schedule();

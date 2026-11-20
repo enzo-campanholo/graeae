@@ -33,9 +33,10 @@ import type { ListedShare, LiveShare, ShareKind } from "../shared/socket/shares.
 import { sameShare, type ChosenQuality, type QualityChoice } from "../shared/socket/watching.ts";
 import { Falterings } from "./faltering.ts";
 import { HandOvers } from "./hand-overs.ts";
+import { log } from "./log.ts";
 import type { MediaLayer, Pulled, Track } from "./media/index.ts";
 import { Retries, type Subject } from "./retries.ts";
-import type { Tab } from "./signaling.ts";
+import { tagsOf, type Tab } from "./signaling.ts";
 
 /** A share as the instance recorded it. */
 interface ShareRecord {
@@ -374,15 +375,19 @@ export class Shares {
     stillOpen: () => boolean,
     { handOver = false } = {},
   ): Promise<Started> {
+    const refused = (why: string): Started => {
+      log.warn("share.refused", { ...tagsOf(tab), kind, why });
+      return { live: false };
+    };
     const mediaId = this.connectionRow(tab.id)?.media_id;
-    if (typeof mediaId !== "string") return { live: false };
-    if (mids.audio !== undefined && (kind === "webcam" || mids.audio === mids.video)) return { live: false };
+    if (typeof mediaId !== "string") return refused("no media connection");
+    if (mids.audio !== undefined && (kind === "webcam" || mids.audio === mids.video)) return refused("audio on a webcam, or on the video's mid");
     // A replaced share whose close is still being tried no longer counts.
     const existing = this.current("WHERE member_id = ? AND kind = ?", member, kind);
     const replaced = existing[0];
     if (replaced) {
       const replaceable = handOver && existing.length === 1 && replaced.live && replaced.tab !== tab.id;
-      if (!replaceable || this.ending.has(replaced.id)) return { live: false };
+      if (!replaceable || this.ending.has(replaced.id)) return refused(handOver ? "not replaceable now" : "already sharing one");
     }
 
     const share: ShareRecord = {
@@ -417,7 +422,10 @@ export class Shares {
       Date.now(),
     );
     // Marked as replacing the old one before the media server is called.
-    if (share.replaces) this.handOvers.mark(share.id, share.replaces);
+    if (share.replaces) {
+      log.info("handover.started", { ...tagsOf(tab), kind, share: share.id, replaces: share.replaces });
+      this.handOvers.mark(share.id, share.replaces);
+    }
 
     this.inFlight.add(share.id);
     try {
@@ -427,16 +435,17 @@ export class Shares {
       } catch {
         // The track may exist even so: close it before forgetting it.
         await this.closeTracks(share);
-        return { live: false };
+        return refused("the media server failed");
       }
       if (!stillOpen()) {
         // The tab left while the media server was answering, and its leaving could not
         // close a track that did not exist yet.
         await this.closeTracks(share);
         this.forgetConnectionIfEmpty(tab.id);
-        return { live: false };
+        return refused("the tab left meanwhile");
       }
       this.sql.exec("UPDATE share SET live_at = ? WHERE id = ?", Date.now(), share.id);
+      log.info("share.live", { ...tagsOf(tab), kind, share: share.id, tracks: tracksOf(share), qualities: share.qualities });
       return { live: true, share: toListedShare(share), answer, id: share.id, handOver: share.replaces !== null };
     } finally {
       this.inFlight.delete(share.id);
@@ -451,8 +460,12 @@ export class Shares {
    * server has answered.
    */
   async watch(tab: Tab, share: LiveShare, stillOpen: () => boolean): Promise<Watched | null> {
+    const refused = (why: string): Watched => {
+      log.warn("watch.refused", { ...tagsOf(tab), share, why });
+      return { watching: false };
+    };
     const watcherMediaId = this.connectionRow(tab.id)?.media_id;
-    if (typeof watcherMediaId !== "string") return { watching: false };
+    if (typeof watcherMediaId !== "string") return refused("no media connection");
     // During a hand-over within the room, the share by this name is the new one.
     const watched = this.current(
       "WHERE member_id = ? AND kind = ? AND room_address = ? AND live_at IS NOT NULL",
@@ -460,28 +473,31 @@ export class Shares {
       share.kind,
       tab.room,
     )[0];
-    if (!watched || this.ending.has(watched.id) || watched.tab === tab.id) return { watching: false };
+    if (!watched) return refused("no such share live in the room");
+    if (this.ending.has(watched.id)) return refused("the share is ending");
+    if (watched.tab === tab.id) return refused("the tab sends it");
     const sharerMediaId = this.connectionRow(watched.tab)?.media_id;
-    if (typeof sharerMediaId !== "string") return { watching: false };
+    if (typeof sharerMediaId !== "string") return refused("the sharer has no media connection");
     if (this.watches("WHERE tab_id = ? AND share_id = ?", tab.id, watched.id).length > 0) return null;
 
     const record = newWatch({ tab: tab.id, member: tab.member, device: tab.device, room: tab.room }, watched, "auto");
     this.inFlight.add(record.id);
     try {
       const pulled = await this.pull(record, watcherMediaId, sharerMediaId, watched);
-      if (!pulled) return { watching: false };
+      if (!pulled) return refused("the media server failed");
 
       if (!stillOpen() || this.gone(watched)) {
         // The tab left, or the share ended, while the media server was answering, and
         // neither could close a pull that had no mid yet.
         await this.closeWatch(record);
         this.forgetConnectionIfEmpty(tab.id);
-        return { watching: false };
+        return refused(stillOpen() ? "the share ended meanwhile" : "the tab left meanwhile, or the budget ran out");
       }
       this.changeWatchers(record, () =>
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
       );
       this.listener.began(record.id, tab.id, watched.maxBitrate);
+      log.info("watch.started", { ...tagsOf(tab), share, watch: record.id, of: watched.id, tracks: pulledTracksOf(record) });
       return { watching: true, offer: pulled.offer, video: record.video.mid!, audio: record.audio?.mid ?? null };
     } finally {
       this.inFlight.delete(record.id);
@@ -569,6 +585,7 @@ export class Shares {
       if (sameRoom && watch.tab !== to.tab && connected(watch.tab)) await this.move(watch, to, connected);
       else await this.closeWatch(watch);
     }
+    log.info("handover.done", { share: to.id, replaced: from.id, room: to.room, from: from.room, watchers: pulls.length });
     // The sharer's tabs on the room hear who watches the share under its one name, once.
     if (sameRoom && pulls.length > 0) this.listener.watchers(to.room, toLiveShare(to), this.watcherIds(to.id, to.member));
     return [{ room: from.room, share: toLiveShare(from), tabId: from.tab, replacedIn: to.room }];
@@ -606,6 +623,7 @@ export class Shares {
       }
       this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id);
       this.listener.began(record.id, watch.tab, to.maxBitrate);
+      log.info("handover.moved", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, from: watch.id });
       this.listener.moved(watch.tab, record.share, {
         offer: pulled.offer,
         video: record.video.mid!,
@@ -656,6 +674,7 @@ export class Shares {
     try {
       await this.media.setQuality(watcherMediaId, sharerMediaId, { name: watch.video.name, mid: watch.video.mid }, quality);
     } catch {
+      log.warn("quality.failed", { ...tagsOf(tab), share, watch: watch.id, quality });
       return watch.quality;
     }
     // The pull may have been closed while the media server was answering.
@@ -817,9 +836,11 @@ export class Shares {
       // A screen share's video and audio close together, in one call.
       if (typeof mediaId === "string" && !gone) await this.media.close(mediaId, tracksOf(share));
     } catch {
+      log.warn("share.close-failed", { ...shareFields(share), ...(subject ? { subject: subject.member } : {}) });
       this.retries.failed({ kind: "share", id: share.id }, subject);
       return false;
     }
+    log.info("share.ended", { ...shareFields(share), wasLive: share.live, gone });
     this.sql.exec("DELETE FROM share WHERE id = ?", share.id);
     // A hand-over it was part of is over: done when it is the old share, failed when it is the new.
     this.handOvers.forget(share.id);
@@ -847,11 +868,13 @@ export class Shares {
       const pulled = pulledTracksOf(watch).flatMap((track) => (track.mid === null ? [] : [{ name: track.name, mid: track.mid }]));
       if (typeof mediaId === "string" && pulled.length > 0 && !gone) await this.media.close(mediaId, pulled);
     } catch {
+      log.warn("watch.close-failed", { ...watchFields(watch), ...(subject ? { subject: subject.member } : {}) });
       this.retries.failed({ kind: "watch", id: watch.id }, subject);
       return false;
     } finally {
       this.closing.delete(watch.id);
     }
+    log.info("watch.ended", { ...watchFields(watch), wasWatching: watch.watching, gone, moving });
     this.retries.confirmed(watch.id);
     const drop = () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
     if (!watch.watching) {
@@ -899,6 +922,7 @@ export class Shares {
     try {
       open = await this.media.tracks(mediaId);
     } catch {
+      log.warn("sweep.skipped", { tab: tabId, connection: mediaId });
       return [];
     }
     const busy = (id: string) => this.inFlight.has(id) || this.ending.has(id) || this.closing.has(id);
@@ -918,6 +942,7 @@ export class Shares {
       const track = openTrack(share.video.name);
       const audio = share.audio && openTrack(share.audio.name);
       if (share.live) {
+        if (!track) log.warn("sweep.gone", { ...shareFields(share), connection: mediaId });
         // Its picture is gone: the share has ended, and its watchers' pulls carry nothing.
         if (!track) ended.push(...(await this.end([share], null, undefined, { gone: true })));
       } else {
@@ -930,6 +955,7 @@ export class Shares {
       const track = openTrack(watch.video.name);
       const audio = watch.audio && openTrack(watch.audio.name);
       if (watch.watching) {
+        if (!track) log.warn("sweep.gone", { ...watchFields(watch), connection: mediaId });
         if (!track) await this.closeWatch(watch, { gone: true });
       } else {
         const found = { ...watch, video: track ?? watch.video, audio: audio ?? watch.audio };
@@ -938,6 +964,7 @@ export class Shares {
     }
     for (const track of open) {
       if (accounted.has(track.name)) continue;
+      log.warn("sweep.closed", { tab: tabId, connection: mediaId, track });
       try {
         await this.media.close(mediaId, [track]);
       } catch {
@@ -1020,6 +1047,7 @@ export class Shares {
     const ended: Ended[] = [];
     const dropped: string[] = [];
     for (const tab of due) {
+      log.warn("falter.due", { tab });
       ended.push(...(await this.end(this.records("WHERE tab_id = ? AND live_at IS NOT NULL", tab), null)));
       if (this.forgetConnectionIfEmpty(tab)) dropped.push(tab);
     }
@@ -1192,5 +1220,24 @@ function newWatch(
     audio: watched.audio ? { name: watched.audio.name, mid: null } : null,
     watching: false,
     quality,
+  };
+}
+
+/** What a line about a share says of it. */
+function shareFields(share: ShareRecord) {
+  return { member: share.member, tab: share.tab, room: share.room, kind: share.kind, share: share.id, tracks: tracksOf(share) };
+}
+
+/** What a line about a watch says of it. */
+function watchFields(watch: WatchRecord) {
+  return {
+    member: watch.member,
+    device: watch.device,
+    tab: watch.tab,
+    room: watch.room,
+    share: watch.share,
+    of: watch.shareId,
+    watch: watch.id,
+    tracks: pulledTracksOf(watch),
   };
 }

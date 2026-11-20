@@ -16,6 +16,14 @@
     // Every request reaches the Worker first, which alone decides what a visitor may see.
     "run_worker_first": true
   },
+  // Workers Logs keeps every line the instance writes, its own and its tabs', for a few
+  // days in the owner's account (ticket 48; CLAUDE.md, "Logs"). Invocation logs are off:
+  // every heartbeat, usage report and alarm is an invocation, and their lines would take
+  // most of the free plan's daily allowance, while the instance logs each request itself.
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": false }
+  },
   "durable_objects": {
     "bindings": [{ "name": "INSTANCE", "class_name": "Instance" }]
   },
