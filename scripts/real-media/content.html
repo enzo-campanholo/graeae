@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  Something to share for `pnpm real-media`, served by the driver on localhost:
+  content.html?kind=game|document|tone|portrait&title=<window title>&fps=<frame rate>&tone=<Hz, 0 for none>
+  - game: fast-moving full-colour pictures, as a game would be, at `fps` (default 60).
+  - document: a white text document, the brightest thing a member is likely to share.
+  - tone: a dark page with a moving meter and a tone, for tab audio.
+  - portrait: a tall, colourful page, for a portrait-shaped window.
+  Any kind plays a tone when `tone` is above 0 (tone's default 440), once the page is
+  clicked, since a browser plays no sound before a click.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>content</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; font-family: Georgia, serif; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      .document { background: #fff; color: #202124; overflow: auto; }
+      .page { max-width: 760px; margin: 48px auto; padding: 0 48px; font-size: 17px; line-height: 1.6; }
+      .page h1 { font: 600 30px/1.25 Arial, sans-serif; margin: 0 0 16px; }
+      .page h2 { font: 600 20px/1.3 Arial, sans-serif; margin: 28px 0 8px; }
+      .clock { position: fixed; right: 16px; bottom: 12px; font: 13px monospace; color: #5f6368; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const kind = params.get("kind") ?? "game";
+      document.title = params.get("title") ?? kind;
+      const fps = Number(params.get("fps") ?? 60);
+      const toneHz = Number(params.get("tone") ?? (kind === "tone" ? 440 : 0));
+
+      // The sound, from the first click on.
+      let audio = null;
+      addEventListener("pointerdown", () => {
+        if (audio || toneHz <= 0) return;
+        audio = new AudioContext();
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.frequency.value = toneHz;
+        gain.gain.value = 0.25;
+        // A beat every half second, so a level meter moves.
+        const lfo = audio.createOscillator();
+        const depth = audio.createGain();
+        lfo.frequency.value = 2;
+        depth.gain.value = 0.2;
+        lfo.connect(depth).connect(gain.gain);
+        oscillator.connect(gain).connect(audio.destination);
+        oscillator.start();
+        lfo.start();
+      });
+
+      if (kind === "document") {
+        document.body.className = "document";
+        const words =
+          "The evening plan is simple. Everyone joins the voice channel at nine, picks a game, and whoever is hosting shares their screen so the others can follow along. When two people are playing at once, both share, and the rest choose which to watch. ".repeat(3);
+        document.body.innerHTML = `<div class="page"><h1>Notes for Friday</h1>${["Who is bringing what", "The schedule", "Games on the list", "After the games"]
+          .map((heading) => `<h2>${heading}</h2><p>${words}</p>`)
+          .join("")}</div><div class="clock"></div>`;
+        const clock = document.querySelector(".clock");
+        setInterval(() => (clock.textContent = new Date().toISOString().slice(11, 23)), 100);
+      } else {
+        const canvas = document.createElement("canvas");
+        document.body.append(canvas);
+        const context = canvas.getContext("2d");
+        const resize = () => {
+          canvas.width = innerWidth * devicePixelRatio;
+          canvas.height = innerHeight * devicePixelRatio;
+        };
+        resize();
+        addEventListener("resize", resize);
+        const balls = Array.from({ length: 40 }, (_, i) => ({
+          x: Math.random(),
+          y: Math.random(),
+          dx: (Math.random() - 0.5) * 0.02,
+          dy: (Math.random() - 0.5) * 0.02,
+          r: 0.02 + Math.random() * 0.08,
+          hue: (i * 37) % 360,
+        }));
+        let frame = 0;
+        let due = 0;
+        const draw = (now) => {
+          requestAnimationFrame(draw);
+          // Held to `fps`, so a capture of it runs at that rate.
+          if (now < due) return;
+          due = due + 1000 / fps < now ? now + 1000 / fps : due + 1000 / fps;
+          frame += 1;
+          const { width: w, height: h } = canvas;
+          const t = now / 1000;
+          if (kind === "tone") {
+            context.fillStyle = "#101418";
+            context.fillRect(0, 0, w, h);
+            const level = 0.5 + 0.5 * Math.sin(t * Math.PI * 4);
+            context.fillStyle = `hsl(${(t * 60) % 360} 80% 55%)`;
+            context.fillRect(w * 0.1, h * 0.45, w * 0.8 * level, h * 0.1);
+          } else {
+            // Sky and ground that scroll, as a game's would.
+            const sky = context.createLinearGradient(0, 0, 0, h);
+            sky.addColorStop(0, `hsl(${(t * 20) % 360} 70% 45%)`);
+            sky.addColorStop(1, `hsl(${(t * 20 + 120) % 360} 80% 30%)`);
+            context.fillStyle = sky;
+            context.fillRect(0, 0, w, h);
+            for (let i = 0; i < 24; i++) {
+              context.fillStyle = `hsl(${(i * 15 + t * 90) % 360} 90% ${40 + (i % 3) * 10}%)`;
+              const x = ((i * w) / 12 - ((t * w * 0.6) % (w * 2))) % (w * 2);
+              context.fillRect(x < -w / 12 ? x + w * 2 : x, h * 0.7 + Math.sin(t * 3 + i) * h * 0.05, w / 14, h * 0.3);
+            }
+            for (const ball of balls) {
+              ball.x += ball.dx;
+              ball.y += ball.dy;
+              if (ball.x < 0 || ball.x > 1) ball.dx *= -1;
+              if (ball.y < 0 || ball.y > 1) ball.dy *= -1;
+              const r = ball.r * Math.min(w, h);
+              const fill = context.createRadialGradient(ball.x * w, ball.y * h, 0, ball.x * w, ball.y * h, r);
+              fill.addColorStop(0, `hsl(${ball.hue + t * 50} 100% 70%)`);
+              fill.addColorStop(1, `hsl(${ball.hue + t * 50 + 60} 90% 35%)`);
+              context.fillStyle = fill;
+              context.beginPath();
+              context.arc(ball.x * w, ball.y * h, r, 0, Math.PI * 2);
+              context.fill();
+            }
+            if (kind === "portrait") {
+              context.fillStyle = "rgba(255,255,255,0.85)";
+              for (let i = 0; i < 8; i++) context.fillRect(w * 0.08, h * (0.06 + i * 0.11), w * (0.5 + 0.3 * ((i * 7) % 3) / 2), h * 0.07);
+            }
+          }
+          // A HUD: the frame count and the clock, which change every frame.
+          context.fillStyle = "rgba(0,0,0,0.6)";
+          context.fillRect(16, 16, 360 * devicePixelRatio, 56 * devicePixelRatio);
+          context.fillStyle = "#fff";
+          context.font = `${28 * devicePixelRatio}px monospace`;
+          context.fillText(`${document.title} ${frame}`, 28, 16 + 38 * devicePixelRatio);
+        };
+        requestAnimationFrame(draw);
+      }
+    </script>
+  </body>
+</html>

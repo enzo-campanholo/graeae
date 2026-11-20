@@ -131,7 +131,8 @@
     </div>
   </div>
   <figcaption class="flex h-[calc(var(--caption)-0.375rem)] min-w-0 items-baseline gap-1.5 px-0.5">
-    <span class="text-soft truncate font-medium">{name}</span>
+    <!-- The name gives way last: in the strip's narrow caption the kind truncates first. -->
+    <span class="text-soft max-w-full shrink-0 truncate font-medium">{name}</span>
     <span class="text-dim truncate text-xs">{kind}{#if videoOnly}<span aria-hidden="true">&nbsp;·</span> video only{:else if audio?.muted}<span aria-hidden="true">&nbsp;·</span> muted{/if}</span>
     {#if lower}
       <span class="mark bg-raised text-muted-foreground shrink-0 self-center rounded-sm px-1 text-tag font-medium tabular-nums"

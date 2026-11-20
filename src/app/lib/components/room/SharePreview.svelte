@@ -1,7 +1,9 @@
 <script lang="ts">
-  // The picture in your own share's preview: what this device captures, mirrored for a
-  // webcam as a mirror would show you. With no picture to show (the fake media client
-  // captures nothing) it shows the share's kind, faintly, on the letterbox.
+  // The picture in your own share's preview: what this device captures. A screen sits at
+  // its own aspect on the letterbox, so a portrait window or an ultrawide screen shows
+  // all of what is shared; a webcam fills the preview, mirrored as a mirror would show
+  // you. With no picture to show (the fake media client captures nothing) it shows the
+  // share's kind, faintly, on the letterbox.
   import Monitor from "@lucide/svelte/icons/monitor";
   import Video from "@lucide/svelte/icons/video";
   import type { ShareKind } from "$lib/share.js";
@@ -18,7 +20,7 @@
 {#if stream}
   <video
     bind:this={video}
-    class={["size-full object-cover", kind === "webcam" && "-scale-x-100"]}
+    class={["size-full", kind === "webcam" ? "-scale-x-100 object-cover" : "object-contain"]}
     autoplay
     muted
     playsinline
