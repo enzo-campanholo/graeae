@@ -21,7 +21,10 @@
 // its credentials, `iceServers`, and any value the writer knows to be a secret. SDP is
 // logged by its size and its media sections (mid, kind, direction), never its body; an
 // ICE candidate by its type and protocol; an IP address not at all. Nobody's picture or
-// sound ever reaches the instance.
+// sound ever reaches the instance. Workers Logs adds its own `$workers` and `$metadata`
+// to every line, with the request's address but no headers: an invite code in it is
+// written as `REDACTED` only because `newInviteCode` makes codes Cloudflare's heuristic
+// masks, and CLAUDE.md's pull leaves those fields out.
 //
 // The events. On the instance (`source: "instance"`):
 // - `instance.start` (`build`, `migrations` run), `restart.restored`, `restart.swept`
@@ -322,8 +325,9 @@ function cleanString(value: string, secrets: readonly string[], key?: string): s
   let text = value;
   for (const secret of secrets) text = text.split(secret).join(LEFT_OUT);
   text = text
-    // Invite codes, wherever an address carries one.
-    .replace(/(\/invites?\/)[^/?#\s"']+/g, `$1${LEFT_OUT}`)
+    // Invite codes, wherever an address carries one, but not one already left out: a
+    // tab's line goes through here again when the instance writes it.
+    .replace(/(\/invites?\/)(?!\[left out\])[^/?#\s"']+/g, `$1${LEFT_OUT}`)
     // A device cookie's token.
     .replace(/(device=)[^;\s"']+/g, `$1${LEFT_OUT}`)
     // A candidate, as an SDP line or on its own: its type and protocol only.

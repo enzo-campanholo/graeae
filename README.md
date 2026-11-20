@@ -124,7 +124,7 @@ rm .secrets
 
 To run a second instance on the same Cloudflare account, give it its own name each time you deploy it: `pnpm run deploy --name <other name>`.
 
-The instance keeps 3 days of logs, for debugging, in your Cloudflare account's Workers Logs: what each page and the instance did, with members' display names but never a secret, an IP address or anything shared.
+The instance keeps 3 days of logs (7 from 1 December 2026), for debugging, in your Cloudflare account's Workers Logs: what each page and the instance did, with members' display names but never a secret, an IP address or anything shared.
 
 ### 5. Open the setup address
 

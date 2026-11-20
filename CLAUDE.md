@@ -33,7 +33,13 @@ A deployed instance writes one JSON line per event to Workers Logs: its own (eve
 
 To debug an evening, pull its window and work from the saved file:
 
-1. Ask the owner for an API token with Account › Workers Observability › Edit (the query endpoint accepts only that permission; the wrangler login cannot read logs) and the account id (`pnpm exec wrangler whoami`). Ask with `request_secret`, `delivery: "file"`, never in chat.
+1. Ask the owner for an API token with `request_secret`, `delivery: "file"`, never in chat. The wrangler login cannot read logs. Give them these steps first:
+   1. dash.cloudflare.com/profile/api-tokens, **Create Token**, then **Custom token › Get started**. Name it `graeae logs`.
+   2. One permission: **Account**, **Workers Observability**, **Edit**. The query endpoint accepts only Edit.
+   3. Their one account; **Token expiration** the next day; no IP filtering.
+   4. **Continue to summary**, **Create Token**, and copy it (shown once, starts with `cfut_`).
+
+   Check it with `curl https://api.cloudflare.com/client/v4/user/tokens/verify -H "Authorization: Bearer $(cat <file>)"`. The account id comes from `pnpm exec wrangler whoami`.
 2. Query `POST https://api.cloudflare.com/client/v4/accounts/<account id>/workers/observability/telemetry/query` with `Authorization: Bearer <token>` and this body, `from` and `to` in milliseconds since the epoch, and the Worker's name (`graeae-test`, or the `--name` it was deployed with):
 
    ```json
@@ -42,8 +48,9 @@ To debug an evening, pull its window and work from the saved file:
      "parameters": { "filters": [{ "key": "$metadata.service", "operation": "eq", "type": "string", "value": "graeae-test" }] } }
    ```
 
-   The events are in `result.events.events`. For the next page, send the same body with `"offset": "<the last event's $metadata.id>"` and `"offsetDirection": "next"`, until a page comes back short.
-3. Save every event, one JSON per line, to `.logs/<worker>-<from>-<to>.jsonl`. `.logs/` is gitignored because the lines hold friends' display names. Sort by the line's `at` to line up a tab's view with the instance's: a tab's lines arrive in batches, seconds after its `at`.
+   The events are in `result.events.events`, newest first; `limit` above 2000 is refused. For the next page, send the same body with `"offset": "<the last event's $metadata.id>"` and `"offsetDirection": "next"`, until a page comes back short. Pull once the window is a few minutes old: lines keep arriving minutes after it ends.
+3. Save every event, one JSON per line, to `.logs/<worker>-<from>-<to>.jsonl`, without `$workers.event.request` and `$metadata.trigger`, with `jq -c '.result.events.events[] | del(."$workers".event.request, ."$metadata".trigger)'`. Those two hold the request's address, invite codes included, which Cloudflare writes as `REDACTED` only by a heuristic (`newInviteCode` makes codes that pass it). `.logs/` is gitignored because the lines hold friends' display names. In each event, the line graeae wrote is the object at `.source` (so its own `source` field is `.source.source`), next to Cloudflare's `$workers` and `$metadata`.
+4. Sort by `.source.at` to line up a tab's view with the instance's: a tab's lines arrive in batches, seconds after their `at`, and the lead-up to a dropped socket arrives after it reconnects. A batch can arrive twice when its socket dies before confirming it, so treat tab lines identical in `.source` as one.
 
 ## Migrations
 

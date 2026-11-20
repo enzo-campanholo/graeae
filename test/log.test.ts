@@ -140,6 +140,16 @@ describe("the line builder", () => {
     expect((line.error as { stack?: string }).stack).toContain("TypeError: no picture");
   });
 
+  it("reads the same after a second pass, as a tab's line does once the instance writes it", () => {
+    const fromTheTab = logLine("tab", "page.route", { route: "/invite/:invite", url: `/api/invites/${INVITE_CODE}` });
+    const { source, event, at, ...fields } = fromTheTab;
+
+    const written = logLine(source, event, fields, { at });
+
+    expect(written).toEqual(fromTheTab);
+    expect(written).toMatchObject({ route: "/invite/[left out]", url: "/api/invites/[left out]" });
+  });
+
   it("leaves a known secret out wherever it turns up, even in a field it has no rule for", () => {
     const line = logLine("instance", "test.secret", { anything: `x${SETUP_SECRET}y` }, { secrets: [SETUP_SECRET] });
 

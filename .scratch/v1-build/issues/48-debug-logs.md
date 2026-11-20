@@ -6,7 +6,7 @@ Owner's note (2026-11-19, after testing on `graeae-test` with a friend): "We hit
 
 **Blocked by:** none
 
-**Status:** ready-for-human
+**Status:** resolved
 
 ## What is known
 
@@ -111,3 +111,32 @@ Checked on 2026-11-19:
 1. Do the events' Workers metadata (`$workers`, `$metadata`) carry the request URL or headers? If so, `/invite/<code>` addresses, and possibly cookies, are stored outside the line builder's reach. This could not be checked without a deploy.
 2. Both sides' lines should be there, line up by `at`, and carry no secret or IP address.
 3. The query in CLAUDE.md (paging by `offset`, events at `result.events.events`) follows the API reference but has not been run.
+
+### 2026-11-20: checked on `graeae-test` and closed
+
+**Deployed** from `de98a3b` (version `9ea3f644`) with `pnpm run deploy --name graeae-test`, with `"observability": {"enabled": true, "logs": {"invocation_logs": false}}` and the secrets left as they were.
+
+**Used as a stranger** (03:40 UTC): `/`, `/r/a-room`, `/setup`, `/a/b?x=1`, `/invite/<marker>` and `/api/invites/<marker>`, with a marker device cookie, and a `POST /api/log` with no cookie. Each got 404, and each was logged as an `http` line with `refused` and why.
+
+**Used as a member** (12:51 to 12:53 UTC), in headless Chromium with a fake camera: the throwaway "Log check" member joined from an owner's invite, shared the webcam, and made a second device with "Add a device", which joined too. Then the first device sat for 45 seconds, went offline for 15 seconds and came back, and both tabs were closed. The script recorded every secret the pages received: both invite codes, both device cookies, and the relay username and credential from `media.connected`.
+
+**Pulled** both windows with an API token (Account › Workers Observability › Edit, which worked as named) into `.logs/`: 10 lines and 182 lines.
+
+**What was stored.**
+
+- **Graeae's own lines carry no secret.** The recorded invite codes, cookies and relay credentials appear nowhere, and neither does the marker cookie. `iceServers` shows as `[left out]`, and nothing matches an SDP body, a candidate, or an IPv4 or IPv6 address. The only hits were `HeadlessChrome/157.0.0.0` in `userAgent` and a clock time.
+- **Cloudflare's metadata holds each request's address.** That is the open risk from the build. `$workers.event.request.url` and `.path`, and `$metadata.trigger` (`GET /invite/<code>`), carry the address, and `search` holds the query string parsed. Headers, cookies and IP addresses are not stored. Cloudflare wrote every real invite code as `REDACTED`, but it stored the marker code in the clear. The rule, documented for Tail Workers' `TailRequest.url`, masks a run of 21 or more ID characters only if it holds at least 2 capitals, 2 lower case letters and 2 digits. About 1 in 7 random 22-character codes (13.9% in a simulation) has fewer than 2 digits, so it would have been stored in the clear.
+- **Fixed, by the owner's choice.** `newInviteCode` now draws again until a code passes that rule (about 127.8 random bits), and `test/invites.test.ts` checks 60 codes. CLAUDE.md's pull drops `$workers.event.request` and `$metadata.trigger` before saving. The rule is Cloudflare's heuristic, not a promise for Workers Logs. A code that never reaches Cloudflare would need it moved out of the address (`/invite#<code>`), which was left for later.
+
+**Both sides line up.** 76 instance lines and 106 tab lines, sorted by `at`, read as one story: invite opened, joined, capture granted, `media.connected` on both ends, offer, `share.live` and `share.confirmed`, ICE connected, and `stats` every 15 seconds. Then came `page.offline`, `reconnecting.shown`, `ws.lost` (heartbeat unanswered) and the retries (`http.failed`, "Failed to fetch"). On the instance's side, `tab.silent`, then `grace.start` and `grace.end` as the socket was taken back. After that came `media.rejoined` and `reconnecting.cleared`, both tabs' `page.leave` beacons, and the cut-offs. Tab lines arrived 0.1 to 7 seconds after their `at`, and the drop's lead-up up to 21 seconds after, once the tab reconnected.
+
+**Found and fixed on the way.**
+
+- A tab's invite route was written `/invite/[left out] out]`. The instance runs a tab's line through the builder a second time, and the invite rule matched `[left`. That rule now skips a code already left out, and `test/log.test.ts` checks that a second pass changes nothing.
+- One tab batch arrived twice. Its socket was taken back before the heartbeat answer confirmed it, so it was sent again. Delivery is at least once, so CLAUDE.md says to treat identical tab lines as one.
+
+**The query in CLAUDE.md works.** The events are at `result.events.events`, newest first. Paging by `offset` (`$metadata.id`, which is shared by lines written in the same millisecond) and `offsetDirection: "next"` gave exactly the lines of a single pull at page sizes of 49, 50, 51 and 100, even with a page boundary inside a shared id. A `limit` above 2000 is refused with a validation error. Lines kept arriving for a few minutes after the window: 156 at first, then 181. CLAUDE.md now says all this, says each line sits at `.source`, and gives the token steps the owner followed. The README's logs line now says 7 days from 1 December 2026.
+
+**Tests.** Typecheck and lint pass; all 446 tests in the Workers runtime and all 60 journeys pass. The two fixes are not deployed to `graeae-test` yet.
+
+**Left to the owner.** Remove the "Log check" member, and delete the `graeae logs` token. It was made to expire on 2026-11-28, not the next day.

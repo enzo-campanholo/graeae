@@ -646,9 +646,15 @@ function newToken(): string {
   return base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-/** 128 random bits: unguessable, and short enough for a link pasted into a chat. */
+/** About 128 random bits: unguessable, and short enough for a link pasted into a chat. */
 function newInviteCode(): string {
-  return base64url(crypto.getRandomValues(new Uint8Array(16)));
+  // Workers Logs stores each request's address, and masks a code in it only when the code
+  // holds two capitals, two lower case letters and two digits (ticket 48). About 1 in 7
+  // random codes lacks two digits, so those are drawn again.
+  for (;;) {
+    const code = base64url(crypto.getRandomValues(new Uint8Array(16)));
+    if ([/[A-Z]/g, /[a-z]/g, /[0-9]/g].every((kind) => (code.match(kind)?.length ?? 0) >= 2)) return code;
+  }
 }
 
 /** `value` as a display name: trimmed, and 1 to 40 characters long. Null when it is not one. */

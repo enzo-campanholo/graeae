@@ -145,6 +145,19 @@ describe("an owner's invite", () => {
     await expectNothingHere(instance, "%E0", refused);
   });
 
+  it("has a code Workers Logs masks in a stored address: two capitals, two lower case and two digits", async () => {
+    // Workers Logs stores each request's address, `/invite/<code>` too. It masks a run of
+    // 21 or more letters, digits, `-` and `_` holding at least two of each kind; about 1 in
+    // 7 plain random codes lacks two digits. Sixty all passing by luck is about 1 in 8,000.
+    const { owner } = await withOwner();
+
+    for (let i = 0; i < 60; i++) {
+      const { code } = await invite(owner, `Guest ${i}`);
+      expect(code).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      for (const kind of [/[A-Z]/g, /[a-z]/g, /[0-9]/g]) expect(code.match(kind)?.length ?? 0, code).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it("is listed for the owner with its rooms and expiry until it is used, newest first", async () => {
     const { instance, owner, room } = await withOwner();
     const address = room.slice("/r/".length);
