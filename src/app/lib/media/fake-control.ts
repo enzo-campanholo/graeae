@@ -59,6 +59,11 @@ export interface FakeMediaControl {
   /** Whether the media connection is on the relay. */
   relayed: boolean;
   /**
+   * How often the tab reports `bytes`, in milliseconds: once a minute, as
+   * `USAGE_REPORT_EVERY_MS` says, unless a journey says otherwise before the page loads.
+   */
+  reportEvery: number;
+  /**
    * The browser's statistics of this tab's live share of `kind`, read `at` milliseconds
    * after it started sending, as `RTCRtpSender.getStats()` gives them. A real browser
    * reads them every 2 seconds by itself.

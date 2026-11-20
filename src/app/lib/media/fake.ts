@@ -9,10 +9,12 @@
 // browser's picker returns, the browser ending a screen share by itself, the quality the
 // shares it watches arrive at, the statistics of the shares it
 // sends, which go through the same rule as the real client's, and the bytes its media
-// connection has received for the usage count. It is in a build for Seam 2 only.
+// connection has received for the usage count, and how often the tab reports them. It is
+// in a build for Seam 2 only.
 
 import { encodingPlan, TWO_QUALITIES, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
+import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import type { FakeMediaControl } from "./fake-control.ts";
@@ -55,6 +57,7 @@ function control(): FakeMediaControl {
       received: "1080p",
       bytes: 0,
       relayed: false,
+      reportEvery: USAGE_REPORT_EVERY_MS,
       receive: (quality) => {
         made.received = quality;
         for (const heard of listeners) heard(quality);
@@ -218,6 +221,10 @@ export class FakeMediaClient implements MediaClient {
 
   async transport(): Promise<TransportTotals | null> {
     return this.connected ? { received: control().bytes, relayed: control().relayed } : null;
+  }
+
+  get reportEvery(): number {
+    return control().reportEvery;
   }
 
   drop(video: string) {

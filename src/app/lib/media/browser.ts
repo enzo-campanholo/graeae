@@ -12,6 +12,7 @@
 
 import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
+import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
@@ -36,6 +37,7 @@ const RESTART_WAIT_MS = 15_000;
 
 export class BrowserMediaClient implements MediaClient {
   readonly browser: BrowserFamily = browserFamily(navigator.userAgent);
+  readonly reportEvery = USAGE_REPORT_EVERY_MS;
   private connection: RTCPeerConnection | null = null;
   /** The empty transceiver the last restart offer carried, until the media server answers it. */
   private spare: RTCRtpTransceiver | null = null;

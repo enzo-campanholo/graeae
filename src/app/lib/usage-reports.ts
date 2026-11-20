@@ -1,4 +1,4 @@
-// A tab's usage reports: once its media connection is made, every few seconds the running
+// A tab's usage reports: once its media connection is made, once a minute the running
 // total that connection's transport has received since it opened, for the usage count.
 // The totals are read at once, so a final one is the connection's own even if it is let
 // go of straight after; reports go out in the order they were read. One due while the
@@ -10,12 +10,11 @@
 // may count on. A total below it shows the browser counted from zero too.
 
 import type { UsageRequest } from "../../shared/socket/index.ts";
-import { USAGE_REPORT_EVERY_MS } from "../../shared/socket/usage.ts";
 import type { TransportTotals } from "./media/transport.ts";
 import { every } from "./ticker.ts";
 
 export class UsageReports {
-  /** Stops the reports every few seconds, while they run. */
+  /** Stops the reports once a minute, while they run. */
   private stopTicking: (() => void) | null = null;
   /** The reports read but not yet sent, which the next one waits for. */
   private sending: Promise<void> = Promise.resolve();
@@ -28,20 +27,22 @@ export class UsageReports {
 
   /**
    * `read` reads the media connection's totals; `send` sends a report; `synced` says
-   * whether the socket has brought the room's state, without which a report is dropped.
+   * whether the socket has brought the room's state, without which a report is dropped;
+   * `reportEvery` is how often reports go, in milliseconds (`MediaClient.reportEvery`).
    */
   constructor(
     private readonly read: () => Promise<TransportTotals | null>,
     private readonly send: (request: UsageRequest) => void,
     private readonly synced: () => boolean,
+    private readonly reportEvery: () => number,
   ) {}
 
-  /** The media connection is made: reports go out every few seconds. */
+  /** The media connection is made: reports go out once a minute. */
   start() {
-    this.stopTicking = every(USAGE_REPORT_EVERY_MS, () => this.report());
+    this.stopTicking = every(this.reportEvery(), () => this.report());
   }
 
-  /** No more reports every few seconds; one asked for still goes. */
+  /** No more reports once a minute; one asked for still goes. */
   stop() {
     this.stopTicking?.();
     this.stopTicking = null;

@@ -177,9 +177,16 @@ export class Instance extends DurableObject<Env> {
     ].filter(
       (moment): moment is number => moment !== null,
     );
-    if (moments.length > 0) void this.ctx.storage.setAlarm(Math.min(...moments));
+    const next = moments.length > 0 ? Math.min(...moments) : null;
+    // Setting or deleting the alarm writes a row, of which the free plan allows 100,000 a day (ADR 0004).
+    if (next === this.alarmAt) return;
+    this.alarmAt = next;
+    if (next !== null) void this.ctx.storage.setAlarm(next);
     else void this.ctx.storage.deleteAlarm();
   }
+
+  /** What this instance last set the alarm for, null for none; undefined before it has, or once it has run. */
+  private alarmAt: number | null | undefined;
 
   override async fetch(request: Request): Promise<Response> {
     const started = Date.now();
@@ -687,6 +694,8 @@ export class Instance extends DurableObject<Env> {
    * again, shares whose media has faltered for too long, and fresh relay credentials.
    */
   override async alarm() {
+    // The alarm that runs is spent, so the next is set whatever its time.
+    this.alarmAt = undefined;
     try {
       await this.alarmed();
     } catch (error) {

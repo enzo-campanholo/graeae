@@ -16,7 +16,7 @@ import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
 
-/** What the room client sends every few seconds: its media connection's running total received. */
+/** What the room client sends once a minute: its media connection's running total received. */
 async function report(tab: Tab, received: number) {
   tab.send({ type: "usage", request: { type: "received", bytes: received, relayed: false } });
   await tab.heartbeat();
