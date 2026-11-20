@@ -137,6 +137,8 @@ Checked on 2026-11-19:
 
 **The query in CLAUDE.md works.** The events are at `result.events.events`, newest first. Paging by `offset` (`$metadata.id`, which is shared by lines written in the same millisecond) and `offsetDirection: "next"` gave exactly the lines of a single pull at page sizes of 49, 50, 51 and 100, even with a page boundary inside a shared id. A `limit` above 2000 is refused with a validation error. Lines kept arriving for a few minutes after the window: 156 at first, then 181. CLAUDE.md now says all this, says each line sits at `.source`, and gives the token steps the owner followed. The README's logs line now says 7 days from 1 December 2026.
 
-**Tests.** Typecheck and lint pass; all 446 tests in the Workers runtime and all 60 journeys pass. The two fixes are not deployed to `graeae-test` yet.
+**Tests.** Typecheck and lint pass; all 446 tests in the Workers runtime and all 60 journeys pass.
 
-**Left to the owner.** Remove the "Log check" member, and delete the `graeae logs` token. It was made to expire on 2026-11-28, not the next day.
+**Deployed the fixes** from `626631f` (version `352a9b28`) with `pnpm run deploy --name graeae-test`. As with ticket 47, the instance kept serving the old page (`index-CJ-lIM3B.js`) for 320 seconds after the deploy. Its `instance.start` line at 13:55:36 UTC carries `build: "626631f"`.
+
+**Kept on purpose.** The owner keeps the "Log check" member and the `graeae logs` token, which expires on 2026-11-28, in case another pull is needed.
