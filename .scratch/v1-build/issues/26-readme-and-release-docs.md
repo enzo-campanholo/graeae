@@ -44,4 +44,4 @@ Spec: [The README](../spec.md#the-readme), [Deploying](../spec.md#deploying), [P
 4. *The usage count:* when ticket 23's comparison passes, change the README's "The usage count is unverified" line, and the Cost section's 5% if the margin changes.
 5. *The relay key emergency stop:* the README states it as unverified to end credentials already issued. If you ever test it, say what happened.
 6. *Screenshots:* the README has none. One of a room with real shares on the stage would help a stranger; only a real deploy can show one, and PRODUCT.md forbids inventing them.
-7. *Tag `v1.0.0`* on `main` once v1 is done (ticket 27 and the rest), and change its changelog heading from "not yet released" to the date. Until a tag exists, the README's `git describe --tags` step fails.
+7. *Tag ~~`v1.0.0`~~ `v0.1.0`* (the owner's decision, 2026-11-20) on `main` once v1 is done (ticket 27 and the rest), and change its changelog heading from "not yet released" to the date. Until a tag exists, the README's `git describe --tags` step fails.

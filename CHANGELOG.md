@@ -6,7 +6,7 @@ A release that needs something done by hand, beyond checking out its tag and run
 
 Changes to stored data are applied by the instance itself and need no manual step. Going back to an older release is not supported.
 
-## v1.0.0 (not yet released)
+## v0.1.0 (not yet released)
 
 The first release.
 

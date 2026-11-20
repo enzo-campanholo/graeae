@@ -33,7 +33,7 @@ A private instance per friend group, deployed by one of them to their own Cloudf
 
 - Pages: a room (a bar of people on the left and a stage filling the rest), the list of rooms, the "You" page, the one-button invite page, the owner page (People, Invites, Rooms, Usage) and one "nothing here" page for every refused address.
 - Desktop only. No phone layout is designed.
-- Supported platform is Windows 11 in current stable Chrome or Helium. Firefox, macOS and Linux are Limited. Everything else is best effort and is never mentioned in the app.
+- Supported platform is Windows 11 in current stable Chrome or Helium. Firefox and Zen on Windows, and Chromium on Linux, are Limited. Everything else is best effort and is never mentioned in the app.
 - A gap is shown only when it matters and only to the member affected. No banners on arrival.
 - Terms follow `GLOSSARY.md` exactly: instance, owner, member, device, invite, room, access, present, share, live, watch, stage, usage, usage budget. The app never says user, account, stream, channel or session.
 - The design is governed by the spec at `.scratch/v1-build/spec.md`.

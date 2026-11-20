@@ -47,12 +47,12 @@ Three levels. **Supported**: the targets hold, and a failure is a bug. **Limited
 | Platform | Level | Watching | Sharing |
 |---|---|---|---|
 | Windows 11, current stable Chrome or Helium | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio |
-| Windows 11, current stable Vivaldi or Brave | Supported, not yet verified | The same | The same |
-| Windows 11, current stable Firefox | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
-| macOS and Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
+| Windows 11, current stable Brave | Supported, not yet verified | The same | The same |
+| Windows 11, current stable Firefox or Zen (Zen not yet verified) | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
+| Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
 | Everything else | Best effort, untested | Whatever the browser can do | Whatever the browser can do |
 
-"Everything else" is untested: Windows 10, Edge, Opera and other Chromium browsers, Firefox and Safari on macOS and Linux, and every phone browser. graeae never checks the operating system and never blocks a browser. The 144 Hz caveat under [Limits](#limits) applies to the Supported level.
+"Everything else" is untested: macOS in any browser, Vivaldi, Edge, Opera and other Chromium browsers, Firefox and Zen off Windows, Windows 10, Safari, and every phone browser. graeae never checks the operating system and never blocks a browser. The 144 Hz caveat under [Limits](#limits) applies to the Supported level.
 
 ## Deploying
 

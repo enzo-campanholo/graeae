@@ -158,8 +158,8 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 
 ### Platforms
 
-109. As a member on Windows 11 with Chrome, Helium, Vivaldi or Brave, I want the full targets to hold, so that a failure is a bug someone fixes.
-110. As a member on macOS or Linux with Chromium, I want to watch everything and to share a tab with its audio, a window or screen as video only, and a webcam, so that I can take part.
+109. As a member on Windows 11 with Chrome, Helium, ~~Vivaldi~~ or Brave, I want the full targets to hold, so that a failure is a bug someone fixes. Vivaldi dropped on 2026-11-20, the owner's decision: it is best effort, untested.
+110. As a member on ~~macOS or~~ Linux with Chromium, I want to watch everything and to share a tab with its audio, a window or screen as video only, and a webcam, so that I can take part. macOS dropped for now on 2026-11-20, the owner's decision: no Mac to test on; macOS is untested, best effort.
 111. As a member on any other browser or a phone, I want never to be blocked, so that I get whatever my browser can do.
 
 ## Implementation Decisions
@@ -364,13 +364,14 @@ Three levels. Supported: the targets hold and a failure is a bug. Limited: it wo
 | Platform | Level | Watching | Sharing |
 |---|---|---|---|
 | Windows 11, current stable Chrome or Helium | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio as above |
-| Windows 11, current stable Vivaldi or Brave | Supported, not yet verified | The same | The same |
-| Windows 11, current stable Firefox | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
-| macOS and Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
+| Windows 11, current stable Brave | Supported, not yet verified | The same | The same |
+| Windows 11, current stable Firefox or Zen (Zen not yet verified) | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
+| Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
 | Everything else | Best effort | | |
 
-- "Everything else" covers Windows 10, Edge, Opera and other Chromium browsers, Firefox and Safari on macOS and Linux, and every phone browser.
-- The app never checks the operating system and never blocks a browser. Extra audio a picker offers on macOS or Linux is passed through, not promised.
+- 2026-11-20, the owner's decision: ~~Vivaldi~~ leaves the Supported row for best effort, ~~macOS~~ leaves the Limited row for best effort (no Mac to test on; macOS is untested), and Zen joins the Firefox row. Zen is built on Firefox and gets its gaps; it is not yet verified ([Remaining browser checks](../v1/issues/21-remaining-browser-checks.md)). The Linux row was checked Linux to Linux in Chromium 157 on 2026-11-20 (build ticket 32); steps 3 and 5 of the Linux pass under Verification, against a Windows member, are in the owner's wizard (`scripts/owner-checks.sh`).
+- "Everything else" covers macOS in any browser, Vivaldi, Edge, Opera and other Chromium browsers, Firefox and Zen off Windows, Windows 10, Safari, and every phone browser.
+- The app never checks the operating system and never blocks a browser. Extra audio a picker offers on Linux or a best-effort platform is passed through, not promised.
 - A gap is shown only when it matters and only to the member affected. No banner on arrival, no badge for viewers.
 - **4 simultaneous screens at 1080p60 is the promise**, kept on the owner's judgement and unproven: the decode load of 3 or 4 game shares was never measured.
 - A sharer on a 144 Hz monitor gets 48 fps until Chrome's upstream fix ships. This is a named caveat on the Supported level.
@@ -447,7 +448,7 @@ Done by the owner on the built app unless noted.
 
 Done in build ticket 23 with a 2.2 GB session: 5% read +13.3%, so the margin went to 0%. The margin multiplies every report, so the same session reads +7.9% at 0% with no second run. On the relay, Cloudflare's pricing says once, but its media server sent 16% more than the browser received, so the doubling stays until Cloudflare's billable usage shows which figure it billed (ticket 27).
 
-**macOS and Linux, one pass each in current stable Chromium.** Record the browser and operating system versions.
+**~~macOS and~~ Linux, one pass ~~each~~ in current stable Chromium.** Record the browser and operating system versions. The macOS pass was dropped for now on 2026-11-20, the owner's decision: no Mac to test on; macOS is untested, and best effort in the platform table.
 
 1. Open an invite, press the button, land in the room.
 2. Reload: the device is still remembered.
@@ -463,7 +464,8 @@ A failure outside the named gaps is fixed or added to the platform table as a ga
 
 **Still open from the prototype** (tracked in [Remaining browser checks](../v1/issues/21-remaining-browser-checks.md), on the throwaway quality-proof prototype):
 
-- Vivaldi and Brave each share at 1080p60 with hardware H.264. A browser that fails drops to Limited with its gap named.
+- ~~Vivaldi and~~ Brave ~~each~~ shares at 1080p60 with hardware H.264. A browser that fails drops to Limited with its gap named. Vivaldi dropped on 2026-11-20, the owner's decision: it is best effort, untested.
+- Zen on Windows 11 at the Firefox level: it watches a Chrome screen share with its audio, shares a webcam, and shares a screen that its viewer sees as video only. Added on 2026-11-20, the owner's decision. A failure names a gap on Zen in its row.
 - Single-application audio for a game started through a launcher. A failure adds a caveat.
 - ~~Both qualities stay on the hardware encoder with the game's frame rate unchanged.~~ Passed in build ticket 17 (RTX 5070 Ti, Chrome on Windows 11, CS2), but two qualities are switched off for the media server's freezes, as set out under Encoding and quality.
 - ~~An expired relay credential and a relay in use; a connection restart with a fresh credential without a visible blip. If the restart fails, a tab on the relay reconnects once at 11 hours.~~ Passed in build ticket 25, with the lives shortened, on Cloudflare: two restarts on a TCP relay, each answered in under a second, with the picture held through both credentials running out.
