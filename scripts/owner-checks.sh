@@ -200,9 +200,9 @@ finish() {
 
 
 # The owner's checks for 0.1: what agents could not do, because it needs the owner's own
-# Windows 11 PC (RTX 5070 Ti, Chrome, Vivaldi, Brave, a real webcam and games) and maybe a
-# Mac. Run it on the Linux machine that holds this repo, from a terminal you can copy out
-# of onto Windows (over SSH, say):
+# Windows 11 PC (RTX 5070 Ti, Chrome, Brave, Zen, a real webcam and games). Run it on the
+# Linux machine that holds this repo, from a terminal you can copy out of onto Windows
+# (over SSH, say):
 #
 #   scripts/owner-checks.sh
 #
@@ -212,6 +212,13 @@ finish() {
 # For steps 3 and 5 of the nine-step pass it runs a Linux Chromium member on this machine
 # (scripts/real-media/desktop.sh and `pnpm real-media`), and stops it again when done.
 # The instance address is kept in .env.owner-checks (git-ignored).
+#
+# 2026-11-20, the owner's decision: Vivaldi and macOS are no longer checked (Vivaldi is
+# best effort, and there is no Mac to test on). Their ids, vivaldi-1080p60, macos and
+# macos-1 to macos-9, are no longer asked; a line already recorded for one stays in the
+# results and is ignored. Brave is the second member on Windows where Vivaldi was, and Zen
+# is checked at the Firefox level (zen-watch, zen-webcam, zen-screen). Every other id is
+# unchanged, so answers recorded before still count.
 
 run_wizard() {
 
@@ -238,13 +245,6 @@ recorded() { grep -qF "· \`$1\` ·" "$RESULTS"; }
 redoing() { local r; for r in "${REDO[@]}"; do [[ "$r" == "$1" ]] && return 0; done; return 1; }
 pending() { redoing "$1" || ! recorded "$1"; }
 any_pending() { local id; for id in "$@"; do pending "$id" && return 0; done; return 1; }
-
-MAC_STEPS=(macos-1 macos-2 macos-3 macos-4 macos-5 macos-6 macos-7 macos-8 macos-9)
-# "macos" alone is the "no Mac" answer; it stands for all nine steps.
-mac_pending() {
-  if recorded macos && ! redoing macos; then return 1; fi
-  any_pending "${MAC_STEPS[@]}"
-}
 
 # _append LINE puts LINE at the end of the "Owner's results" list, making the heading at
 # the end of the file if it is missing, and keeping any section after it in place.
@@ -430,9 +430,10 @@ need_linux() {
 # ── Which checks are left ─────────────────────────────────────────────────
 
 ALL_IDS=(back-in step3-windows-share step5-linux-tab t32-click-for-sound t32-light-pill
-  t32-webcam t32-game t32-fullscreen-strip vivaldi-1080p60 brave-1080p60 launcher-audio macos "${MAC_STEPS[@]}")
+  t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio zen-watch zen-webcam zen-screen)
 LINUX_IDS=(step3-windows-share step5-linux-tab t32-click-for-sound t32-light-pill)
-VIVALDI_IDS=(t32-webcam t32-game t32-fullscreen-strip vivaldi-1080p60 launcher-audio)
+BRAVE_IDS=(t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio)
+ZEN_IDS=(zen-watch zen-webcam zen-screen)
 
 already=()
 for id in "${ALL_IDS[@]}"; do if recorded "$id"; then already+=("$id"); fi; done
@@ -441,33 +442,31 @@ if (( ${#already[@]} )); then
   printf '\n%sAlready recorded in %s:%s\n' "$BOLD" "${RESULTS#"$ROOT"/}" "$RESET"
   grep -F "· \`" "$RESULTS" | sed -n '/^- [0-9]/p' | sed 's/^/  /'
   printf '\n'
-  read -e -r -p "  Redo any? Type their names (e.g. t32-game macos), or Enter for none: " -a REDO || true
+  read -e -r -p "  Redo any? Type their names (e.g. t32-game zen-webcam), or Enter for none: " -a REDO || true
 fi
 
 # Decided once, so a part's closing stage runs even after its checks are recorded.
-LINUX_PART=0; VIVALDI_PART=0; BRAVE_PART=0; MAC_PART=0
+LINUX_PART=0; BRAVE_PART=0; ZEN_PART=0
 if any_pending "${LINUX_IDS[@]}"; then LINUX_PART=1; fi
-if any_pending "${VIVALDI_IDS[@]}"; then VIVALDI_PART=1; fi
-if pending brave-1080p60; then BRAVE_PART=1; fi
-if mac_pending; then MAC_PART=1; fi
+if any_pending "${BRAVE_IDS[@]}"; then BRAVE_PART=1; fi
+if any_pending "${ZEN_IDS[@]}"; then ZEN_PART=1; fi
 
-TOTAL_STAGES=$((1 + LINUX_PART * 2 + VIVALDI_PART + BRAVE_PART + MAC_PART))
-for id in back-in "${LINUX_IDS[@]}" "${VIVALDI_IDS[@]}" brave-1080p60; do
+# Before you start; each part's opening stage, and the Linux part's closing one; one stage
+# per check left.
+TOTAL_STAGES=$((1 + LINUX_PART * 2 + BRAVE_PART + ZEN_PART))
+for id in back-in "${LINUX_IDS[@]}" "${BRAVE_IDS[@]}" "${ZEN_IDS[@]}"; do
   if pending "$id"; then TOTAL_STAGES=$((TOTAL_STAGES + 1)); fi
 done
-if (( MAC_PART )); then
-  for id in "${MAC_STEPS[@]}"; do if pending "$id"; then TOTAL_STAGES=$((TOTAL_STAGES + 1)); fi; done
-fi
 
 banner "graeae 0.1: the owner's checks on real machines"
 
 # ── Before you start ──────────────────────────────────────────────────────
 
 stage "Before you start"
-say "On hand: the Windows 11 PC with Chrome, Vivaldi and Brave, a real webcam, a game you can"
-say "run windowed at 1080p, a game started through a launcher (Steam, Epic, Battle.net…), and"
-say "a Mac with current Chrome if you have one. Set the Windows monitor to 120 Hz: at 144 Hz"
-say "Chrome captures at 48 fps (the README's 144 Hz caveat)."
+say "On hand: the Windows 11 PC with Chrome, Brave and Zen, a real webcam, a game you can run"
+say "windowed at 1080p, and a game started through a launcher (Steam, Epic, Battle.net…). Set"
+say "the Windows monitor to 120 Hz: at 144 Hz Chrome captures at 48 fps (the README's 144 Hz"
+say "caveat)."
 printf '\n'
 say "Everything happens on graeae-test, never the old prototype. Its address is"
 say "https://graeae-test.<your workers.dev subdomain>.workers.dev; the subdomain is under"
@@ -600,24 +599,25 @@ if (( LINUX_PART )); then
   pause "Press Enter once $LINUX_NAME is removed…"
 fi
 
-# ── 3. Ticket 32 on Windows, with Vivaldi as the viewer ───────────────────
+# ── 3. Ticket 32 on Windows, with Brave as the viewer ─────────────────────
 
-if (( VIVALDI_PART )); then
-  stage "Vivaldi joins the room as a second member"
-  say "The next checks need a second browser on Windows: Chrome shares, Vivaldi watches, and"
-  say "later the other way round. If Vivaldi is already in from an earlier run, just open the"
+if (( BRAVE_PART )); then
+  stage "Brave joins the room as a second member"
+  say "The next checks need a second browser on Windows: Chrome shares, Brave watches, and"
+  say "later the other way round. If Brave is already in from an earlier run, just open the"
   say "room there and go on."
   printf '\n'
-  step "In Chrome, the gear, Invites: name it \"$OWNER_NAME (Vivaldi)\", tick this room, Create and copy link."
-  step "Open the link in Vivaldi, press the button, and land in the same room."
-  step "Arrange the two windows so you can see Vivaldi's stage (a second monitor helps)."
-  pause "Press Enter once Vivaldi is in the room…"
+  step "In Chrome, the gear, Invites: name it \"$OWNER_NAME (Brave)\", tick this room, Create and copy link."
+  step "Open the link in Brave, press the button, and land in the same room. If Brave blocks"
+  step "anything with its Shields, note it: the checks are at Brave's default settings."
+  step "Arrange the two windows so you can see Brave's stage (a second monitor helps)."
+  pause "Press Enter once Brave is in the room…"
 fi
 
 if pending t32-webcam; then
   stage "Ticket 32: a real webcam in a tile"
   step "In Chrome: Share webcam (your real one). Your own preview should be mirrored and read as a mirror."
-  step "In Vivaldi: watch your webcam. A 4:3 camera sits between bars in its 16:9 frame: does it look"
+  step "In Brave: watch your webcam. A 4:3 camera sits between bars in its 16:9 frame: does it look"
   step "intended, not broken? Look in dark and in light (avatar menu), maximised and in a smaller window."
   note "Leave the webcam on: the strip check uses it."
   record t32-webcam "Ticket 32: a real webcam in a tile, and the mirrored own preview, on Windows"
@@ -628,7 +628,7 @@ if pending t32-game; then
   step "Start a game, windowed or borderless at 1920x1080, with the monitor at 120 Hz."
   step "In Chrome: Share screen, the Window tab, the game, Share. Chrome's preview shows all of"
   step "the game; there should be no \"Encoded in software…\" line under it."
-  step "In Vivaldi: watch your screen and play for a minute. Does the game look right in its tile:"
+  step "In Brave: watch your screen and play for a minute. Does the game look right in its tile:"
   step "smooth, sharp, colours true? Look in dark and light."
   note "For the encoder and fps see the next checks; if you want them here, chrome://webrtc-internals in Chrome."
   record t32-game "Ticket 32: a real game in a tile, shared from Windows Chrome on the hardware encoder"
@@ -636,12 +636,12 @@ fi
 
 if pending t32-fullscreen-strip; then
   stage "Ticket 32: fullscreen, and the strip"
-  say "Chrome is sharing your webcam and the game; Vivaldi watches both."
-  step "In Vivaldi, hover the game's tile and press Fullscreen: it fills the screen on the dark"
+  say "Chrome is sharing your webcam and the game; Brave watches both."
+  step "In Brave, hover the game's tile and press Fullscreen: it fills the screen on the dark"
   step "letterbox, the pill shows in a corner while you move the mouse. Esc to leave."
   step "Hover the webcam's tile and press Focus: the game drops to the strip at 96px. Does the game"
   step "read as a picture, and does the caption keep your name whole (the kind gives way first)?"
-  step "Look in dark and light. Then Back to the grid, and stop the webcam in Chrome."
+  step "Look in dark and light. Then Back to the grid, and stop the webcam and the game's share in Chrome."
   record t32-fullscreen-strip "Ticket 32: a real game fullscreen and in the strip, on Windows"
 fi
 
@@ -688,18 +688,7 @@ ask_line() {
   printf -v "$1" '%s' "${input:-?}"
 }
 
-if pending vivaldi-1080p60; then
-  stage "v1/21: Vivaldi shares a game at 1080p60 with hardware H.264"
-  browser_check vivaldi-1080p60 Vivaldi vivaldi
-fi
-
-if (( BRAVE_PART )); then
-  stage "Brave joins the room as a third member"
-  step "In Chrome, the gear, Invites: name it \"$OWNER_NAME (Brave)\", tick this room, Create and copy link."
-  step "Open the link in Brave, press the button, and land in the same room. If Brave blocks"
-  step "anything with its Shields, note it: the check is at Brave's default settings."
-  pause "Press Enter once Brave is in the room…"
-
+if pending brave-1080p60; then
   stage "v1/21: Brave shares a game at 1080p60 with hardware H.264"
   browser_check brave-1080p60 Brave brave
 fi
@@ -710,68 +699,68 @@ if pending launcher-audio; then
   step "Make the launcher or another app sound too if you can (a friend's message, a store video,"
   step "music in another window), so a leak would be heard."
   step "In Chrome: Share screen, the Window tab, the game's window (not the launcher), audio on, Share."
-  step "In Vivaldi: watch it and listen for 30 seconds or so."
-  note "Pass: Vivaldi hears the game and nothing else. Fail: launcher or other sound comes through,"
+  step "In Brave: watch it and listen for 30 seconds or so."
+  note "Pass: Brave hears the game and nothing else. Fail: launcher or other sound comes through,"
   note "or no game sound at all. Name the game and the launcher in the note."
   record launcher-audio "v1/21: a launcher-started game's window shared from Windows Chrome; the viewer hears only the game"
+  note "Stop the share in Chrome."
+  pause "Press Enter to go on…"
 fi
 
-# ── 5. macOS ──────────────────────────────────────────────────────────────
+# ── 5. Zen at the Firefox level (v1 ticket 21) ────────────────────────────
 
-if (( MAC_PART )); then
-  stage "macOS: the nine-step pass in current Chrome"
-  if ! confirm "Do you have a Mac to test on?"; then
-    _append "- $(date '+%Y-%m-%d %H:%M %z') · \`macos\` · **skip** · macOS: the nine-step pass in current Chrome · no Mac"
-    DONE_THIS_RUN+=("macos: skip (no Mac)")
-    printf '  %s✓ recorded%s macos: no Mac\n\n' "$GREEN" "$RESET"
-    warn "Then the README's Platforms table should list macOS as untested (best effort), not"
-    warn "Limited: tell the agent that picks up ticket 25."
-    pause "Press Enter to go on…"
-    for id in "${MAC_STEPS[@]}"; do if pending "$id"; then TOTAL_STAGES=$((TOTAL_STAGES - 1)); fi; done
-  else
-    step "On the Mac, update Chrome (chrome://settings/help) and note its version and the macOS version."
-    step "Give Chrome on the Mac Screen Recording permission when macOS asks (System Settings,"
-    step "Privacy & Security); Chrome must restart after it."
-    ask MAC_CHROME "Chrome version on the Mac:"
-    write_env MAC_CHROME "$MAC_CHROME"
-    ask MACOS_VERSION "macOS version:"
-    write_env MACOS_VERSION "$MACOS_VERSION"
-    MAC="Chrome $MAC_CHROME, macOS $MACOS_VERSION"
+if (( ZEN_PART )); then
+  stage "Zen joins the room as a third member"
+  say "Zen is built on Firefox, so it gets the Windows Firefox row's promise: it watches"
+  say "everything with screen audio and shares a webcam fully; its screen share is video only,"
+  say "with no quality promise. If Zen is already in from an earlier run, just open the room there."
+  printf '\n'
+  step "Update Zen (its menu, Help, About Zen) and note its version."
+  ask ZEN_VERSION "Zen version:"
+  write_env ZEN_VERSION "$ZEN_VERSION"
+  step "In Chrome, the gear, Invites: name it \"$OWNER_NAME (Zen)\", tick this room, Create and copy link."
+  step "Open the link in Zen, press the button, and land in the same room."
+  pause "Press Enter once Zen is in the room…"
+fi
+ZEN="Zen ${ZEN_VERSION:-?} on Windows 11"
 
-    mac_step() {
-      local n="$1" title="$2"; shift 2
-      pending "macos-$n" || return 0
-      stage "macOS step $n: $title"
-      local line
-      for line in "$@"; do step "$line"; done
-      record "macos-$n" "macOS step $n: $title" "$MAC"
-    }
-    mac_step 1 "open an invite, press the button, land in the room" \
-      "In Windows Chrome, the gear, Invites: name it \"$OWNER_NAME (Mac)\", tick this room, Create and copy link." \
-      "Open it in Chrome on the Mac and press the button: you land in the room."
-    mac_step 2 "reload: the device is still remembered" \
-      "Reload the room on the Mac: it opens straight into the room, not an invite or a dead end."
-    mac_step 3 "watch a Windows Chromium member's screen share: picture and screen audio" \
-      "In Windows Chrome, share a window or screen that plays sound, with its audio." \
-      "On the Mac, watch it: you see it moving and hear it (click if it says \"Click for sound\")."
-    mac_step 4 "watch a webcam share" \
-      "In Windows Chrome, Share webcam. On the Mac, watch it." \
-      "Then stop both shares in Windows Chrome."
-    mac_step 5 "share a tab playing sound: a Windows viewer sees and hears it" \
-      "On the Mac, play a video in a Chrome tab. In graeae, Share screen, the Chrome Tab tab, that tab, audio on." \
-      "In Windows Chrome, watch it: you see and hear it. Stop the share on the Mac."
-    mac_step 6 "share a window: seen, with the \"video only\" line unless the picker offered audio" \
-      "On the Mac, Share screen, the Window tab, any window." \
-      "Windows Chrome sees it. Under the Mac's preview: \"Video only. No one hears this share.\" (unless audio was offered). Stop it."
-    mac_step 7 "share the whole screen: the same" \
-      "On the Mac, Share screen, Entire screen." \
-      "Windows Chrome sees it, and the Mac shows the \"video only\" line unless audio was offered. Stop it."
-    mac_step 8 "share a webcam" \
-      "On the Mac, Share webcam (allow the camera). Windows Chrome watches and sees it."
-    mac_step 9 "stop a share from graeae and from the browser's own control" \
-      "With the Mac's webcam or screen shared and Windows Chrome watching, press graeae's Stop on the Mac: it ends for Windows." \
-      "Share the screen again, then press Chrome's own \"Stop sharing\" bar: it ends for Windows too."
-  fi
+if pending zen-watch; then
+  stage "v1/21: Zen watches a Chrome screen share with its audio"
+  step "On Windows, make something play sound: a game, or a video in another window."
+  step "In Chrome: Share screen, the Window tab, that window, with its audio on, Share."
+  step "In Zen: watch it for a minute and listen (click the picture if it says \"Click for sound\")."
+  note "Pass: Zen shows it moving smoothly and plays its sound, and the caption has no \"video only\"."
+  record zen-watch "v1/21: Zen on Windows 11 watches a Windows Chrome screen share, picture and screen audio" "$ZEN"
+  note "Stop the share in Chrome."
+  pause "Press Enter to go on…"
+fi
+
+if pending zen-webcam; then
+  stage "v1/21: Zen shares a webcam"
+  step "In Zen: Share webcam, and allow the camera when Zen asks. Your own preview is mirrored."
+  step "In Chrome: watch it. For its size and rate, open chrome://webrtc-internals in a new tab,"
+  step "pick graeae-test's connection, Stats Tables, the inbound-rtp entry with kind=video."
+  ask_line size "frameWidth x frameHeight in Chrome (1280 x 720 is the aim):"
+  ask_line fps "framesPerSecond in Chrome (30 is the aim):"
+  note "Pass: Chrome sees the webcam moving, at about 1280x720 and 30 fps (less only if the camera"
+  note "itself gives less)."
+  record zen-webcam "v1/21: Zen on Windows 11 shares a webcam, watched in Windows Chrome" "$ZEN; Chrome read $size at $fps fps"
+  note "Stop the webcam in Zen."
+  pause "Press Enter to go on…"
+fi
+
+if pending zen-screen; then
+  stage "v1/21: Zen shares a screen as video only"
+  step "In Zen: Share screen. The first time, a notice comes before the picker; it says \"In Firefox,"
+  step "a screen share is video only…\". Say in the note whether that reads right in Zen."
+  step "In Zen's picker, choose a window that plays sound (or the whole screen), and Allow."
+  step "Under Zen's own preview: \"Video only. No one hears this share.\""
+  step "In Chrome: watch it for a minute."
+  note "Pass: Chrome sees it moving, its caption says \"screen · video only\", and nothing is heard."
+  note "Smoothness and sharpness are not promised, but say how it looked."
+  record zen-screen "v1/21: Zen on Windows 11 shares a screen, seen in Windows Chrome as video only" "$ZEN"
+  note "Stop the share in Zen."
+  pause "Press Enter to go on…"
 fi
 
 finish
@@ -783,11 +772,7 @@ else
 fi
 left=()
 for id in "${ALL_IDS[@]}"; do
-  case "$id" in
-    macos) continue ;;
-    macos-*) if recorded macos || recorded "$id"; then continue; fi ;;
-    *) if recorded "$id"; then continue; fi ;;
-  esac
+  if recorded "$id"; then continue; fi
   left+=("$id")
 done
 if (( ${#left[@]} )); then
