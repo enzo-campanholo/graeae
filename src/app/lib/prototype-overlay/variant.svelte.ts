@@ -17,7 +17,15 @@ const isKey = (value: unknown): value is VariantKey => VARIANTS.some((variant) =
 
 function initial(): VariantKey {
   const fromAddress = new URLSearchParams(window.location.search).get("variant");
-  if (isKey(fromAddress)) return fromAddress;
+  if (isKey(fromAddress)) {
+    // Kept for the tab, since the overlay's own address leaves `?variant` out.
+    try {
+      sessionStorage.setItem(KEY, fromAddress);
+    } catch {
+      // No storage: this page only.
+    }
+    return fromAddress;
+  }
   try {
     const stored = sessionStorage.getItem(KEY);
     if (isKey(stored)) return stored;

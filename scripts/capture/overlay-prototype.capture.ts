@@ -67,6 +67,7 @@ test("the overlay variants", async ({ browser, baseURL }) => {
     // The gear: People, with Bia picked.
     await owner.getByRole("link", { name: "Owner page" }).click();
     await expect(overlay.getByRole("heading", { name: "People", exact: true })).toBeVisible();
+    await expect(overlay).toHaveAttribute("data-variant", key);
     await overlay.getByRole("region", { name: "Members" }).getByRole("button", { name: /Bia/ }).click();
     await settle(owner);
     await shoot(owner, `${slug}--owner-people`);
@@ -80,10 +81,12 @@ test("the overlay variants", async ({ browser, baseURL }) => {
     // A reload keeps the overlay and the room under it; back steps to the last section.
     await owner.reload();
     await expect(overlay.getByRole("heading", { name: "Usage", exact: true })).toBeVisible();
+    await expect(overlay).toHaveAttribute("data-variant", key);
     // Without `?sample` in the overlay's address, the real room is the one under it.
     await expect(owner.getByRole("heading", { name: "First room" })).toBeAttached();
     await owner.goBack();
     await expect(overlay.getByRole("heading", { name: "People", exact: true })).toBeVisible();
+    await expect(overlay).toHaveAttribute("data-variant", key);
     await owner.goForward();
     await expect(overlay.getByRole("heading", { name: "Usage", exact: true })).toBeVisible();
 
@@ -97,6 +100,7 @@ test("the overlay variants", async ({ browser, baseURL }) => {
     await owner.getByRole("menuitem", { name: "You" }).click();
     const you = owner.getByRole("dialog", { name: "You" });
     await expect(you.getByRole("heading", { name: "Devices" })).toBeVisible();
+    await expect(you).toHaveAttribute("data-variant", key);
     await settle(owner);
     await shoot(owner, `${slug}--you`);
     await owner.keyboard.press("Escape");
@@ -107,6 +111,7 @@ test("the overlay variants", async ({ browser, baseURL }) => {
     await expect(owner.getByRole("heading", { name: "Rooms" })).toBeVisible();
     await owner.getByRole("link", { name: "Owner page" }).click();
     await expect(overlay.getByRole("heading", { name: "People", exact: true })).toBeVisible();
+    await expect(overlay).toHaveAttribute("data-variant", key);
     await settle(owner);
     await shoot(owner, `${slug}--owner-over-rooms`);
   }

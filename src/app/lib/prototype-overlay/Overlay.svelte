@@ -68,6 +68,7 @@
       bind:this={panel}
       tabindex="-1"
       role="dialog"
+      data-variant={variant.current}
       aria-label={kind === "you" ? "You" : "Owner"}
       class="bg-stage fixed z-40 overflow-hidden rounded-xl outline-none"
       style:left="{stageRect?.left ?? 8}px"
@@ -92,6 +93,7 @@
         bind:this={panel}
         tabindex="-1"
         role="dialog"
+        data-variant={variant.current}
         aria-modal="true"
         aria-label={kind === "you" ? "You" : "Owner"}
         class={[
@@ -108,6 +110,7 @@
       bind:this={panel}
       tabindex="-1"
       role="dialog"
+      data-variant={variant.current}
       aria-label={kind === "you" ? "You" : "Owner"}
       class="bg-stage fixed top-2 right-2 bottom-2 z-40 overflow-hidden rounded-xl outline-none"
       style:width="{SIDE_WIDTH[kind]}px"
