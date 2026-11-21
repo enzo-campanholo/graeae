@@ -27,6 +27,7 @@
 //
 // Commands, one a line (a "quoted name" may hold spaces):
 //   share screen|webcam          press Share screen (and the first-time notice) or Share webcam
+//   handover screen|webcam       "Share from here" in the offer a share of yours live elsewhere brings
 //   stop screen|webcam           graeae's Stop
 //   stopbar                      the browser's own "Stop sharing" bar, clicked as a person
 //                                would (needs xdotool: XDO=<path>)
@@ -37,6 +38,8 @@
 //   focus|unfocus|fullscreen|hover <name> screen|webcam     on a stage tile
 //   exitfullscreen | reload | offline | online
 //   reopen                       the room in a new tab, with no click on it yet
+//   newtab                       the room in another tab, keeping this one open; the new one is driven
+//   tab <n>                      drive tab n (1 is the first) and bring it to the front
 //   content <kind> <title> [WxH] [X,Y] [fps] [tone Hz]   opens scripts/real-media/content.html in
 //                                a window of its own and clicks it so it plays sound;
 //                                kind is game, document, tone or portrait
@@ -114,7 +117,10 @@ await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
 const contentBase = `http://localhost:${(server.address() as { port: number }).port}/content.html`;
 
 const context = await launch();
+/** Every tab of the room open, in the order opened; `page` is the one driven. */
+const tabs: Page[] = [];
 let page = listen(context.pages()[0] ?? (await context.newPage()));
+tabs.push(page);
 let content: Page | null = null;
 let contentTitle: string | null = null;
 let hovered: { name: string; kind: string } | null = null;
@@ -137,11 +143,12 @@ process.on("SIGINT", () => void quit());
 
 /** `tab`, with what its console says of captures and errors printed. */
 function listen(tab: Page): Page {
+  const which = () => (tabs.length > 1 ? `tab ${tabs.indexOf(tab) + 1}: ` : "");
   tab.on("console", (message) => {
-    if (message.text().startsWith("[real-media]")) say(message.text().slice(13));
-    else if (message.type() === "error") say(`page error: ${message.text()}`);
+    if (message.text().startsWith("[real-media]")) say(`${which()}${message.text().slice(13)}`);
+    else if (message.type() === "error") say(`${which()}page error: ${message.text()}`);
   });
-  tab.on("pageerror", (error) => say(`page exception: ${error.message}`));
+  tab.on("pageerror", (error) => say(`${which()}page exception: ${error.message}`));
   return tab;
 }
 
@@ -207,6 +214,16 @@ async function run(line: string) {
       }
       return;
     }
+    case "handover": {
+      // After `share` while that kind of yours is live from another tab or device.
+      const kindName = rest[0] === "webcam" ? "webcam" : "screen";
+      await page.getByRole("dialog", { name: `Your ${kindName} is already live` }).getByRole("button", { name: "Share from here" }).click();
+      const notice = page.getByRole("dialog", { name: "Before you pick" });
+      if (await notice.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await notice.getByRole("button", { name: "Choose what to share" }).click();
+      }
+      return;
+    }
     case "stop":
       return page.getByRole("button", { name: `Stop sharing your ${kind(0)}` }).click();
     case "stopbar":
@@ -221,7 +238,7 @@ async function run(line: string) {
     case "everything":
     case "webcams":
     case "nothing":
-      return page.getByRole("button", { name: { everything: "Watch everything", webcams: "Watch every webcam", nothing: "Watch nothing" }[command] }).click();
+      return here.getByRole("button", { name: { everything: "Watch everything", webcams: "Watch every webcam", nothing: "Watch nothing" }[command] }).click();
     case "hover":
       hovered = { name: rest[0]!, kind: kind(1) };
       return hover();
@@ -244,9 +261,27 @@ async function run(line: string) {
       const old = page;
       page = listen(await context.newPage());
       cdp = null;
+      tabs[tabs.indexOf(old)] = page;
       await page.goto(readFileSync(join(profile, "room-address"), "utf8"));
       await old.close();
       return void (await page.getByRole("main", { name: "Stage" }).waitFor());
+    }
+    case "newtab": {
+      const opened = await context.newPage();
+      tabs.push(opened);
+      page = listen(opened);
+      cdp = null;
+      await page.goto(readFileSync(join(profile, "room-address"), "utf8"));
+      await page.getByRole("main", { name: "Stage" }).waitFor();
+      return say(`tab ${tabs.length} of ${tabs.length} is driven`);
+    }
+    case "tab": {
+      const chosen = tabs[Number(rest[0]) - 1];
+      if (!chosen) throw new Error(`no tab ${rest[0]}`);
+      page = chosen;
+      cdp = null;
+      await page.bringToFront();
+      return say(`tab ${rest[0]} of ${tabs.length} is driven`);
     }
     case "offline":
     case "online": {
