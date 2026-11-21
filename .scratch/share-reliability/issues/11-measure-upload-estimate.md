@@ -16,3 +16,7 @@ Not a decision: the facts that the fix for Chrome's low upload estimate waits on
 5. Optional, if cheap: a loopback page (two connections on one page, no media server), to separate Chrome's behaviour from the media server's.
 
 A datacentre line with software encoding will likely show the cap and the slow growth but few false falls; say what this run could not show, for the Windows evidence run. Answer with the readings, a chart or table per run, and the event log or readings saved under `.logs/` (gitignored), named in the answer.
+
+## Comments
+
+**2026-11-21, from [Readings in the logs](05-readings-in-the-logs.md).** Each tab's `stats` line on `graeae-test` (build `74cb885`) now carries `estimate` (`availableOutgoingBitrate`), `targetBitrate`, `limitedBy`, `encoder` and `capture`, every 15 seconds. So a run here can read its seconds from the pulled logs as well as from `member.ts`'s own lines. In that ticket's two short runs, the estimate held at 5.5 to 6.1 Mbps, with nothing lost and a 2 ms round trip.
