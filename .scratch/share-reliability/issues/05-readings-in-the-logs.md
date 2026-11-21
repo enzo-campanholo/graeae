@@ -1,7 +1,7 @@
 # Readings in the logs
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: none
 Map: ../map.md
 

@@ -18,7 +18,7 @@ import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
-import { pairSummary, STATS_EVERY_MS, streamSummaries, type Counted } from "./stats.ts";
+import { pairSummary, STATS_EVERY_MS, streamSummaries, type CaptureNow, type Counted } from "./stats.ts";
 import { every } from "../ticker.ts";
 import { tabLog } from "../log.ts";
 
@@ -129,11 +129,27 @@ export class BrowserMediaClient implements MediaClient {
       void connection
         .getStats()
         .then((stats) => {
-          for (const summary of streamSummaries(stats.values() as Iterable<StatsEntry>, counted)) tabLog.info("stats", { ...summary });
+          const summaries = streamSummaries(stats.values() as Iterable<StatsEntry>, counted, this.capturesNow());
+          for (const summary of summaries) tabLog.info("stats", { ...summary });
           return logPair();
         })
         .catch(() => undefined);
     });
+  }
+
+  /**
+   * Each sent picture's track as it is now, by its id: a shared tab's size moves with its
+   * viewport, so it is read at every summary, not only when the capture starts.
+   */
+  private capturesNow(): Map<string, CaptureNow> {
+    const now = new Map<string, CaptureNow>();
+    for (const capture of this.sending.keys()) {
+      for (const track of capture.stream?.getVideoTracks() ?? []) {
+        const { width, height, displaySurface } = track.getSettings() as MediaTrackSettings & { displaySurface?: string };
+        now.set(track.id, { surface: displaySurface, width, height });
+      }
+    }
+    return now;
   }
 
   renew(iceServers: IceServer[]) {

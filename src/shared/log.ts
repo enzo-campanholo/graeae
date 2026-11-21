@@ -85,13 +85,17 @@
 // - `stats`: every 15 seconds while sharing or watching, one line per stream:
 //   `direction`, `kind`, `mid`, `rid`, `bitrate`, `fps`, `width`, `height`,
 //   `packetsLost`, `jitter`, `rtt`, `layer` (the quality received), `limitedBy` (the
-//   encoder's `qualityLimitationReason`), `framesDropped`, `freezes`
+//   encoder's `qualityLimitationReason`), `framesDropped`, `freezes`; a picture sent
+//   adds `encoder`, `hardware`, `codec`, `targetBitrate`, `estimate` (the browser's
+//   `availableOutgoingBitrate`), `keyFrames`, `resolutionChanges` and `capture` (the
+//   track's `surface`, `width` and `height` at that reading); a picture received adds
+//   `decoder`, `freezeSeconds`, `pli`, `fir` and `nack`; a sound received, its `level`
 // - `error`: `window.onerror`, `unhandledrejection` and caught errors, with the stack
 //
 // The daily allowance. Estimated for 6 people for 5 hours, each sharing a webcam and
 // watching 3 shares, with one screen share at two qualities: the usage reports (every 5
 // seconds per tab with media, logged by both ends) are about 43,000 lines; `stats`
-// (about 5 streams per tab every 15 seconds) about 36,000; everything else a few
+// (about 5 streams per tab every 15 seconds, some 500 bytes each) about 36,000; everything else a few
 // thousand. About 85,000 lines in all, under half of the free plan's 200,000 a day, and
 // some 40 MB, far under the 0.5 GB a day it allows from 1 December 2026. It takes both of
 // the ticket's cuts to stay under half: `stats` every 15 seconds rather than 10 (at 10,

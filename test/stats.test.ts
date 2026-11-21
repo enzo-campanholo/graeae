@@ -86,4 +86,84 @@ describe("the media connection's statistics", () => {
       remote: { type: "host", protocol: "udp" },
     });
   });
+
+  // As Chromium 146 gives them for a tab shared with its sound, and for one watched.
+  it("say which encoder and codec a picture goes out on, the upload estimate, and the capture as it is now", () => {
+    const entries: StatsEntry[] = [
+      ...pair.map((entry) => (entry.type === "candidate-pair" ? { ...entry, availableOutgoingBitrate: 6_812_345.6 } : entry)),
+      { id: "SRC", type: "media-source", kind: "video", trackIdentifier: "track-1", width: 1912, height: 1011 },
+      { id: "C1", type: "codec", mimeType: "video/H264", sdpFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42E01F" },
+      {
+        id: "OUT",
+        type: "outbound-rtp",
+        kind: "video",
+        mid: "0",
+        timestamp: 1_000,
+        mediaSourceId: "SRC",
+        codecId: "C1",
+        encoderImplementation: "OpenH264",
+        powerEfficientEncoder: false,
+        targetBitrate: 6_500_000.4,
+        keyFramesEncoded: 4,
+        qualityLimitationResolutionChanges: 3,
+        qualityLimitationReason: "bandwidth",
+        pliCount: 2,
+      },
+      { id: "OUTA", type: "outbound-rtp", kind: "audio", mid: "1", timestamp: 1_000, codecId: "C2", targetBitrate: 128_000 },
+      { id: "C2", type: "codec", mimeType: "audio/opus" },
+      {
+        id: "IN",
+        type: "inbound-rtp",
+        kind: "video",
+        mid: "2",
+        timestamp: 1_000,
+        decoderImplementation: "D3D11VideoDecoder",
+        freezeCount: 2,
+        totalFreezesDuration: 1.23456,
+        pliCount: 5,
+        firCount: 0,
+        nackCount: 41,
+      },
+      { id: "INA", type: "inbound-rtp", kind: "audio", mid: "3", timestamp: 1_000, audioLevel: 0.0412345, nackCount: 1 },
+    ];
+    const captures = new Map([["track-1", { surface: "browser", width: 1912, height: 1011 }]]);
+
+    const [out, outAudio, inbound, inAudio] = streamSummaries(entries, new Map(), captures);
+
+    expect(out).toEqual({
+      direction: "out",
+      kind: "video",
+      mid: "0",
+      limitedBy: "bandwidth",
+      encoder: "OpenH264",
+      hardware: false,
+      codec: "H264 42e01f",
+      targetBitrate: 6_500_000,
+      estimate: 6_812_346,
+      keyFrames: 4,
+      resolutionChanges: 3,
+      capture: { surface: "browser", width: 1912, height: 1011 },
+    });
+    // The estimate is the connection's, so it rides on the picture sent alone.
+    expect(outAudio).toEqual({ direction: "out", kind: "audio", mid: "1", targetBitrate: 128_000 });
+    expect(inbound).toMatchObject({
+      direction: "in",
+      decoder: "D3D11VideoDecoder",
+      freezes: 2,
+      freezeSeconds: 1.235,
+      pli: 5,
+      fir: 0,
+      nack: 41,
+    });
+    expect(inbound).not.toHaveProperty("estimate");
+    expect(inAudio).toMatchObject({ direction: "in", kind: "audio", level: 0.041, nack: 1 });
+  });
+
+  it("leave out a capture whose track it was not told of", () => {
+    const entries: StatsEntry[] = [
+      { id: "SRC", type: "media-source", kind: "video", trackIdentifier: "track-2" },
+      { id: "OUT", type: "outbound-rtp", kind: "video", mid: "0", timestamp: 1_000, mediaSourceId: "SRC" },
+    ];
+    expect(streamSummaries(entries, new Map())[0]).not.toHaveProperty("capture");
+  });
 });
