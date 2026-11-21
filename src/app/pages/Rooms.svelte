@@ -8,7 +8,7 @@
   import { andList } from "$lib/words.js";
   import { heldBack } from "$lib/hold-back.js";
   import { holdUntil } from "$lib/swap.svelte.js";
-  import { navigate } from "../router/router.svelte.ts";
+  import { isOverlay, location, navigate, setUnder } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
 
   // The page's one connection to the list, for as long as it shows it.
@@ -26,7 +26,10 @@
 
   // A member with one room has nothing to choose, so they go straight into it.
   $effect(() => {
-    if (list?.rooms.length === 1) navigate(`/r/${list.rooms[0]!.address}`, { replace: true });
+    if (list?.rooms.length !== 1) return;
+    // PROTOTYPE: under an overlay opened fresh, the one room goes under it instead.
+    if (isOverlay(location.pathname)) setUnder(`/r/${list.rooms[0]!.address}`);
+    else navigate(`/r/${list.rooms[0]!.address}`, { replace: true });
   });
 
   const rooms = $derived(

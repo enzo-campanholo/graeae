@@ -17,6 +17,15 @@
   import { deviceLabel, timeAgo, timeLeft } from "$lib/words.js";
   import type { DeviceInvite, DeviceInviteAnswer, DeviceSummary, Me, MeAnswer } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
+  import X from "@lucide/svelte/icons/x";
+  import IconButton from "$lib/components/IconButton.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
+  import { getFrame } from "$lib/prototype-overlay/variant.svelte.js";
+
+  // PROTOTYPE (prototype/overlay): drawn in one of three frames when it opens over the
+  // room (see `$lib/prototype-overlay/`); the page of its own stays as it was.
+  const frame = getFrame();
+  const framed = $derived(frame?.variant() ?? null);
 
   const NAME_MAX = 40;
 
@@ -147,8 +156,47 @@
 
 {#if known.state === "refused"}
   <NothingHere />
+{:else if framed}
+  <PageTitle title="You · graeae" />
+  {#if framed === "A"}
+    <!-- A: a sheet in the stage's place; the heading on the room name's line. -->
+    <div class="relative h-full overflow-y-auto">
+      <div class="absolute top-2.5 right-2.5">{@render close()}</div>
+      <div class="mx-auto grid max-w-plain gap-8 px-10 pt-13 pb-16">
+        <h1 class="text-xl font-medium">You</h1>
+        {@render sections()}
+      </div>
+    </div>
+  {:else if framed === "B"}
+    <!-- B: a panel sized to what it holds, over the dimmed room. -->
+    <div class="grid max-h-[calc(100dvh-4rem)] gap-8 overflow-y-auto px-8 pt-6 pb-8">
+      <div class="-mr-4 flex items-center justify-between">
+        <h1 class="text-xl font-medium">You</h1>
+        {@render close()}
+      </div>
+      {@render sections()}
+    </div>
+  {:else}
+    <!-- C: a side panel; the close on the bar's tool row. -->
+    <div class="flex h-full flex-col">
+      <div class="flex h-header shrink-0 items-center justify-end px-2.5">{@render close()}</div>
+      <div class="grid min-h-0 flex-1 content-start gap-8 overflow-y-auto px-6 pb-10">
+        <h1 class="text-xl font-medium">You</h1>
+        {@render sections()}
+      </div>
+    </div>
+  {/if}
 {:else}
   <PlainPage title="You" you={false} gear={!!you?.owner} home={you?.home}>
+    {@render sections()}
+  </PlainPage>
+{/if}
+
+{#snippet close()}
+  <IconButton label="Close" key="Esc" onclick={() => frame?.close()}><X /></IconButton>
+{/snippet}
+
+{#snippet sections()}
     <Section title="Display name" description="The name everyone in your rooms sees.">
       <form class="grid gap-2" onsubmit={saveName}>
         <div class="flex gap-1.5">
@@ -288,5 +336,4 @@
         {/each}
       </div>
     </Section>
-  </PlainPage>
-{/if}
+{/snippet}

@@ -74,22 +74,70 @@ function segments(path: string): string[] {
   return path.split("/").filter(Boolean);
 }
 
+// PROTOTYPE (prototype/overlay): "You" and the owner page open over the page they were
+// opened from, which stays mounted underneath, so a room keeps its shares and watching.
+// Each overlay address carries, in its history entry, the address under it and how many
+// entries deep into the overlay it is, so a reload keeps both and Close goes back past
+// every section moved through. Opened fresh (a link, a bookmark), it goes over the list
+// of rooms.
+export const isOverlay = (pathname: string) =>
+  pathname === "/you" || pathname === "/owner" || pathname.startsWith("/owner/");
+
+interface OverlayState {
+  under: string;
+  depth: number;
+}
+
+function stateOf(value: unknown): OverlayState | null {
+  const state = value as Partial<OverlayState> | null;
+  return state && typeof state.under === "string" && typeof state.depth === "number"
+    ? { under: state.under, depth: state.depth }
+    : null;
+}
+
 class Location {
   pathname = $state(window.location.pathname);
+  /** The address under the overlay (with its search), while one is open. */
+  under = $state<string | null>(null);
+  /** How many history entries the overlay has added. 0 when it was opened fresh. */
+  depth = $state(0);
 }
 
 export const location = new Location();
 
+function readState() {
+  const overlay = isOverlay(window.location.pathname);
+  const state = overlay ? stateOf(history.state) : null;
+  location.pathname = window.location.pathname;
+  location.under = overlay ? (state?.under ?? "/") : null;
+  location.depth = state?.depth ?? 0;
+}
+readState();
+
 /** Moves to another page of the app without reloading it. `replace` leaves no history entry. */
 export function navigate(to: string, { replace = false }: { replace?: boolean } = {}) {
-  if (replace) history.replaceState(null, "", to);
-  else history.pushState(null, "", to);
-  location.pathname = window.location.pathname;
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- read once, not state
+  const target = new URL(to, window.location.origin).pathname;
+  let state: OverlayState | null = null;
+  if (isOverlay(target)) {
+    const from = isOverlay(location.pathname)
+      ? { under: location.under ?? "/", depth: location.depth }
+      : { under: window.location.pathname + window.location.search, depth: 0 };
+    state = { under: from.under, depth: replace ? from.depth : from.depth + 1 };
+  }
+  if (replace) history.replaceState(state, "", to);
+  else history.pushState(state, "", to);
+  readState();
 }
 
-window.addEventListener("popstate", () => {
-  location.pathname = window.location.pathname;
-});
+/** Closes the overlay: back past every entry it added, or onto what is under it when opened fresh. */
+export function closeOverlay() {
+  if (!isOverlay(location.pathname)) return;
+  if (location.depth > 0) history.go(-location.depth);
+  else navigate(location.under ?? "/", { replace: true });
+}
+
+window.addEventListener("popstate", readState);
 
 // Same-origin links move within the app instead of loading the page again.
 document.addEventListener("click", (event) => {
@@ -102,3 +150,9 @@ document.addEventListener("click", (event) => {
   event.preventDefault();
   navigate(url.pathname + url.search + url.hash);
 });
+
+/** PROTOTYPE: puts another page under the open overlay, as the list of rooms does for a member with one room. */
+export function setUnder(to: string) {
+  location.under = to;
+  history.replaceState({ under: to, depth: location.depth } satisfies OverlayState, "", window.location.href);
+}

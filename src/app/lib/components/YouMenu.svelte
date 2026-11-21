@@ -15,6 +15,7 @@
     owner = false,
     side = "bottom",
     large = false,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- PROTOTYPE
     newTab = false,
   }: {
     /** Your display name, or null while it is still loading: then a plain person icon. */
@@ -24,7 +25,7 @@
     side?: "bottom" | "right";
     /** The rail's size. */
     large?: boolean;
-    /** From a room, "You" opens in a new tab, so the room, its shares and its watching carry on. */
+    /** PROTOTYPE: no longer used; "You" opens over the room instead of in a new tab. */
     newTab?: boolean;
   } = $props();
 
@@ -66,7 +67,7 @@
       </div>
       <DropdownMenu.Item class={itemClass}>
         {#snippet child({ props })}
-          <a {...props} href="/you" target={newTab ? "_blank" : undefined}><UserRound />You</a>
+          <a {...props} href="/you"><UserRound />You</a>
         {/snippet}
       </DropdownMenu.Item>
       <DropdownMenu.Separator class="bg-raised-2 m-1 h-px" />

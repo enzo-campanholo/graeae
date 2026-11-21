@@ -56,7 +56,6 @@
     <!-- A new tab, so the room, its shares and its watching carry on meanwhile. -->
     <a
       href="/you"
-      target="_blank"
       class="hover:text-fg flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Avatar {name} />

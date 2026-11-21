@@ -39,7 +39,7 @@
     <span class="flex-1"></span>
     <!-- New tabs, so the room, its shares and its watching carry on meanwhile. -->
     {#if gear}
-      <IconButton label="Owner page" href="/owner" target="_blank"><Settings /></IconButton>
+      <IconButton label="Owner page" href="/owner"><Settings /></IconButton>
     {/if}
     <YouMenu name={me} owner={gear} newTab />
   </div>

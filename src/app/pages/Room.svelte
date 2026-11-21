@@ -35,6 +35,7 @@
   import type { Sharing } from "$lib/share.js";
   import type { Params } from "../router/router.svelte.ts";
   import NothingHere from "./NothingHere.svelte";
+  import { SIDE_WIDTH, variant } from "$lib/prototype-overlay/variant.svelte.js";
 
   let { params }: { params: Params } = $props();
 
@@ -259,7 +260,8 @@
   // A room still on its way to the screen leaves keys to the page that is.
   const shown = viewShown();
   function onkeydown(event: KeyboardEvent) {
-    if (!shown()) return;
+    // PROTOTYPE: keys go to the overlay while one is open over the room.
+    if (!shown() || variant.open) return;
     if (event.key === "[" && isShortcut(event)) {
       event.preventDefault();
       fold(!folded);
@@ -463,6 +465,12 @@
             panel={askOnStage ? askFirstOnStage : undefined} />{:else}<Loading />{/if}
       {/snippet}
     </Stage>
+    <!-- PROTOTYPE: variant C's side panel takes room beside the stage, which shrinks to make it. -->
+    <div
+      class="shrink-0 transition-[width] duration-200 ease-out motion-reduce:transition-none"
+      style:width={variant.open && variant.current === "C" ? `${SIDE_WIDTH[variant.open] + 8}px` : "0px"}
+      aria-hidden="true"
+    ></div>
   </div>
 {/if}
 

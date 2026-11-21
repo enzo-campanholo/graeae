@@ -7,11 +7,15 @@
   // The owner page: four sections in a navigation on the left, with the usage meter
   // always in view at its foot, and the chosen section in the inset panel. The meter and
   // the Usage section read the same figures, kept fresh while the page is in view.
+  //
+  // PROTOTYPE (prototype/overlay): drawn in one of three frames when it opens over the
+  // room (see `$lib/prototype-overlay/`); the page of its own stays as it was.
   import Gauge from "@lucide/svelte/icons/gauge";
   import House from "@lucide/svelte/icons/house";
   import Link from "@lucide/svelte/icons/link";
   import Users from "@lucide/svelte/icons/users";
   import DoorOpen from "@lucide/svelte/icons/door-open";
+  import X from "@lucide/svelte/icons/x";
   import type { Component } from "svelte";
   import { sample } from "$sample";
   import IconButton from "$lib/components/IconButton.svelte";
@@ -23,6 +27,7 @@
   import PageTitle from "$lib/components/PageTitle.svelte";
   import Swap from "$lib/components/Swap.svelte";
   import { OwnerUsage } from "$lib/owner-usage.svelte.js";
+  import { getFrame } from "$lib/prototype-overlay/variant.svelte.js";
   import type { MeAnswer } from "../../shared/api.ts";
   import NothingHere from "./NothingHere.svelte";
   import Invites from "./owner/Invites.svelte";
@@ -31,6 +36,9 @@
   import Usage from "./owner/Usage.svelte";
 
   let { section }: { section: OwnerSection } = $props();
+
+  const frame = getFrame();
+  const framed = $derived(frame?.variant() ?? null);
 
   const sections: Record<OwnerSection, { label: string; icon: Component; description: string }> = {
     people: {
@@ -62,10 +70,10 @@
 
   // The instance refuses the owner page to anyone else, but a page reached inside the
   // app was never fetched, so it asks who this is before showing anything.
-  let me = $state<Load<MeAnswer>>(
-    sample ? { state: "loaded", data: { name: "", owner: true, devices: [], home: "/" } } : { state: "loading" },
-  );
-  if (!sample) load<MeAnswer>("/api/me", (value) => (me = value));
+  // PROTOTYPE: under `?sample` the browser is the fake instance's real owner, so the
+  // sections show what the instance holds.
+  let me = $state<Load<MeAnswer>>({ state: "loading" });
+  load<MeAnswer>("/api/me", (value) => (me = value));
   const owner = $derived(me.state === "loaded" && me.data.owner);
   // The house goes straight to the owner's one room, not through the list's redirect.
   // A new room can make it the list, so the answer is asked again after one is made. A
@@ -82,9 +90,9 @@
   // Asked for only once the instance has said this is the owner.
   const usage = new OwnerUsage();
   $effect(() => {
-    if (owner && !sample) return usage.watch();
+    if (owner) return usage.watch();
   });
-  const meter = $derived(sample?.owner ?? usage.figures);
+  const meter = $derived(usage.figures ?? sample?.owner);
 
   // The page appears with the owner known and the meter's figures in; its section holds it too.
   holdUntil(() => me.state !== "loading" && (!owner || !!meter));
@@ -96,6 +104,49 @@
   <main class="grid min-h-dvh place-items-center p-6"><Loading /></main>
 {:else if !owner}
   <NothingHere />
+{:else if framed === "A"}
+  <!-- A: a sheet in the stage's place. Its tool row and "Owner" sit on the bar's lines. -->
+  <div class="flex h-full">
+    <aside class="flex w-60 shrink-0 flex-col px-2 pb-1">
+      <div class="h-header"></div>
+      <p class="px-2 text-xl font-medium">Owner</p>
+      {@render navigation("column")}
+      {@render usageLink("mt-auto")}
+    </aside>
+    <main class="relative min-w-0 flex-1 overflow-y-auto">
+      <div class="absolute top-2.5 right-2.5">{@render close()}</div>
+      <div class="mx-auto max-w-owner px-10 pt-13 pb-16">{@render body()}</div>
+    </main>
+  </div>
+{:else if framed === "B"}
+  <!-- B: the owner page itself, in miniature, in a panel over the dimmed room. -->
+  <div class="flex h-full py-2 pr-2">
+    <aside class="flex w-60 shrink-0 flex-col px-2">
+      <header>
+        <div class="flex h-header items-center"></div>
+        <p class="px-2 text-xl font-medium">Owner</p>
+      </header>
+      {@render navigation("column")}
+      {@render usageLink("mt-auto mb-1")}
+    </aside>
+    <main class="bg-stage relative min-w-0 flex-1 overflow-y-auto rounded-xl">
+      <div class="absolute top-2.5 right-2.5">{@render close()}</div>
+      <div class="mx-auto max-w-owner px-10 pt-9 pb-16">{@render body()}</div>
+    </main>
+  </div>
+{:else if framed === "C"}
+  <!-- C: a side panel. The sections run along its top, the meter at its foot. -->
+  <div class="flex h-full flex-col" style="--owner-side: 300px">
+    <div class="flex h-header shrink-0 items-center gap-1 px-2.5">
+      {@render navigation("row")}
+      <span class="flex-1"></span>
+      {@render close()}
+    </div>
+    <main class="min-h-0 flex-1 overflow-y-auto">
+      <div class="px-6 pt-5 pb-10">{@render body()}</div>
+    </main>
+    <div class="shrink-0 px-4 pb-2">{@render usageLink("")}</div>
+  </div>
 {:else}
   <div class="flex h-dvh py-2 pr-2">
     <aside class="flex w-bar shrink-0 flex-col px-2">
@@ -105,53 +156,71 @@
         <div class="flex h-header items-center"><IconButton label="Rooms" href={home}><House /></IconButton></div>
         <p class="px-2 text-xl font-medium">Owner</p>
       </header>
-      <nav class="grid gap-0.5 pt-3" aria-label="Owner page">
-        {#each Object.entries(sections) as [key, item] (key)}
-          {@const Icon = item.icon}
-          <a
-            href="/owner/{key}"
-            aria-current={key === shown ? "page" : undefined}
-            class={[
-              "flex h-row items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-icon [&_svg]:stroke-[1.75]",
-              key === shown ? "bg-raised text-fg" : "text-muted-foreground hover:bg-raised hover:text-fg",
-            ]}
-          >
-            <Icon />{item.label}
-          </a>
-        {/each}
-      </nav>
-      <a
-        href="/owner/usage"
-        class="hover:bg-raised mt-auto mb-1 rounded-md p-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {#if meter}
-          <UsageMeter used={meter.used} budget={meter.budget} />
-        {:else}
-          <div class="grid gap-2" aria-hidden="true" {@attach heldBack}>
-            <span class="bg-raised h-3 w-28 rounded-sm"></span>
-            <span class="bg-raised h-1 rounded-full"></span>
-          </div>
-        {/if}
-      </a>
+      {@render navigation("column")}
+      {@render usageLink("mt-auto mb-1")}
     </aside>
 
     <main class="bg-stage min-w-0 flex-1 overflow-y-auto rounded-xl">
-      <div class="mx-auto max-w-owner px-10 pt-9 pb-16">
-        <Swap key={section} value={section} onshow={(key) => (shown = key)}>
-          {#snippet children(key)}
-            <div class="grid gap-8">
-              <div class="grid gap-1">
-                <h1 class="text-xl font-medium">{sections[key].label}</h1>
-                <p class="text-muted-foreground">{sections[key].description}</p>
-              </div>
-              {#if key === "people" && !sample}<People />{/if}
-              {#if key === "invites" && !sample}<Invites />{/if}
-              {#if key === "rooms" && !sample}<OwnerRooms oncreated={refreshHome} />{/if}
-              {#if key === "usage" && !sample}<Usage {usage} />{/if}
-            </div>
-          {/snippet}
-        </Swap>
-      </div>
+      <div class="mx-auto max-w-owner px-10 pt-9 pb-16">{@render body()}</div>
     </main>
   </div>
 {/if}
+
+{#snippet close()}
+  <IconButton label="Close" key="Esc" onclick={() => frame?.close()}><X /></IconButton>
+{/snippet}
+
+{#snippet navigation(layout: "column" | "row")}
+  <nav class={layout === "column" ? "grid gap-0.5 pt-3" : "flex gap-0.5"} aria-label="Owner page">
+    {#each Object.entries(sections) as [key, item] (key)}
+      {@const Icon = item.icon}
+      <a
+        href="/owner/{key}"
+        aria-current={key === shown ? "page" : undefined}
+        class={[
+          "flex items-center gap-2.5 rounded-md px-2 font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-icon [&_svg]:stroke-[1.75]",
+          layout === "column" ? "h-row" : "h-control pr-3",
+          key === shown ? "bg-raised text-fg" : "text-muted-foreground hover:bg-raised hover:text-fg",
+        ]}
+      >
+        <Icon />{item.label}
+      </a>
+    {/each}
+  </nav>
+{/snippet}
+
+{#snippet usageLink(place: string)}
+  <a
+    href="/owner/usage"
+    class={[
+      "hover:bg-raised block rounded-md p-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      place,
+    ]}
+  >
+    {#if meter}
+      <UsageMeter used={meter.used} budget={meter.budget} />
+    {:else}
+      <div class="grid gap-2" aria-hidden="true" {@attach heldBack}>
+        <span class="bg-raised h-3 w-28 rounded-sm"></span>
+        <span class="bg-raised h-1 rounded-full"></span>
+      </div>
+    {/if}
+  </a>
+{/snippet}
+
+{#snippet body()}
+  <Swap key={section} value={section} onshow={(key) => (shown = key)}>
+    {#snippet children(key)}
+      <div class="grid gap-8">
+        <div class="grid gap-1">
+          <h1 class="text-xl font-medium">{sections[key].label}</h1>
+          <p class="text-muted-foreground">{sections[key].description}</p>
+        </div>
+        {#if key === "people"}<People />{/if}
+        {#if key === "invites"}<Invites />{/if}
+        {#if key === "rooms"}<OwnerRooms oncreated={refreshHome} />{/if}
+        {#if key === "usage"}<Usage {usage} />{/if}
+      </div>
+    {/snippet}
+  </Swap>
+{/snippet}

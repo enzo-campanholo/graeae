@@ -19,7 +19,6 @@
     <!-- A new tab, so the room, its shares and its watching carry on meanwhile. -->
     <a
       href="/owner/usage"
-      target="_blank"
       class="text-muted-foreground hover:bg-raised hover:text-fg focus-visible:ring-ring inline-flex h-control-xs shrink-0 items-center rounded-md px-1.5 font-medium transition-colors duration-150 outline-none focus-visible:ring-2"
     >
       Usage

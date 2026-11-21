@@ -2,25 +2,31 @@
   import type { Component } from "svelte";
   import Swap from "$lib/components/Swap.svelte";
   import { tabLog } from "$lib/log.ts";
-  import { location, match, type Params, type Route } from "./router.svelte.ts";
+  import Overlay from "$lib/prototype-overlay/Overlay.svelte";
+  import { isOverlay, location, match, type Params, type Route } from "./router.svelte.ts";
 
   let { routes, fallback }: { routes: readonly Route[]; fallback: Component } = $props();
 
-  // The page, its params, and which view of it this address is (see `Route.view`).
-  const current = $derived.by(() => {
-    const found = match(routes, location.pathname);
+  function pick(pathname: string) {
+    const found = match(routes, pathname);
     const params = found?.params ?? {};
     return {
       Page: (found?.route.component ?? fallback) as Component<{ params: Params }>,
       params,
-      view: found?.route.view?.(params) ?? location.pathname,
+      view: found?.route.view?.(params) ?? pathname,
       page: found?.route.path ?? "nothing here",
     };
-  });
+  }
+
+  // PROTOTYPE (prototype/overlay): at an overlay address the page under it stays mounted
+  // as the router's page, and the overlay's page draws over it.
+  const overlaid = $derived(isOverlay(location.pathname));
+  const current = $derived(pick(overlaid ? new URL(location.under ?? "/", window.location.origin).pathname : location.pathname));
+  const over = $derived(overlaid ? pick(location.pathname) : null);
 
   // Each page the router chooses, for the page's log.
   $effect(() => {
-    tabLog.info("page.route", { ...tabLog.where(location.pathname), shows: current.page });
+    tabLog.info("page.route", { ...tabLog.where(location.pathname), shows: over?.page ?? current.page });
   });
 </script>
 
@@ -30,3 +36,13 @@
     <Page {params} />
   {/snippet}
 </Swap>
+
+{#if over}
+  <Overlay kind={over.page === "/you" ? "you" : "owner"}>
+    <Swap key={over.view} value={over}>
+      {#snippet children({ Page, params })}
+        <Page {params} />
+      {/snippet}
+    </Swap>
+  </Overlay>
+{/if}
