@@ -46,7 +46,7 @@ export interface StreamSummary {
   encoder?: string;
   /** Whether that encoder is the hardware's: Chromium's `powerEfficientEncoder`. */
   hardware?: boolean;
-  /** The decoder a stream received is decoded by, where the browser names it. */
+  /** The decoder a stream received is decoded by: Chromium names it only to a tab that is capturing too. */
   decoder?: string;
   /** The codec a picture sent goes out in, with H.264's profile: "H264 42e01f". */
   codec?: string;
@@ -61,8 +61,11 @@ export interface StreamSummary {
   pli?: number;
   fir?: number;
   nack?: number;
-  /** A received sound's level, from 0 to 1: screen audio, since a webcam share has none. */
-  level?: number;
+  /**
+   * A received sound's level, from 0 to 1: screen audio, since a webcam share has none.
+   * Not `level`, which the tab's log sets on every line for how bad it is.
+   */
+  audioLevel?: number;
   /** What the captured picture's track says of itself at this reading. */
   capture?: CaptureNow;
 }
@@ -145,7 +148,7 @@ export function streamSummaries(
         pli: out ? undefined : number(entry.pliCount),
         fir: out ? undefined : number(entry.firCount),
         nack: out ? undefined : number(entry.nackCount),
-        level: !out && !video ? rounded(entry.audioLevel) : undefined,
+        audioLevel: !out && !video ? rounded(entry.audioLevel) : undefined,
         capture: capture && compact(capture),
       }),
     );

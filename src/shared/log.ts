@@ -89,7 +89,7 @@
 //   adds `encoder`, `hardware`, `codec`, `targetBitrate`, `estimate` (the browser's
 //   `availableOutgoingBitrate`), `keyFrames`, `resolutionChanges` and `capture` (the
 //   track's `surface`, `width` and `height` at that reading); a picture received adds
-//   `decoder`, `freezeSeconds`, `pli`, `fir` and `nack`; a sound received, its `level`
+//   `decoder`, `freezeSeconds`, `pli`, `fir` and `nack`; a sound received, its `audioLevel`
 // - `error`: `window.onerror`, `unhandledrejection` and caught errors, with the stack
 //
 // The daily allowance. Estimated for 6 people for 5 hours, each sharing a webcam and

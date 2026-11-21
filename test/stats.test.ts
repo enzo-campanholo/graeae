@@ -156,7 +156,7 @@ describe("the media connection's statistics", () => {
       nack: 41,
     });
     expect(inbound).not.toHaveProperty("estimate");
-    expect(inAudio).toMatchObject({ direction: "in", kind: "audio", level: 0.041, nack: 1 });
+    expect(inAudio).toMatchObject({ direction: "in", kind: "audio", audioLevel: 0.041, nack: 1 });
   });
 
   it("leave out a capture whose track it was not told of", () => {
