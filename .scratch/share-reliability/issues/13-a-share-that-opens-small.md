@@ -17,3 +17,12 @@ Which change, or changes, does graeae make, each the smallest that removes its f
 - What the agent checks on `graeae-test` with `scripts/real-media/` (the fresh-start sequence and `fixes.js` of ticket 11), and what is left for the final Windows check.
 
 Write the build ticket or tickets.
+
+## Comments
+
+**2026-11-22, from [Windows evidence run on MONSTRAO](09-windows-evidence-run.md).** Unblocked. What the Windows run adds (its answer, sections 1, 2 and 5, holds the readings):
+- **A share opens small on Windows too**: 8 starts of 8 as today opened under 360 lines on OpenH264, and 6 of them were still at 304x172 after 25 s.
+- **The start bitrate does not fix it there**: 5 of 8 stayed small on OpenH264. It worked 8 of 8 only on this server.
+- **"maintain-resolution" does**: 8 of 8 opened at 1904x1072 in hardware and stayed there. A shared tab held 1920x934 in hardware for 3 minutes, through resizing, devtools, fullscreen and switching away.
+- **Fix A changed nothing on Windows**: every fall of the estimate was a probe coming back near 5 Mbps, never the line; at full size in hardware the estimate was back at 12 Mbps within 2 to 8.5 s of every fall with or without it, and nothing padded or froze at the watcher.
+- **Also settle here the second part of the tab-share fix** (from the map's fog): the 720p step to retry hardware when software is named. Under "maintain-resolution" the run found no software spell for it to act on; the one turn to software it saw followed a shrink under 360 lines, as today.

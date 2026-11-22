@@ -1,7 +1,7 @@
 # Windows evidence run on MONSTRAO
 
 Type: task
-Status: ready-for-human
+Status: resolved
 Blocked by: 01, 03, 04, 05, 11
 Map: ../map.md
 
@@ -78,3 +78,44 @@ You gather Windows facts for decisions made on another machine, which has no GPU
 - **On `graeae-test`.** An owner device was made with `/setup` through `curl`, which forgot the owner's other devices there; the owner gets back in with `/setup#<secret>`. A room "Windows evidence" was made, and six invites into it only: Win Chrome, Win Watcher, Win Firefox, Helium One, Helium Two and Win Spare, given to the owner in chat, never written here. They work for 7 days. The other members, rooms and the pending invite were not touched. A throwaway "Probe C" was made and removed twice for the checks below.
 - **`scripts/real-media/`.** `--codec <codec>` (`fixes.js`) offers one video codec instead of the page's own: `VP8`, `AV1` or `H264:<profile-level-id prefix>`. Checked here on the real media server: `VP8` and `H264:4200` were offered and answered as asked, and `H264:6400`, which Chromium on Linux cannot send, said so and left graeae's own baseline. The sampler (`page.js`) now also reads the height, `resolutionChanges`, `hardware`, codec, key frames, `qpSum`, `encodeTime` and the capture's surface, size, rate and label at each reading, and on what it receives the rate, key frames, decoder, codec and `audioLevel`/`audioEnergy`; checked on a share here.
 - **When this resolves**, the members Win Chrome to Win Spare are removed in People, and the room "Windows evidence" with them if nothing else needs it.
+
+## Answer
+
+**Done, 2026-11-22**, by the agent on MONSTRAO, alone except for the owner's paste. Report: `docs/evidence/windows-2026-11-22.md` on the branch `evidence/windows-2026-11-22` (commit `aec2eb7`), never merged, with its readings, event logs and screenshots beside it (36 MB); read with `git show origin/evidence/windows-2026-11-22:docs/evidence/windows-2026-11-22.md`. Windows 11 Pro 26H2 (build 26300.9974), RTX 5070 Ti, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158), Firefox 160.0.1, against `graeae-test` on build `74cb885`. The hardware encoder is named `D3D12VideoEncodeAccelerator` throughout.
+
+**1. Fresh starts: a share opens small on Windows too, and only "maintain-resolution" fixes it there.** 8 starts of a 1600x900-or-larger game window per setting, a reload before each:
+
+| Setting | First frame | At 25 s |
+|---|---|---|
+| As today | under 360 lines, OpenH264, 8 of 8 (6 at 304x172, 2 at 624x352) | 6 still 304x172 on OpenH264 at about 4.5 Mbps; the 2 others grew to 1904x1072 in hardware by 21 s |
+| `x-google-start-bitrate=6000` (fix C) | under 360 lines 7 of 8 (464x262 or 624x352), hardware 1 | 5 still 464x262 on OpenH264; 3 at 1904x1072 in hardware |
+| "maintain-resolution" | 1904x1072 in hardware, 8 of 8 | 8 of 8 at 1904x1072 in hardware, 11.1 to 12.0 Mbps |
+
+Fix C, which worked 8 of 8 on Linux, does not hold on Windows. The capture itself shrinks before the first frame (1904x1072 to 944x532 within 250 ms of the start, the estimate then at 1.8 Mbps). Under "maintain-resolution" the first 10 s send 5 to 7.5 Mbps, then 12.
+
+**2. The tab encoder: what [Why a shared tab falls back to software encoding](01-tab-share-software-encoding.md) predicted, and "maintain-resolution" keeps hardware throughout.** 3 minutes each:
+- A tab as today stayed at 626x304 on OpenH264 for all 3 minutes, the capture itself 304 lines. A window as today opened at 624x352 on OpenH264 and grew into hardware; the entire screen opened at 960x540 in hardware and grew to 1920x1080. Helium's tab as today opened at 662x334 on OpenH264 and grew into hardware.
+- Through resizing, docked devtools, fullscreen and switching away and back, the one turn from hardware to software after the start came 2 s after a shrink took the picture under 360 lines (952x436 to 754x346, the capture shrinking with it). No turn came without a size change.
+- With "maintain-resolution", a tab held 1920x934 in hardware for 3 minutes, and through the same resizing (a shrink to a 249-line viewport included) never left hardware; its lowest picture was 498 lines.
+- The 720p step (fix 2) never had a software spell to act on: 0 qualifying episodes.
+
+**3. The codec: H.264 high works end to end, gains on the encoder's own measure, and nothing visible.** Both runs under "maintain-resolution", fullscreen, 12 Mbps cap, 5 minutes each, Chrome and Firefox watching:
+- High was offered (`64001f`), answered and encoded in hardware; CABAC and the 8x8 transform are on (off in baseline), read from the PPS.
+- Game: 10.6 Mbps either way, QP per frame 22.9 high against 26.3 baseline, encode time about 3 ms each, 60 fps. Scroll: high spent 8.3 Mbps at QP 19.1, baseline 5.9 at QP 26.3, so the two are not comparable there. No VMAF or PSNR; the fast-scene screenshots at the watcher look alike, on synthetic content that is easy to encode.
+- Both watchers decoded every frame at 60 fps, 0 dropped, at most 1 freeze in 5 minutes, either codec (Chrome in hardware, D3D11; Firefox through Windows Media Foundation in hardware).
+- **The media server tells every watcher `42e01f`** (constrained baseline) whatever the sharer sends: the watchers decoded high under a baseline label.
+- A 144 fps game shared with high held 60 fps (graeae's cap).
+- AV1 and VP9 encoded in software only (libaom, libvpx), as the research said.
+
+**4. Window audio: as [What window audio picks up on Windows](04-window-audio-on-windows.md) found, on Windows 11 with Chromium 158.**
+- The audio track's label: "Tab audio" for a tab, "Application Audio" for a window, in Chrome and Helium. An entire screen share came with no audio track at all in either (the picker was driven by flag; whether "share system audio" was offered there was not recorded).
+- A Helium window share carried every tone playing in that Helium (440, 550, 660 Hz across its tabs and contexts), not only the window's; a Chrome window share only its own 990 Hz. `restrictOwnAudio` true kept the sharing tab's own tone out, false let it in.
+- The loop: with the watching graeae tab in the same Helium (another profile's context, or a second tab in the same profile), the tone kept going at the watcher for the whole 32.6 s after its source was silenced. graeae's mute on the watching tab stopped it; a watcher on its own user-data-dir never looped.
+- The watch party: Helium One shared a Helium window with 440 Hz while watching Win Chrome's 523 Hz share in the same graeae tab; Win Watcher heard 440 Hz and no 523 Hz. No echo.
+- Windows 10 was not available.
+
+**5. The upload estimate: every fall was a probe, none came from the line, and fix A changes nothing.** 10 minutes as today and 10 with fix A, then 90 s of each with "maintain-resolution" to keep hardware. From the event logs, all 186 falls were probe results in the delay detector's normal state (probes aimed at 5 Mbps coming back at 4.4 to 6.5), with no overuse, loss or report from the media server, and no size change near any of them. The two 10-minute shares spent their whole time small on OpenH264 (464x262, 304x172) and never reached 12 Mbps. In hardware at full size, the estimate was first at 12 Mbps after 18.8 s without fix A and 19.0 s with it, and back at 12 within 2 to 8.5 s of every fall either way. No padding and no freezes at the watcher. The owner's real game run was not done (the owner was away).
+
+**Not done.** No Linux watcher (no WSL), no Windows 10, no VMAF or PSNR, the tab strip's mute control skipped, and the owner's real game run deferred.
+
+**On `graeae-test`.** The members Win Watcher, Win Chrome, Helium One, Win Firefox and Helium Two were removed in People and Win Spare's unused invite cancelled. The room "Windows evidence" stays: rooms cannot be removed.
