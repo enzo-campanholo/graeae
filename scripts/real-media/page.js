@@ -2,7 +2,7 @@
 // Keeps every media connection and capture the page makes, so the driver can read their
 // statistics and see a capture end, without graeae's code knowing. Nothing here changes
 // what the page does.
-/* global window, console */
+/* global window, console, setInterval, clearInterval */
 
 const kept = { connections: [], captures: [] };
 window.__realMedia = kept;
@@ -80,4 +80,111 @@ kept.report = async () => {
     }
   }
   return lines;
+};
+
+/** A codec as the readings name it: the mime subtype, with H.264's profile-level-id. */
+const codecOf = (codec) =>
+  codec && [codec.mimeType.replace(/^(video|audio)\//, ""), /profile-level-id=(\w+)/.exec(codec.sdpFmtpLine ?? "")?.[1]].filter(Boolean).join(" ");
+
+/** The capture a sent stream comes from, as its track's label and getSettings() say at that reading. */
+const captureOf = (source) => {
+  const track = kept.captures.find((capture) => capture.track.id === source?.trackIdentifier)?.track;
+  if (!track) return undefined;
+  const { displaySurface, width, height, frameRate } = track.getSettings();
+  return { surface: displaySurface, width, height, fps: frameRate && Math.round(frameRate), label: track.label };
+};
+
+/**
+ * Every `ms`, a reading of each open connection kept in `kept.samples`: the pair's
+ * estimate, round trip and bytes (padding and probes included), and each stream's own
+ * bytes, target, frames, freezes and limit, its encoder or decoder, codec, key frames,
+ * QP and encode time, the capture it comes from at that reading, and a received sound's
+ * level. `sampleStop` hands them over and stops.
+ */
+kept.samples = [];
+kept.sampleStart = (ms) => {
+  clearInterval(kept.sampler);
+  kept.samples = [];
+  kept.sampler = setInterval(async () => {
+    const at = Date.now();
+    for (const [index, connection] of kept.connections.entries()) {
+      if (connection.connectionState === "closed") continue;
+      const stats = await connection.getStats().catch(() => null);
+      if (!stats) continue;
+      const all = [...stats.values()];
+      const byId = new Map(all.map((entry) => [entry.id, entry]));
+      const pair = byId.get(all.find((entry) => entry.type === "transport")?.selectedCandidatePairId);
+      const reading = {
+        at,
+        connection: index,
+        estimate: pair?.availableOutgoingBitrate,
+        rtt: pair?.currentRoundTripTime,
+        pairSent: pair?.bytesSent,
+        pairReceived: pair?.bytesReceived,
+        out: [],
+        in: [],
+      };
+      for (const entry of all) {
+        if (entry.type === "outbound-rtp" && entry.kind === "video" && entry.active !== false) {
+          reading.out.push({
+            mid: entry.mid,
+            bytes: entry.bytesSent,
+            header: entry.headerBytesSent,
+            retransmitted: entry.retransmittedBytesSent,
+            target: entry.targetBitrate,
+            frames: entry.framesEncoded,
+            width: entry.frameWidth,
+            height: entry.frameHeight,
+            fps: entry.framesPerSecond,
+            limitedBy: entry.qualityLimitationReason,
+            resolutionChanges: entry.qualityLimitationResolutionChanges,
+            encoder: entry.encoderImplementation,
+            hardware: entry.powerEfficientEncoder,
+            codec: codecOf(byId.get(entry.codecId)),
+            keyFrames: entry.keyFramesEncoded,
+            qpSum: entry.qpSum,
+            encodeTime: entry.totalEncodeTime,
+            capture: captureOf(byId.get(entry.mediaSourceId)),
+          });
+        } else if (entry.type === "outbound-rtp") {
+          reading.out.push({
+            mid: entry.mid,
+            kind: entry.kind,
+            bytes: entry.bytesSent,
+            header: entry.headerBytesSent,
+            ...(entry.kind === "audio" ? { codec: codecOf(byId.get(entry.codecId)), capture: captureOf(byId.get(entry.mediaSourceId)) } : {}),
+          });
+        } else if (entry.type === "inbound-rtp") {
+          reading.in.push({
+            mid: entry.mid,
+            kind: entry.kind,
+            bytes: entry.bytesReceived,
+            header: entry.headerBytesReceived,
+            frames: entry.framesDecoded,
+            received: entry.framesReceived,
+            dropped: entry.framesDropped,
+            freezes: entry.freezeCount,
+            freezeSeconds: entry.totalFreezesDuration,
+            lost: entry.packetsLost,
+            width: entry.frameWidth,
+            height: entry.frameHeight,
+            fps: entry.framesPerSecond,
+            keyFrames: entry.keyFramesDecoded,
+            decoder: entry.decoderImplementation,
+            codec: codecOf(byId.get(entry.codecId)),
+            audioLevel: entry.audioLevel,
+            audioEnergy: entry.totalAudioEnergy,
+          });
+        }
+      }
+      kept.samples.push(reading);
+    }
+  }, ms);
+  return "sampling";
+};
+kept.sampleStop = () => {
+  clearInterval(kept.sampler);
+  const samples = kept.samples;
+  kept.samples = [];
+  return samples;
 };

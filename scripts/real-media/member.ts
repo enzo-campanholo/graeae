@@ -24,6 +24,16 @@
 //   --shots <dir>        where `shot` saves (default .impeccable/review/real-media)
 //   --position X,Y       where its window opens
 //   --chromium-arg <arg> passed to Chromium; repeatable
+//   --max-bitrate <kbps> adds x-google-max-bitrate=<kbps> to every video codec of each
+//                        answer the page receives, as share-reliability's fix A would
+//   --start-bitrate <kbps> adds x-google-start-bitrate=<kbps> the same way (fix C)
+//   --content-hint <hint> sets this contentHint on video tracks instead of the page's own
+//                        ("" for none)
+//   --degradation <pref> sets this degradationPreference on video senders instead of the
+//                        page's own
+//   --codec <codec>      offers only this video codec instead of the page's own: VP8, AV1, or
+//                        H264:<profile-level-id prefix>, such as H264:6400 for high; all five
+//                        are in fixes.js and change what the page does
 //
 // Commands, one a line (a "quoted name" may hold spaces):
 //   share screen|webcam          press Share screen (and the first-time notice) or Share webcam
@@ -43,6 +53,7 @@
 //   content <kind> <title> [WxH] [X,Y] [fps] [tone Hz]   opens scripts/real-media/content.html in
 //                                a window of its own and clicks it so it plays sound;
 //                                kind is game, document, tone or portrait
+//   navigate <kind>              the content window shows another kind, keeping its title
 //   raise                        puts the content window back on top of the member's own
 //   closecontent                 closes it
 //   theme dark|light | size WxH
@@ -51,6 +62,9 @@
 //   until <seconds> <text>       waits for text on the page
 //   see <text>                   says whether the text is on the page
 //   signal <word> | waitfor <seconds> <word>   take turns with another member on this machine
+//   sample <ms> | unsample <file>   reads the page's connections every <ms> (estimate, round
+//                                trip, bytes, target, frames, freezes) and writes them, one
+//                                JSON a line, to <file>
 //   wait <seconds> | stats | eval <js> | quit
 
 import { execFileSync } from "node:child_process";
@@ -83,6 +97,11 @@ const { values: options } = parseArgs({
     shots: { type: "string", default: ".impeccable/review/real-media" },
     position: { type: "string", default: "0,0" },
     "chromium-arg": { type: "string", multiple: true, default: [] },
+    "max-bitrate": { type: "string" },
+    "start-bitrate": { type: "string" },
+    degradation: { type: "string" },
+    "content-hint": { type: "string" },
+    codec: { type: "string" },
   },
 });
 
@@ -171,6 +190,18 @@ async function launch(): Promise<BrowserContext> {
     permissions: ["camera"],
   });
   await launched.addInitScript({ path: join(HERE, "page.js") });
+  if (options["max-bitrate"] || options["start-bitrate"] || options["content-hint"] !== undefined || options.degradation || options.codec) {
+    const kbps = (value: string | undefined) => (value ? Number(value) : undefined);
+    const fixes = {
+      maxBitrate: kbps(options["max-bitrate"]),
+      startBitrate: kbps(options["start-bitrate"]),
+      contentHint: options["content-hint"],
+      degradation: options.degradation,
+      codec: options.codec,
+    };
+    await launched.addInitScript({ content: `window.__realMediaFixes = ${JSON.stringify(fixes)};` });
+    await launched.addInitScript({ path: join(HERE, "fixes.js") });
+  }
   return launched;
 }
 
@@ -293,6 +324,15 @@ async function run(line: string) {
     }
     case "content":
       return openContent(rest);
+    case "navigate": {
+      // The content's window shows another kind, keeping its title, so a capture of it goes on.
+      if (!content || !contentTitle) throw new Error("no content open");
+      const url = new URL(content.url());
+      url.searchParams.set("kind", rest[0] ?? "game");
+      await content.goto(url.href);
+      await content.mouse.click(10, 10);
+      return say(`content "${contentTitle}" shows ${rest[0] ?? "game"}`);
+    }
     case "raise":
       return raiseContent();
     case "closecontent":
@@ -339,6 +379,14 @@ async function run(line: string) {
       return page.waitForTimeout(Number(rest[0]) * 1000);
     case "stats":
       return printStats();
+    case "sample":
+      return say(JSON.stringify(await page.evaluate(`window.__realMedia.sampleStart(${Number(rest[0]) || 250})`)));
+    case "unsample": {
+      const samples = (await page.evaluate("window.__realMedia.sampleStop()")) as unknown[];
+      const file = resolve(rest[0] ?? "samples.jsonl");
+      writeFileSync(file, samples.map((sample) => JSON.stringify(sample)).join("\n") + "\n");
+      return say(`saved ${samples.length} readings to ${file}`);
+    }
     case "eval":
       return say(JSON.stringify(await page.evaluate(line.slice(5))));
     case "signal":
