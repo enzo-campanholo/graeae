@@ -63,6 +63,6 @@ The agent does all of this alone, on the fakes. The owner checks nothing new: `s
 
 **Capture and perf.** `pnpm capture` (label `ticket-50`) shoots the owner sections and "You" over the busy room, opened from the gear and the owner's own row, and the owner page and "You" over the list of rooms. `pnpm perf` adds the gear, each section, Close, the own row and Escape from the room, fresh opens, and the gear and Escape from the list: none flashes, at 0 and at 60ms round trip.
 
-Not deployed.
+Deployed to `graeae-test` on 2026-11-22 with ticket 51, from `8c3730e` (version `7d894374`).
 
 **After review.** The review found two bugs in closing, both now covered in `moves.spec.ts`: a fresh overlay moved within took two closes, and a double press went back too far. It also moved the overlay's motion to CSS keyframes on `--ease-out` with a reduced-motion block, as the other components animate. And "You" reloads when it finds this browser forgotten from elsewhere, rather than drawing "nothing here" in the panel. `screen.spec.ts` now checks that the room is under the overlay after the reload and the fresh open. Left as they are: the `{ name, size }` pair written in the route and in the overlay's props, and `plain/Section.svelte` staying where it is.
