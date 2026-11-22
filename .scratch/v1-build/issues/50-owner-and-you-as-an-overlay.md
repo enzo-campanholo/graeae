@@ -6,7 +6,7 @@
 
 Spec: The room's screen (Bar header, Bar body), Other pages, and Seam 2.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Blocked by:** none
 

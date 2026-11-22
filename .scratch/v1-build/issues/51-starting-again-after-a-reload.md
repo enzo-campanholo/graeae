@@ -18,7 +18,7 @@ The owner chose these fixes in [Starting again after a reload](../../share-relia
 
 Spec: Cut-off, Shares, Seam 1.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Blocked by:** none
 
