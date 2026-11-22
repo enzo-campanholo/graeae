@@ -181,16 +181,17 @@ describe("a live screen share", () => {
     expect(instance.media.connections()).toEqual([[]]);
   });
 
-  it("stays live with both tracks when its forced close fails", async () => {
+  it("keeps both tracks, though no longer listed, when its forced close fails", async () => {
     const { instance, owner, room, biaTab, ownerTab, biaId } = await twoPresent();
     await shareScreen(biaTab);
     await ownerTab.next(); // it went live
     instance.media.fail("close");
 
     stopScreen(biaTab);
+    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "ended", share: { member: biaId, kind: "screen" } } });
     const { state } = await openRoom(owner, room);
 
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "screen", audio: true }]);
+    expect(state.shares.live).toEqual([]);
     expect(instance.media.connections().flat()).toHaveLength(2);
   });
 
@@ -264,9 +265,9 @@ describe("watching a screen share", () => {
 
     stopScreen(biaTab);
 
-    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share } });
     expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "ended", share } });
-    expect(instance.media.connections()).toEqual([[], []]);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share } });
+    await vi.waitFor(() => expect(instance.media.connections()).toEqual([[], []]));
   });
 });
 

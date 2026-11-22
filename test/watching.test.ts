@@ -282,8 +282,11 @@ describe("a watch request", () => {
     startWatching(ownerTab, nobodys);
     startWatching(ownerTab, { ...biasWebcam, kind: "screen" });
 
-    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: nobodys } });
-    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pull-refused" } });
+    // Each is refused, and the media connection, which then carries nothing, let go of once.
+    const heard = [await ownerTab.next(), await ownerTab.next(), await ownerTab.next()];
+    expect(heard).toContainEqual({ type: "media", change: { type: "pull-refused", share: nobodys } });
+    expect(heard).toContainEqual({ type: "media", change: { type: "pull-refused", share: { ...biasWebcam, kind: "screen" } } });
+    expect(heard).toContainEqual({ type: "media", change: { type: "dropped" } });
     expect(instance.media.connections()[1]).toEqual([]);
   });
 
@@ -320,6 +323,9 @@ describe("a watch request", () => {
     startWatching(ownerTab, biasWebcam);
 
     expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
+    // Its connection then carries nothing, so the tab makes a new one before it tries again.
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    await connectMedia(ownerTab);
     await watch(ownerTab, biasWebcam);
   });
 
@@ -431,10 +437,10 @@ describe("a share's end", () => {
     stopWebcam(biaTab);
 
     for (const viewer of [ownerTab, caioTab]) {
-      expect(await viewer.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
       expect(await viewer.next()).toEqual({ type: "shares", change: { type: "ended", share: biasWebcam } });
+      expect(await viewer.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
     }
-    expect(instance.media.connections().flat()).toEqual([]);
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
   });
 
   it("closes the share's own tracks before the pulls of it", async () => {
@@ -446,9 +452,12 @@ describe("a share's end", () => {
     stopWebcam(biaTab);
     await close.reached;
 
+    // The owner hears at once that it ended and left their stage; its pull closes after.
+    expect(await ownerTab.next()).toMatchObject({ type: "shares", change: { type: "ended" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "watching", change: { type: "unwatched" } });
     expect(instance.media.connections()[1]).toHaveLength(1);
     close.release();
-    expect(await ownerTab.next()).toMatchObject({ type: "watching", change: { type: "unwatched" } });
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
   });
 
   it("comes with the sharer's clean leave, closing every watch of what they shared", async () => {
@@ -459,9 +468,9 @@ describe("a share's end", () => {
     await biaTab.close();
 
     expect(await ownerTab.next()).toMatchObject({ type: "presence", change: { type: "left" } });
-    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
     expect(await ownerTab.next()).toMatchObject({ type: "shares", change: { type: "ended" } });
-    expect(instance.media.connections().flat()).toEqual([]);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
   });
 });
 

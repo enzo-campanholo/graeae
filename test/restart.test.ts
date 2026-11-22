@@ -75,8 +75,8 @@ describe("a restart of the instance mid-session", () => {
 
     expect(ownerTab.queued()).toEqual([
       { type: "presence", change: { type: "left", member: biaId } },
-      { type: "watching", change: { type: "unwatched", share: biasWebcam } },
       { type: "shares", change: { type: "ended", share: biasWebcam } },
+      { type: "watching", change: { type: "unwatched", share: biasWebcam } },
     ]);
     expect(instance.media.connections().flat()).toEqual([]);
   });
@@ -176,7 +176,22 @@ describe("the sweep at a cut-off", () => {
     instance.media.fail("pull", { done: true });
     startWatching(ownerTab, biasWebcam);
     expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
-    expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 1]);
+
+    // The owner's connection now carries nothing, so it is let go of: but not before the
+    // stray track on it is closed.
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));
+  });
+
+  it("closes such a track at the cut-off when the connection is not let go of", async () => {
+    const { instance, ownerTab, biaTab, biasWebcam } = await ownerAndBia();
+    await goLive(biaTab, ownerTab);
+    // The owner shares too, so a refused watch leaves the connection carrying something.
+    await goLive(ownerTab, biaTab);
+    instance.media.fail("pull", { done: true });
+    startWatching(ownerTab, biasWebcam);
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
+    expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 2]);
 
     await ownerTab.close();
 

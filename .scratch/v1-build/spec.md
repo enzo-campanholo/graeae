@@ -234,6 +234,7 @@ Four deep modules carry the design. Each is described by what it does, not where
 - A screen share is video together with its screen audio as one unit. A webcam share is video only.
 - If media falters while the signaling connection is fine, the share stays live for 30 seconds while the browser tries to recover, then ends. Once the browser gives the media connection up, the tab restarts it through the backend, and again after each restart that finds no path, until it recovers or the 30 seconds run out.
 - Watching belongs to a device, since each device has its own stage. A watching member is named to the sharer once however many devices they watch on.
+- A start or watch that does not go live lets go of the tab's media connection when the connection then carries nothing: the backend forgets it (closing first any track the media server made although it reported the call failed) and tells the tab it was dropped, so the tab's next try makes a new one. A connection that carries a share or a watch is left alone.
 
 ### Screen audio
 
@@ -287,6 +288,7 @@ All numbers are fixed. Neither the sharer nor the owner gets a setting.
 One routine serves every case:
 
 1. Change storage first (access removed, device forgotten, budget stopped), so any new request is refused from that instant.
+   - The room and the lists of rooms hear that each covered share ended, and its watchers that it left their stage. A hand-over tells its own.
 2. Force-close the covered shares' tracks.
 3. Force-close every other member's pulls of those shares.
 4. Force-close the covered pulls.
@@ -300,6 +302,7 @@ One routine serves every case:
 | Usage budget stop | None | Everyone's |
 | Grace period ran out | That tab's | That tab's |
 
+- A share whose end has begun no longer counts: it is not listed (nor in a fresh state), cannot be watched, is on nobody's stage, and is not in the way of a new share of its kind by the same member, so that one starts with no refusal and no hand-over. Its record stays until its close returns, and the mark that it is ending is kept in storage with it, so it is never listed again while retried, across a restart too.
 - Every close is forced, ordinary stops and clean leaves included. There is one close path and none that depends on a browser cooperating. The browser tidies its own side when told a share or watch has ended.
 - A failed forced close keeps its record and is retried on a backoff (1s, 2s, 4s, up to 30s between tries) until it succeeds or a sweep shows the track gone.
 - The owner's page shows a removal as done at once. If closes are still failing after 1 minute it warns: "Still trying to stop what <name> was sharing and watching."
@@ -425,7 +428,8 @@ Covered here:
 - Presence: once per member across devices, two rooms at once, clean leave, the grace period, the "reconnecting" mark's timing and placement, full state on reconnect.
 - Shares: becoming live, each way of ending, one screen and one webcam per member across the instance, hand-over within a room and into another room, a failed hand-over leaving the old share.
 - Watching: every check on a watch request, who the sharer is told is watching, watching one's own share unlisted.
-- Cut-off: each row of the cut-off table, storage changed before any close, retry on a failed close, the 1-minute warning, the sweep closing an unrecorded track, the record written before the media server call.
+- Cut-off: each row of the cut-off table, storage changed before any close, the room hearing a share ended as its close begins, an ending share not listed, watchable or in the way of a new share, retry on a failed close, the 1-minute warning, the sweep closing an unrecorded track, the record written before the media server call.
+- Media connections: a start or watch that does not go live letting go of an empty connection, and leaving one that carries anything.
 - Restart: live shares and watching surviving a restart of the instance.
 - Usage: charging the difference between running totals, the safety margin, the maximum-bitrate charge after a last report, the final total before a restart, relayed watching doubled, the 80% and 95% warnings, the stop, raising and lowering the budget, the monthly reset on the owner's day.
 - Relay credentials: one per media connection, the 12-hour life, the hand-out at 11 hours.

@@ -55,9 +55,9 @@ async function until(tab: Tab, wanted: (message: ServerMessage) => boolean): Pro
 }
 
 /** Lets every request already sent reach the instance and be answered, by asking for one more thing and waiting for it. */
-async function settle(tab: Tab) {
+async function settle(tab: Tab): Promise<ServerMessage[]> {
   tab.send({ type: "media", request: { type: "answer", answer: "v=0 settle" } });
-  await until(tab, (message) => message.type === "media" && message.change.type === "answered");
+  return (await until(tab, (message) => message.type === "media" && message.change.type === "answered")).slice(0, -1);
 }
 
 /** Every track open on the fake media server, whichever connection it is on. */
@@ -189,12 +189,14 @@ describe("each case of the cut-off", () => {
 
     expect((await removeFromRoom(owner, biaId, second)).status).toBe(200);
 
-    expect(await until(caioTab, (message) => message.type === "shares")).toEqual([
+    // The room hears her webcam ended as its close begins, and Caio that it left his stage;
+    // then her pull of his closes, and he hears nobody watches his.
+    expect(await until(caioTab, (message) => message.type === "watching" && message.change.type === "watchers")).toEqual([
       { type: "presence", change: { type: "left", member: biaId } },
       { type: "people", change: { type: "removed", member: biaId } },
+      ended(biasWebcam),
       unwatched(biasWebcam),
       { type: "watching", change: { type: "watchers", share: caiosWebcam, members: [] } },
-      ended(biasWebcam),
     ]);
     expect(await until(ownerInSecond, (message) => message.type === "shares")).toEqual([
       { type: "presence", change: { type: "left", member: biaId } },
@@ -216,12 +218,12 @@ describe("each case of the cut-off", () => {
 
     expect((await removeFromInstance(owner, biaId)).status).toBe(204);
 
-    expect(await until(caioTab, (message) => message.type === "shares")).toEqual([
+    expect(await until(caioTab, (message) => message.type === "watching" && message.change.type === "watchers")).toEqual([
       { type: "presence", change: { type: "left", member: biaId } },
       { type: "people", change: { type: "removed", member: biaId } },
+      ended(biasWebcam),
       unwatched(biasWebcam),
       expect.objectContaining({ type: "watching", change: expect.objectContaining({ type: "watchers", members: [] }) }),
-      ended(biasWebcam),
     ]);
     expect(await until(ownerTab, (message) => message.type === "watching")).toEqual([
       { type: "presence", change: { type: "left", member: biaId } },
@@ -267,12 +269,12 @@ describe("each case of the cut-off", () => {
 
     expect((await forgetDevice(owner, biasWebcam.member, laptopId)).status).toBe(204);
 
-    expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([unwatched(biasWebcam), ended(biasWebcam)]);
+    expect(await until(ownerTab, (message) => message.type === "watching")).toEqual([ended(biasWebcam), unwatched(biasWebcam)]);
     // The phone watched it too, and as the sharer's own device it hears that nobody else does now.
-    expect(await until(onPhone, (message) => message.type === "shares")).toEqual([
+    expect(await until(onPhone, (message) => message.type === "watching" && message.change.type === "watchers")).toEqual([
+      ended(biasWebcam),
       unwatched(biasWebcam),
       { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
-      ended(biasWebcam),
     ]);
     expect(await onLaptop.next()).toEqual({ type: "gone" });
     await onLaptop.closed();
@@ -319,13 +321,13 @@ describe("each case of the cut-off", () => {
     const marked = { type: "shares", change: { type: "reconnecting", share: biasWebcam } };
     expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([marked]);
     expect(await until(kept, (message) => message.type === "shares")).toEqual([marked]);
-    expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([
+    expect(await until(ownerTab, (message) => message.type === "watching")).toEqual([
+      ended(biasWebcam),
       unwatched(biasWebcam),
-      ended(biasWebcam),
     ]);
-    expect(await until(kept, (message) => message.type === "shares")).toEqual([
-      { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
+    expect(await until(kept, (message) => message.type === "watching")).toEqual([
       ended(biasWebcam),
+      { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
     ]);
     expect(openNames(instance)).toEqual([ownersTrack, ownersTrack]);
   });
@@ -355,12 +357,12 @@ describe("each case of the cut-off", () => {
 
     expect((await removeFromRoom(owner, biasWebcam.member, addressOf(room))).status).toBe(200);
 
-    expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([
+    expect(await until(ownerTab, (message) => message.type === "watching" && message.change.type === "watchers")).toEqual([
       { type: "presence", change: { type: "left", member: biasWebcam.member } },
       { type: "people", change: { type: "removed", member: biasWebcam.member } },
+      ended(biasWebcam),
       unwatched(biasWebcam),
       { type: "watching", change: { type: "watchers", share: ownersWebcam, members: [] } },
-      ended(biasWebcam),
     ]);
     expect(openNames(instance)).toEqual([ownersTrack]);
     expect((await bia.openSocket(`/api/socket/${addressOf(room)}`)).socket).toBeNull();
@@ -456,15 +458,16 @@ describe("ordinary ends", () => {
     await closes[2]!.reached;
     expect(openNames(instance)).toEqual([ownersTrack]);
     closes[2]!.release();
-    expect(await until(ownerTab, (message) => message.type === "shares")).toEqual([
+    // The room heard it ended as the first close began; who watches the owner's changed with the last.
+    expect(await until(ownerTab, (message) => message.type === "watching" && message.change.type === "watchers")).toEqual([
       { type: "presence", change: { type: "left", member: biasWebcam.member } },
+      ended(biasWebcam),
       unwatched(biasWebcam),
       { type: "watching", change: { type: "watchers", share: expect.anything(), members: [] } },
-      ended(biasWebcam),
     ]);
   });
 
-  it("a stop goes by the same forced close, and no one can start watching the share while it closes", async () => {
+  it("a stop goes by the same forced close, ends for the room as it begins, and no one can start watching the share while it closes", async () => {
     const { instance, ownerTab, biaTab, biasWebcam, ownersTrack } = await eachWatchingTheOther();
     stopWatching(ownerTab, biasWebcam);
     expect(await until(ownerTab, (message) => message.type === "watching")).toEqual([unwatched(biasWebcam)]);
@@ -472,12 +475,14 @@ describe("ordinary ends", () => {
 
     stopWebcam(biaTab);
     await close.reached;
+    expect(await ownerTab.next()).toEqual(ended(biasWebcam));
     startWatching(ownerTab, biasWebcam);
     expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
     close.release();
 
-    expect(await ownerTab.next()).toEqual(ended(biasWebcam));
-    expect(openNames(instance)).toEqual([ownersTrack, ownersTrack]);
+    await expect.poll(() => openNames(instance)).toEqual([ownersTrack, ownersTrack]);
+    // Its close returning tells the owner nothing more.
+    expect(await settle(ownerTab)).toEqual([]);
   });
 });
 

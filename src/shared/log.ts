@@ -41,7 +41,8 @@
 //   `presence.reconnected`, `tab.silent`, `tab.heard` (a tab's own shares' mark)
 // - `media.connected`, `media.unavailable`, `media.answered`, `media.restarted`,
 //   `media.reconnect`, `media.dropped`, `falter.start`, `falter.end`, `falter.due`
-// - `share.refused` (`why`), `share.live`, `share.ended`, `share.close-failed`
+// - `share.refused` (`why`), `share.live`, `share.ending` (its end began: no longer listed),
+//   `share.ended`, `share.close-failed`
 // - `watch.refused` (`why`), `watch.started`, `watch.ended`, `watch.close-failed`,
 //   `quality.set`, `quality.failed`
 // - `handover.started`, `handover.done`, `handover.moved`

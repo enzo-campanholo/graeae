@@ -5,7 +5,7 @@
 // so the page can rebuild what it watched and shared; and media that falters while the
 // signaling connection is fine ends the tab's shares after 30 seconds. Time is the test's.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { startInstance, type TestInstance } from "./harness.ts";
 import {
   addMember,
@@ -241,12 +241,12 @@ describe("media that falters while the signaling connection is fine", () => {
     await instance.clock.advance(1);
     await ownerTab.heartbeat();
     expect(ownerTab.queued()).toEqual([
-      { type: "watching", change: { type: "unwatched", share: webcam } },
       { type: "shares", change: { type: "ended", share: webcam } },
+      { type: "watching", change: { type: "unwatched", share: webcam } },
     ]);
-    expect(await biaTab.next()).toEqual({ type: "watching", change: { type: "watchers", share: webcam, members: [] } });
     expect(await biaTab.next()).toEqual({ type: "shares", change: { type: "ended", share: webcam } });
-    expect(instance.media.connections().flat()).toEqual([]);
+    expect(await biaTab.next()).toEqual({ type: "watching", change: { type: "watchers", share: webcam, members: [] } });
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
 
     // Its media connection failed and now carries nothing: the instance lets go of it, and the tab makes a new one.
     expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped" } });

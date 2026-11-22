@@ -99,6 +99,8 @@ export class Instance extends DurableObject<Env> {
           this.usage.watchEnded(watch, this.signaling.holds(tab));
           this.checkBudget();
         },
+        // A share no longer counts from the moment its end begins, so its room hears then, not once its close returns.
+        ending: (ended) => this.sharesEnded(ended),
         // A hand-over carried this tab's watching over to the new share: it answers the new pull.
         moved: (tab, share, { offer, video, audio, quality }) => {
           const change = { type: "moved" as const, share, offer, video, ...withAudio(audio) };
@@ -146,7 +148,7 @@ export class Instance extends DurableObject<Env> {
   /**
    * The sweep after a restart: every media connection on record is checked against the
    * media server, and anything the records do not account for is closed. Shares whose
-   * tracks turn out to be gone end.
+   * tracks turn out to be gone end, and their rooms hear so as they do.
    */
   private async afterRestart() {
     const failed = (during: string) => (error: unknown) => {
@@ -154,10 +156,10 @@ export class Instance extends DurableObject<Env> {
       return [];
     };
     const ended: Ended[] = await this.shares.sweep().catch(failed("the sweep after a restart"));
-    // A hand-over the restart cut short after its new share went live ends its old one.
-    ended.push(...(await this.shares.finishHandOvers().catch(failed("finishing hand-overs after a restart"))));
+    // A hand-over the restart cut short after its new share went live ends its old one, and
+    // a share whose end had begun is closed again.
+    ended.push(...(await this.shares.finishEnds().catch(failed("finishing ends after a restart"))));
     log.info("restart.swept", { ended: ended.map(({ share }) => share) });
-    this.sharesEnded(ended);
   }
 
   /**
@@ -498,6 +500,7 @@ export class Instance extends DurableObject<Env> {
       if (watched === null) return;
       if (!watched.watching) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
+        this.letGoOfMedia(tab, "a watch did not go live");
         return;
       }
       this.signaling.toTab(tab.id, {
@@ -535,6 +538,7 @@ export class Instance extends DurableObject<Env> {
       }
       if (!started.live) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });
+        this.letGoOfMedia(tab, "a share did not go live");
         return;
       }
       this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
@@ -547,14 +551,24 @@ export class Instance extends DurableObject<Env> {
       }
     },
     // Stopping needs no check: it only ever takes something away.
-    "shares.stop": async (tab, { kind }) => {
-      const ended = await this.shares.stop(tab, kind);
-      if (ended) this.sharesEnded([ended]);
-    },
+    "shares.stop": (tab, { kind }) => this.shares.stop(tab, kind),
   };
 
   /**
-   * Tells the rooms and the lists of rooms which shares ended. A share a hand-over
+   * A share or watch of `tab`'s did not go live, and the tab has heard it refused. A media
+   * connection left carrying nothing is let go of, and the tab hears `dropped`, so its
+   * next share or watch makes a new one: the media server soon drops a connection no
+   * browser ever joined, and refuses every offer into it after.
+   */
+  private letGoOfMedia(tab: Tab, why: string) {
+    if (!this.shares.letGo(tab.id)) return;
+    log.info("media.dropped", { ...tagsOf(tab), why });
+    this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped" } });
+  }
+
+  /**
+   * Tells the rooms and the lists of rooms which shares ended: as each one's end begins,
+   * or, for a hand-over, once the old share's close has returned. A share a hand-over
    * replaced is told to the tab that sent it as handed over; its room hears it ended only
    * when the new share is live in another room, since within one room it carries on
    * under the same name.
@@ -583,8 +597,7 @@ export class Instance extends DurableObject<Env> {
   private async reconnectMedia(tab: Tab) {
     log.info("media.reconnect", tagsOf(tab));
     try {
-      const ended = await this.shares.cutOff({ tabId: tab.id });
-      for (const { room, share } of ended) this.shareChanged(room, { type: "ended", share });
+      await this.shares.cutOff({ tabId: tab.id });
     } finally {
       this.checkBudget();
       // A close that failed keeps the connection on record, and is tried again. Until the
@@ -598,11 +611,11 @@ export class Instance extends DurableObject<Env> {
    * The cut-off: the one routine that ends what `covered` takes in, for every case (spec,
    * "Cut-off"; ADR 0003). The caller has done its first step, changing storage, so any
    * request from what is covered is refused from that instant; `cut` holds the tabs it
-   * cut off. This force-closes the covered shares' tracks, then everyone else's pulls of
-   * them, then the covered pulls; the room and the lists hear which shares ended; and
-   * last, the cut-off tabs are told they are gone and closed. `subject` is the member
-   * the owner hears about if a close is still failing after a minute: the one removed, or
-   * whose device was forgotten.
+   * cut off. The room and the lists hear which shares ended as their closes begin. This
+   * force-closes the covered shares' tracks, then everyone else's pulls of them, then the
+   * covered pulls; and last, the cut-off tabs are told they are gone and closed. `subject`
+   * is the member the owner hears about if a close is still failing after a minute: the
+   * one removed, or whose device was forgotten.
    */
   private async cutOff(covered: Covered, cut?: Cut, subject?: Member) {
     log.info("cutoff.start", { covered, tabs: cut?.tabs.map((tab) => tab.id) ?? [], ...(subject ? { subject: subject.id } : {}) });
@@ -613,7 +626,6 @@ export class Instance extends DurableObject<Env> {
         subject && { member: subject.id, name: subject.name, at: Date.now() },
       );
       log.info("cutoff.done", { covered, ended: ended.map(({ share }) => share) });
-      this.sharesEnded(ended);
     } finally {
       // The tabs cut off report no more: what they watched since their last report is charged.
       if ("tabId" in covered) this.usage.tabGone(covered.tabId);
@@ -706,11 +718,8 @@ export class Instance extends DurableObject<Env> {
 
   private async alarmed() {
     for (const tab of this.signaling.alarm()) await this.left(tab);
-    const ended = await this.shares.retry((tab) => this.signaling.holds(tab));
-    const faltered = await this.shares.faltered();
-    ended.push(...faltered.ended);
-    this.sharesEnded(ended);
-    for (const tab of faltered.dropped) {
+    await this.shares.retry((tab) => this.signaling.holds(tab));
+    for (const tab of await this.shares.faltered()) {
       log.info("media.dropped", { tab, why: "faltered" });
       this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
     }

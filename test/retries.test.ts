@@ -63,24 +63,30 @@ function removeFromInstance(owner: TestBrowser, member: string) {
 }
 
 describe("a failed forced close", () => {
-  it("keeps the share live with its record, and is tried again a second later", async () => {
+  it("ends the share for the room at once, keeps its record, and is tried again a second later", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await ownerWatchingBia();
     instance.media.fail("close");
 
     stopWebcam(biaTab);
     await biaTab.heartbeat();
     await ownerTab.heartbeat();
-    expect(ownerTab.queued()).toEqual([]);
+    expect(ownerTab.queued()).toEqual([
+      { type: "shares", change: { type: "ended", share: biasWebcam } },
+      { type: "watching", change: { type: "unwatched", share: biasWebcam } },
+    ]);
+    await ownerTab.next();
+    await ownerTab.next();
     expect(instance.media.connections().flat()).toHaveLength(2);
 
     await instance.clock.advance(SECOND - 1);
     await ownerTab.heartbeat();
-    expect(ownerTab.queued()).toEqual([]);
+    expect(instance.media.connections().flat()).toHaveLength(2);
 
+    // The try that succeeds tells nobody anything more.
     await instance.clock.advance(1);
-    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
-    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "ended", share: biasWebcam } });
-    expect(instance.media.connections().flat()).toEqual([]);
+    await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
+    await ownerTab.heartbeat();
+    expect(ownerTab.queued()).toEqual([]);
   });
 
   it("is tried again after 1 s, 2 s, 4 s, 8 s, 16 s, then every 30 s, until it succeeds", async () => {

@@ -188,6 +188,7 @@ describe("starting a webcam share", () => {
     await connectMedia(second);
     startWebcam(second);
     expect(await second.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
+    expect(await second.next()).toEqual({ type: "media", change: { type: "dropped" } });
 
     publish.release();
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published" } });
@@ -205,6 +206,9 @@ describe("starting a webcam share", () => {
 
     expect(await biaTab.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
     expect(instance.media.connections()).toEqual([[]]);
+    // The connection carries nothing, so it is let go of, and the next try makes a new one.
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    await connectMedia(biaTab);
     startWebcam(biaTab);
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published" } });
   });
@@ -294,8 +298,8 @@ describe("a live webcam share", () => {
     expect(instance.media.connections()).toEqual([[]]);
   });
 
-  it("keeps its record until the forced close returns", async () => {
-    const { instance, bia, room, biaTab, ownerTab, biaId } = await twoPresent();
+  it("ends for everyone as its forced close begins, and keeps its record until the close returns", async () => {
+    const { instance, owner, room, biaTab, ownerTab, biaId } = await twoPresent();
     await shareWebcam(biaTab);
     await ownerTab.next(); // it went live
     const close = instance.media.hold("close");
@@ -303,30 +307,27 @@ describe("a live webcam share", () => {
     stopWebcam(biaTab);
     await close.reached;
 
-    // Still live, and still holding the member's one webcam share.
-    const { tab: second, state } = await openRoom(bia, room);
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
-    await connectMedia(second);
-    startWebcam(second);
-    expect(await second.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
+    const ended = { type: "shares", change: { type: "ended", share: { member: biaId, kind: "webcam" } } };
+    expect(await ownerTab.next()).toEqual(ended);
+    expect(await biaTab.next()).toEqual(ended);
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([]);
+    expect(instance.media.connections().flat()).toHaveLength(1);
 
     close.release();
-    expect(await ownerTab.next()).toMatchObject({ type: "shares", change: { type: "ended" } });
-    startWebcam(second);
-    expect(await second.next()).toMatchObject({ type: "shares", change: { type: "ended" } });
-    expect(await second.next()).toMatchObject({ type: "media", change: { type: "published" } });
+    await expect.poll(() => instance.media.connections().flat()).toEqual([]);
   });
 
-  it("stays live when its forced close fails, so no track is lost track of", async () => {
-    const { instance, owner, room, biaTab, ownerTab, biaId } = await twoPresent();
+  it("keeps its record when its forced close fails, so no track is lost track of, though it is no longer listed", async () => {
+    const { instance, owner, room, biaTab, ownerTab } = await twoPresent();
     await shareWebcam(biaTab);
     await ownerTab.next(); // it went live
     instance.media.fail("close");
 
     stopWebcam(biaTab);
+    await ownerTab.next(); // it ended
     const { state } = await openRoom(owner, room);
 
-    expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
+    expect(state.shares.live).toEqual([]);
     expect(instance.media.connections().flat()).toHaveLength(1);
   });
 

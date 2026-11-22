@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
 import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
-import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareScreen, shareWebcam, watch } from "./steps.ts";
+import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareScreen, shareWebcam, stopWebcam, watch } from "./steps.ts";
 import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
@@ -190,21 +190,21 @@ describe("the usage migration", () => {
   const added = migrations.find((migration) => migration.name === "usage")!;
   const before = migrations.filter((migration) => migration.number < added.number);
 
-  it("starts an instance with a live share, whose watching is then counted", async () => {
+  // A share cannot be made on this schema any more: today's code reads a later
+  // migration's columns as it lists shares. So the share comes after the restart.
+  it("starts an instance that already has members and rooms, whose watching is then counted", async () => {
     const instance = await startInstance({ migrations: before });
     const owner = instance.browser();
     const room = await setUpOwner(owner);
     const { browser: bia } = await addMember(instance, owner, "Bia");
-    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
-    await shareWebcam(biaTab);
-    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
 
     await instance.restart({ migrations });
 
     expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
     expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 0, resetDay: 1 });
-    // Bia's tab comes back within its grace period, her webcam still live, and the owner watches it.
-    await openRoom(bia, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await shareWebcam(biaTab);
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
     const { tab: ownerTab, state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([biasWebcam]);
     await connectMedia(ownerTab);
@@ -215,5 +215,38 @@ describe("the usage migration", () => {
     await ownerTab.close();
     // 1 MB as received, and 2 seconds at the webcam's 1.5 Mbps since.
     expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_000_000 + 375_000 });
+  });
+});
+
+describe("the a-share-ending migration", () => {
+  const added = migrations.find((migration) => migration.name === "a-share-ending")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  it("starts an instance that already has members and rooms, whose shares then end for the room as their close begins", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
+    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "started", share: biasWebcam } });
+    await connectMedia(ownerTab);
+    await watch(ownerTab, biasWebcam);
+    await biaTab.next(); // the owner is watching
+
+    const close = instance.media.hold("close");
+    stopWebcam(biaTab);
+    await close.reached;
+    expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "ended", share: biasWebcam } });
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
+    expect((await openRoom(owner, room)).state.shares.live).toEqual([]);
+    close.release();
   });
 });

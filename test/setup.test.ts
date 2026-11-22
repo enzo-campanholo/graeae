@@ -80,13 +80,13 @@ describe("the setup secret", () => {
 
     expect(await onStolen.next()).toEqual({ type: "gone" });
     await onStolen.closed();
-    const heard = await until(biaTab, (message) => message.type === "shares");
+    const heard = await until(biaTab, (message) => message.type === "watching" && message.change.type === "watchers");
     expect(heard).toEqual(
       expect.arrayContaining([
         { type: "presence", change: { type: "left", member: ownersWebcam.member } },
+        { type: "shares", change: { type: "ended", share: ownersWebcam } },
         { type: "watching", change: { type: "unwatched", share: ownersWebcam } },
         { type: "watching", change: { type: "watchers", share: biasWebcam, members: [] } },
-        { type: "shares", change: { type: "ended", share: ownersWebcam } },
       ]),
     );
     // Bia's own webcam is all that is left on the media server.
