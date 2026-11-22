@@ -47,3 +47,7 @@ No `share.failed`, `share.refused` or hand-over appears. What the owner saw as a
 **Done along the way.**
 - `scripts/real-media/member.ts` gained `handover screen|webcam` ("Share from here"), `newtab` and `tab <n>`, for two tabs of one member, and its watch shortcuts now look only in the Here list.
 - On `graeae-test`, the members Probe T and Probe W were removed in People and their browser profiles deleted.
+
+## Comments
+
+**2026-11-21, corrected by [What two tabs on one device do](08-two-tabs-on-one-device.md).** The window read above as the owner's evening of 2026-11-20 was an agent trying to reproduce the owner's failure; the failure itself came before the logs and was never captured. The findings stand; only that reading changes.
