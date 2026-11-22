@@ -201,7 +201,8 @@ test("a sharer whose network drops silently for a few seconds keeps her share, h
   network.online = true;
 
   // Back in time, she is the same tab: the share, its connection and its viewer are as they were.
-  await expect(ownerHere.getByRole("button", { name: "Stop watching Rhea's webcam" })).toBeVisible({ timeout: 15_000 });
+  // Exact, as the name while she is reconnecting begins the same way.
+  await expect(ownerHere.getByRole("button", { name: "Stop watching Rhea's webcam", exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(rhea.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
   await expect(inBar(rhea).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(rhea.getByText("Owner watching")).toBeVisible();
