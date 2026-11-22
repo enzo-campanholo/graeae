@@ -10,17 +10,20 @@
   import Router from "./router/Router.svelte";
   import type { Route } from "./router/router.svelte.ts";
 
+  const OWNER = { name: "Owner", size: "wide" } as const;
+
   // Every page at its final address. Any address this table does not match shows the
   // one "nothing here" page.
   const routes: Route[] = [
     { path: "/", component: Rooms },
     { path: "/r/:room", component: Room },
     { path: "/setup", component: Setup, whenRefused: true },
-    { path: "/you", component: You },
+    { path: "/you", component: You, overlay: { name: "You", size: "column" } },
     { path: "/invite/:invite", component: Invite },
-    // One view: the owner page swaps its sections itself.
-    { path: "/owner", component: OwnerAddress, view: () => "owner" },
-    { path: "/owner/:section", component: OwnerAddress, view: () => "owner" },
+    // One view: the owner page swaps its sections itself. "You" and the owner page draw
+    // over the page they were opened from (see `Route.overlay`).
+    { path: "/owner", component: OwnerAddress, view: () => "owner", overlay: OWNER },
+    { path: "/owner/:section", component: OwnerAddress, view: () => "owner", overlay: OWNER },
   ];
 </script>
 

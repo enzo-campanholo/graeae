@@ -74,8 +74,8 @@
         {/if}
       </p>
     </div>
-    <!-- A new tab, so the room and its shares carry on meanwhile. -->
-    {#if owner}<Button variant="secondary" href="/owner/usage" target="_blank">Raise it in Usage</Button>{/if}
+    <!-- Over the room, which carries on under it with its shares. -->
+    {#if owner}<Button variant="secondary" href="/owner/usage">Raise it in Usage</Button>{/if}
   </div>
 {:else if following}
   <div class="grid gap-1 text-center">

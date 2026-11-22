@@ -67,9 +67,10 @@ export function holdView(): () => void {
 }
 
 /**
- * Whether the view this component is part of is on screen, not on its way. A view on its
- * way is out of sight but mounted, so what reaches past it, such as the tab's title or
- * keys pressed anywhere, waits for this. Always true outside any `Swap`.
+ * Whether the view this component is part of is on screen, not on its way, and not under
+ * an overlay. A view on its way is out of sight but mounted, and one under an overlay is
+ * out of reach, so what reaches past it, such as the tab's title or keys pressed anywhere,
+ * waits for this. Always true outside any `Swap`.
  */
 export function viewShown(): () => boolean {
   return getContext<ViewContext | undefined>(GATE)?.shown ?? (() => true);

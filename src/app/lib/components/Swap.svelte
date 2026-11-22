@@ -2,7 +2,8 @@
   // Shows one view at a time, keyed by `key`, and moves to the next whole (see
   // `$lib/swap.svelte.ts`). A new key mounts its view out of sight while the current one
   // stays; the new one swaps in once nothing in it holds it back, or once the move's
-  // hold-back is over. The same key keeps its view, which gets the new `value`.
+  // hold-back is over. The same key keeps its view, which gets the new `value`. While
+  // `covered`, an overlay is drawn over the view on screen: it stays in sight, out of reach.
   import { untrack, type Snippet } from "svelte";
   import { msLeftInHold } from "../hold-back.js";
   import { Gate, holdView } from "../swap.svelte.js";
@@ -13,12 +14,15 @@
     value,
     children,
     onshow,
+    covered = false,
   }: {
     key: K;
     value: V;
     children: Snippet<[V]>;
     /** Called with each key as its view swaps in. */
     onshow?: (key: K) => void;
+    /** An overlay is open over the view on screen. */
+    covered?: boolean;
   } = $props();
 
   class View {
@@ -83,5 +87,5 @@
 </script>
 
 {#each views as view (view.id)}
-  <SwapLayer gate={view.gate} shown={view.shown}>{@render children(view.value)}</SwapLayer>
+  <SwapLayer gate={view.gate} shown={view.shown} {covered}>{@render children(view.value)}</SwapLayer>
 {/each}

@@ -37,11 +37,11 @@
       <IconButton label="Rooms" href="/"><House /></IconButton>
     {/if}
     <span class="flex-1"></span>
-    <!-- New tabs, so the room, its shares and its watching carry on meanwhile. -->
+    <!-- They open over the room, which carries on under them: its shares, watching and sound. -->
     {#if gear}
-      <IconButton label="Owner page" href="/owner" target="_blank"><Settings /></IconButton>
+      <IconButton label="Owner page" href="/owner"><Settings /></IconButton>
     {/if}
-    <YouMenu name={me} owner={gear} newTab />
+    <YouMenu name={me} owner={gear} />
   </div>
   {#if name === null}
     <!-- The heading's own line height, so the people do not move when the name arrives. -->

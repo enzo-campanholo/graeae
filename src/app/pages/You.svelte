@@ -1,11 +1,15 @@
 <script lang="ts">
   // The "You" page, the same for every member and the owner: your display name, your
-  // devices with Forget, and Add a device. Dark or light is chosen here too.
+  // devices with Forget, and Add a device. Dark or light is chosen here too. It opens in a
+  // panel over the page it was opened from, its heading on the close button's line.
   import Check from "@lucide/svelte/icons/check";
   import Copy from "@lucide/svelte/icons/copy";
   import Plus from "@lucide/svelte/icons/plus";
   import { sample } from "$sample";
-  import PlainPage from "$lib/components/plain/PlainPage.svelte";
+  import X from "@lucide/svelte/icons/x";
+  import IconButton from "$lib/components/IconButton.svelte";
+  import { overlayClose } from "$lib/components/Overlay.svelte";
+  import PageTitle from "$lib/components/PageTitle.svelte";
   import Section from "$lib/components/plain/Section.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -19,6 +23,8 @@
   import NothingHere from "./NothingHere.svelte";
 
   const NAME_MAX = 40;
+
+  const close = overlayClose();
 
   let known = $state<Load<MeAnswer>>(sample ? { state: "loaded", data: sample.you } : { state: "loading" });
   if (!sample) {
@@ -81,8 +87,9 @@
     );
     forgetting = null;
     confirmingThis = false;
-    // This browser is now a stranger here: the page is "nothing here", like any other.
-    if (device.current && response?.ok) known = { state: "refused" };
+    // This browser is a stranger here now: the whole tab, the page under "You" with it,
+    // shows what any stranger sees, as the owner page does for the owner's own device.
+    if (device.current && response?.ok) window.location.reload();
     else if (response?.ok) you.devices = you.devices.filter((d) => d.id !== device.id);
     else await refresh();
   }
@@ -129,8 +136,9 @@
     if (sample || known.state !== "loaded") return;
     const answer = await getJson<MeAnswer>("/api/me").catch(() => undefined);
     if (answer === undefined) return;
+    // Forgotten from another device: the whole tab is a stranger's, as when it is forgotten here.
     if (answer === null) {
-      known = { state: "refused" };
+      window.location.reload();
       return;
     }
     known.data.devices = answer.devices;
@@ -148,7 +156,13 @@
 {#if known.state === "refused"}
   <NothingHere />
 {:else}
-  <PlainPage title="You" you={false} gear={!!you?.owner} home={you?.home}>
+  <PageTitle title="You · graeae" />
+  <div class="grid gap-8 px-8 pt-6 pb-8">
+    <div class="-mr-4 flex items-center justify-between">
+      <h1 class="text-xl font-medium">You</h1>
+      <IconButton label="Close" key="Esc" onclick={close}><X /></IconButton>
+    </div>
+
     <Section title="Display name" description="The name everyone in your rooms sees.">
       <form class="grid gap-2" onsubmit={saveName}>
         <div class="flex gap-1.5">
@@ -288,5 +302,5 @@
         {/each}
       </div>
     </Section>
-  </PlainPage>
+  </div>
 {/if}

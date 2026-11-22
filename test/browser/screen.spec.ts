@@ -188,13 +188,15 @@ test("on Firefox the notice says a screen share is video only, and the collapsed
   await expect(inBar(oli).getByRole("button", { name: "Screen live" })).toBeDisabled();
 });
 
-test("the gear and your own name open their pages in a new tab, so a live share and watching carry on", async ({
+test("the gear and your own name open their pages over the room, so a live share and watching carry on", async ({
   browser,
   baseURL,
 }) => {
   const { owner, join } = await ownerInRoom(browser, baseURL);
   const uma = await join("Uma");
   const room = owner.url();
+  const sockets: string[] = [];
+  owner.on("websocket", (socket) => sockets.push(new URL(socket.url()).pathname));
 
   // The owner shares a screen, and Uma watches it.
   await inBar(owner).getByRole("button", { name: "Share screen" }).click();
@@ -205,21 +207,91 @@ test("the gear and your own name open their pages in a new tab, so a live share 
   const watched = uma.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Owner's screen, with no picture" });
   await expect(watched).toBeVisible();
 
-  // The gear opens the owner page beside the room, which stays as it was.
-  const [ownerPage] = await Promise.all([
-    owner.context().waitForEvent("page"),
-    owner.getByRole("link", { name: "Owner page" }).click(),
-  ]);
-  await expect(ownerPage).toHaveURL(/\/owner\/people$/);
+  // The gear opens the owner page over the room, in the same tab, with the focus in it.
+  const gear = owner.getByRole("link", { name: "Owner page" });
+  await gear.click();
+  const ownerPanel = owner.getByRole("dialog", { name: "Owner" });
+  await expect(ownerPanel.getByRole("heading", { name: "People", level: 1 })).toBeVisible();
+  await expect(owner).toHaveURL(/\/owner\/people$/);
+  await expect(ownerPanel).toBeFocused();
+  await expect(ownerPanel).toHaveAttribute("aria-modal", "true");
+  expect(owner.context().pages()).toHaveLength(1);
+  // The room is under it, out of reach: its keys do nothing meanwhile.
+  await expect(owner.locator("[inert]").filter({ has: inBar(owner) })).toHaveCount(1);
+  await owner.keyboard.press("[");
+  // Uma still watches the owner's share.
+  await expect(watched).toBeVisible();
+
+  // Moving between sections, then the close button: back to the room past every step at
+  // once, with the share still live, the focus back on the gear, and the bar as it was.
+  await ownerPanel.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Invites" }).click();
+  await expect(ownerPanel.getByRole("heading", { name: "Invites", level: 1 })).toBeVisible();
+  await ownerPanel.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Rooms" }).click();
+  await expect(ownerPanel.getByRole("heading", { name: "Rooms", level: 1 })).toBeVisible();
+  await ownerPanel.getByRole("button", { name: "Close" }).click();
+  await expect(ownerPanel).toHaveCount(0);
   await expect(owner).toHaveURL(room);
   await expect(inBar(owner).getByRole("button", { name: "Screen live" })).toBeDisabled();
+  await expect(owner.getByRole("button", { name: "Hide the bar" })).toBeVisible();
+  await expect(gear).toBeFocused();
+  // Forward opens it again, one step at a time; Escape closes it.
+  await owner.goForward();
+  await expect(ownerPanel.getByRole("heading", { name: "People", level: 1 })).toBeVisible();
+  await owner.keyboard.press("Escape");
+  await expect(ownerPanel).toHaveCount(0);
+  await expect(owner).toHaveURL(room);
 
-  // So does Uma's own name, for the "You" page, with her watching kept.
-  const [you] = await Promise.all([uma.context().waitForEvent("page"), uma.getByRole("link", { name: "Uma · you" }).click()]);
-  await expect(you).toHaveURL(/\/you$/);
-  await expect(you.getByRole("heading", { name: "You" })).toBeVisible();
+  // A confirm open in it takes Escape first.
+  await gear.click();
+  await ownerPanel.getByRole("region", { name: "Members" }).getByRole("button", { name: /^Uma\b/ }).click();
+  await ownerPanel.getByRole("complementary", { name: "Uma" }).getByRole("checkbox", { name: /^First room/ }).click();
+  const untick = owner.getByRole("alertdialog", { name: "Remove Uma from First room?" });
+  await expect(untick).toBeVisible();
+  await owner.keyboard.press("Escape");
+  await expect(untick).toHaveCount(0);
+  await expect(ownerPanel).toBeVisible();
+  // Back closes it too.
+  await owner.goBack();
+  await expect(ownerPanel).toHaveCount(0);
+  await expect(owner).toHaveURL(room);
+  await expect(inBar(owner).getByRole("button", { name: "Screen live" })).toBeDisabled();
+  // The room kept its one socket all along: opening and closing never reloaded it.
+  expect(sockets.filter((path) => path === "/api/socket")).toHaveLength(0);
+
+  // Uma's own name opens "You" over the room, with Uma's watching kept; a click on the
+  // dimmed room closes it.
+  await uma.getByRole("link", { name: "Uma · you" }).click();
+  const youPanel = uma.getByRole("dialog", { name: "You" });
+  await expect(youPanel.getByRole("heading", { name: "You" })).toBeVisible();
+  await expect(uma).toHaveURL(/\/you$/);
   await expect(watched).toBeVisible();
+  await uma.mouse.click(4, 4);
+  await expect(youPanel).toHaveCount(0);
+  await expect(uma).toHaveURL(room);
   await expect(uma.getByRole("region", { name: "Here" }).getByRole("button", { name: "Stop watching Owner's screen" })).toBeVisible();
+  await expect(watched).toBeVisible();
+
+  // A reload keeps the overlay over the room, and closing still goes back to the room.
+  await gear.click();
+  await expect(ownerPanel.getByRole("heading", { name: "People", level: 1 })).toBeVisible();
+  await owner.reload();
+  await expect(ownerPanel.getByRole("heading", { name: "People", level: 1 })).toBeVisible();
+  await expect(owner.locator("[inert]").getByRole("heading", { name: "First room" })).toHaveCount(1);
+  await expect(owner).toHaveURL(/\/owner\/people$/);
+  await ownerPanel.getByRole("button", { name: "Close" }).click();
+  await expect(owner).toHaveURL(room);
+  await expect(owner.getByRole("heading", { name: "First room" })).toBeVisible();
+
+  // Opened fresh, it sits over what `/` shows: for Uma, with one room, that room. The
+  // address stays the overlay's until it closes.
+  const fresh = await uma.context().newPage();
+  await fresh.goto("/you");
+  await expect(fresh.getByRole("dialog", { name: "You" }).getByRole("heading", { name: "You" })).toBeVisible();
+  await expect(fresh).toHaveURL(/\/you$/);
+  await expect(fresh.locator("[inert]").getByRole("heading", { name: "First room" })).toHaveCount(1);
+  await fresh.getByRole("dialog", { name: "You" }).getByRole("button", { name: "Close" }).click();
+  await expect(fresh).toHaveURL(room);
+  await expect(fresh.getByRole("region", { name: "Here" }).getByRole("link", { name: "Uma · you" })).toBeVisible();
 });
 
 test("Share screen names its key in a tooltip, as the rail's buttons do, not beside its label", async ({ browser, baseURL }) => {

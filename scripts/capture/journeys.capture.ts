@@ -209,60 +209,78 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   dudaLine.online = true;
   await expect(hereOf(owner).getByRole("button", { name: /^Duda/ })).not.toContainText("reconnecting", { timeout: 15_000 });
 
-  // The owner page, with everyone present.
-  const admin = await ownerContext.newPage();
-  await admin.goto("/owner/people");
-  const members = admin.getByRole("region", { name: "Members" });
+  // The owner page over the busy room, from the gear, with everyone present.
+  await inBar(owner).getByRole("link", { name: "Owner page" }).click();
+  const members = owner.getByRole("region", { name: "Members" });
   await expect(members.getByRole("button", { name: /^Bia\b/ })).toContainText("Here now");
-  await shoot(admin, "owner--people");
+  await shoot(owner, "owner--people");
   await members.getByRole("button", { name: /^Bia\b/ }).click();
-  const panel = admin.getByRole("complementary", { name: "Bia" });
+  const panel = owner.getByRole("complementary", { name: "Bia" });
   await expect(panel).toBeVisible();
-  await shoot(admin, "owner--people-member");
+  await shoot(owner, "owner--people-member");
   await panel.getByRole("checkbox", { name: /^First room/ }).click();
-  const untick = admin.getByRole("alertdialog", { name: "Remove Bia from First room?" });
+  const untick = owner.getByRole("alertdialog", { name: "Remove Bia from First room?" });
   await expect(untick).toBeVisible();
-  await shoot(admin, "owner--untick-confirm");
+  await shoot(owner, "owner--untick-confirm");
   await untick.getByRole("button", { name: "Cancel" }).click();
   await panel.getByRole("button", { name: "Remove from graeae" }).click();
-  const removal = admin.getByRole("alertdialog", { name: "Remove Bia from graeae?" });
+  const removal = owner.getByRole("alertdialog", { name: "Remove Bia from graeae?" });
   await expect(removal).toBeVisible();
-  await shoot(admin, "owner--removal-modal");
+  await shoot(owner, "owner--removal-modal");
   await removal.getByRole("button", { name: "Cancel" }).click();
 
-  await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Invites" }).click();
-  const form = admin.getByRole("form", { name: "New invite" });
+  await owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Invites" }).click();
+  const form = owner.getByRole("form", { name: "New invite" });
   await form.getByLabel("Display name").fill("Fê");
   await form.getByRole("button", { name: "Create and copy link" }).click();
-  await expect(admin.getByText("Fê's link is on your clipboard")).toBeVisible();
-  const link = (await admin.getByLabel("Invite link").textContent())!.trim();
-  await shoot(admin, "owner--invites");
+  await expect(owner.getByText("Fê's link is on your clipboard")).toBeVisible();
+  const link = (await owner.getByLabel("Invite link").textContent())!.trim();
+  await shoot(owner, "owner--invites");
 
-  await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Rooms" }).click();
-  await admin.getByLabel("Room name").fill("Late shift");
-  await admin.getByRole("button", { name: "Create room" }).click();
-  await expect(admin.getByRole("region", { name: "Every room" }).getByRole("listitem", { name: "Late shift" })).toBeVisible();
-  await shoot(admin, "owner--rooms");
+  await owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Rooms" }).click();
+  await owner.getByLabel("Room name").fill("Late shift");
+  await owner.getByRole("button", { name: "Create room" }).click();
+  await expect(owner.getByRole("region", { name: "Every room" }).getByRole("listitem", { name: "Late shift" })).toBeVisible();
+  await shoot(owner, "owner--rooms");
 
-  await admin.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Usage" }).click();
-  const budgetForm = admin.getByRole("form", { name: "Usage budget" });
+  await owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: "Usage" }).click();
+  const budgetForm = owner.getByRole("form", { name: "Usage budget" });
   const budgetField = budgetForm.getByRole("spinbutton", { name: "GB a month" });
   await expect(budgetField).toHaveValue("1000");
-  await shoot(admin, "owner--usage");
+  await shoot(owner, "owner--usage");
   await budgetField.fill("2000");
   await budgetForm.getByRole("button", { name: "Save" }).click();
-  const raise = admin.getByRole("alertdialog");
+  const raise = owner.getByRole("alertdialog");
   await expect(raise).toBeVisible();
-  await shoot(admin, "owner--raise-confirm");
+  await shoot(owner, "owner--raise-confirm");
   await raise.getByRole("button", { name: "Cancel" }).click();
 
-  // The plain pages, with real data: two rooms now, so the root lists them.
+  await owner.keyboard.press("Escape");
+  await expect(owner.getByRole("dialog", { name: "Owner" })).toHaveCount(0);
+
+  // "You" over the busy room, from the owner's own row.
+  await hereOf(owner).getByRole("link", { name: /^Owner/ }).click();
+  await expect(owner.getByRole("dialog", { name: "You" }).getByLabel("Your devices").getByRole("listitem")).not.toHaveCount(0);
+  await shoot(owner, "you--owner");
+  await owner.keyboard.press("Escape");
+  await expect(owner.getByRole("dialog", { name: "You" })).toHaveCount(0);
+
+  // The list of rooms, with real data: two rooms now, so the root lists them, and the
+  // owner page and "You" over it.
+  const admin = await ownerContext.newPage();
   await admin.goto("/");
   await expect(admin.getByRole("link", { name: /Late shift/ })).toBeVisible();
   await shoot(admin, "rooms--list");
-  await admin.goto("/you");
-  await expect(admin.getByRole("heading", { name: "You" })).toBeVisible();
-  await shoot(admin, "you--owner");
+  await admin.getByRole("link", { name: "Owner page" }).click();
+  await expect(admin.getByRole("dialog", { name: "Owner" }).getByRole("heading", { name: "People" })).toBeVisible();
+  await shoot(admin, "owner--people-over-list");
+  await admin.keyboard.press("Escape");
+  await admin.getByRole("button", { name: "You", exact: true }).click();
+  await admin.getByRole("menuitem", { name: "You" }).click();
+  await expect(admin.getByRole("dialog", { name: "You" }).getByLabel("Your devices").getByRole("listitem")).not.toHaveCount(0);
+  await shoot(admin, "you--over-list");
+  await admin.keyboard.press("Escape");
+  await expect(admin.getByRole("dialog", { name: "You" })).toHaveCount(0);
   const fe = await (await newBrowser(browser, baseURL)).newPage();
   await fe.goto(link);
   await expect(fe.getByRole("button", { name: "Join as Fê" })).toBeVisible();
@@ -272,8 +290,9 @@ test("every state of the room and the owner page the samples lack", async ({ bro
   const before = ((await (await ownerContext.request.get("/api/owner/usage")).json()) as UsageAnswer).used;
   const budget = Math.ceil(before / GIGABYTE) + 10;
   await admin.goto("/owner/usage");
-  await budgetField.fill(String(budget));
-  await budgetForm.getByRole("button", { name: "Save" }).click();
+  const adminBudget = admin.getByRole("form", { name: "Usage budget" });
+  await adminBudget.getByRole("spinbutton", { name: "GB a month" }).fill(String(budget));
+  await adminBudget.getByRole("button", { name: "Save" }).click();
   await expect(admin.getByRole("region", { name: "This month" }).getByLabel("Usage budget")).toHaveText(
     `${budget.toLocaleString("en")} GB`,
   );

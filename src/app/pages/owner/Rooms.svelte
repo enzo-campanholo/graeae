@@ -33,8 +33,6 @@
   import RemovalConfirm from "./RemovalConfirm.svelte";
   import { removalFromRoom } from "./removal.js";
 
-  let { oncreated }: { oncreated?: () => void } = $props();
-
   const NAME_MAX = 40;
 
   let known = $state<Load<OwnerRoomsAnswer>>({ state: "loading" });
@@ -120,7 +118,6 @@
     picked = answer.room.address;
     // Only the owner has a new room; everyone else's ticks are already right.
     void refresh();
-    oncreated?.();
   }
 
   // Renaming the room picked, in the inspector's header.

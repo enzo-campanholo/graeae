@@ -36,12 +36,9 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   await expect(fiaRoom).toHaveURL(room);
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Fia" })).toBeVisible();
 
-  // Fia's own row opens "You" in a new tab, where the new name reaches the owner's bar at once.
-  const [fia] = await Promise.all([
-    fiaRoom.context().waitForEvent("page"),
-    fiaRoom.getByRole("region", { name: "Here" }).getByRole("link", { name: /Fia/ }).click(),
-  ]);
-  await fiaRoom.close();
+  // Fia's own row opens "You" over the room, where the new name reaches the owner's bar at once.
+  await fiaRoom.getByRole("region", { name: "Here" }).getByRole("link", { name: /Fia/ }).click();
+  const fia = fiaRoom.getByRole("dialog", { name: "You" });
   await expect(fia.getByRole("heading", { name: "You" })).toBeVisible();
   await expect(fia.getByLabel("Your devices").getByRole("listitem")).toHaveCount(1);
   await expect(fia.getByLabel("Your devices")).toContainText("This device");
@@ -49,14 +46,14 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   await fia.getByRole("button", { name: "Save" }).click();
   await expect(fia.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(owner.getByText("Fia R.", { exact: true })).toBeVisible();
-  // Fia closed the room's tab, so the owner sees them under "Not here".
-  await expect(owner.getByRole("region", { name: "Not here" })).toContainText("Fia R.");
+  // The room carries on under "You", so the owner still sees Fia here.
+  await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Fia R." })).toBeVisible();
 
   // Add a device: the link is on the clipboard and shown, and opens the same one-button page.
   await fia.getByRole("button", { name: "Add a device" }).click();
   await expect(fia.getByText("The link is on your clipboard")).toBeVisible();
   await expect(fia.getByText(/expires in 10 minutes/)).toBeVisible();
-  const link = await fia.evaluate<string>("navigator.clipboard.readText()");
+  const link = await fiaRoom.evaluate<string>("navigator.clipboard.readText()");
   expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{22}$/);
   await expect(fia.getByLabel("Device link")).toHaveText(link);
 
@@ -75,12 +72,13 @@ test("a member renames themselves, adds a second browser, then forgets it while 
   await expect(devices).toHaveCount(2);
   await expect(fia.getByLabel("Link for another browser")).toHaveCount(0);
 
-  // Forgetting it closes its room at once: its page is "nothing here", and Fia is gone from the bar.
+  // Forgetting it closes its room at once: its page is "nothing here", and Fia stays here only
+  // through the first browser, still in the room under "You".
   const other = devices.filter({ hasNotText: "This device" });
   await other.getByRole("button", { name: "Forget" }).click();
   await expect(devices).toHaveCount(1);
   await expect(laptop.getByRole("heading", { name: "Nothing here" })).toBeVisible();
-  await expect(owner.getByRole("region", { name: "Not here" })).toContainText("Fia R.");
+  await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Fia R." })).toHaveCount(1);
   await laptop.reload();
   await expect(laptop.getByRole("heading", { name: "Nothing here" })).toBeVisible();
 });
@@ -115,14 +113,18 @@ test("the avatar at the top of the bar opens You and sets the appearance, for a 
   await expect(ari.locator("html")).not.toHaveClass(/\bdark\b/);
   await expect(menu.getByRole("menuitemradio", { name: "Light" })).toBeChecked();
 
-  // "You" opens in a new tab, so Ari stays in the room.
-  const [you] = await Promise.all([ari.context().waitForEvent("page"), menu.getByRole("menuitem", { name: "You" }).click()]);
-  await expect(you).toHaveURL(/\/you$/);
+  // "You" opens over the room, so Ari stays in it, and closing goes back to the avatar.
+  await menu.getByRole("menuitem", { name: "You" }).click();
+  await expect(ari).toHaveURL(/\/you$/);
+  const you = ari.getByRole("dialog", { name: "You" });
   await expect(you.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
-  // The "You" page has no avatar of its own: its menu would lead to where you are.
+  // The "You" panel has no avatar of its own: its menu would lead to where you are.
   await expect(you.getByRole("button", { name: "You", exact: true })).toHaveCount(0);
-  await you.close();
   await expect(owner.getByRole("region", { name: "Here" }).getByRole("button", { name: "Ari" })).toBeVisible();
+  await ari.keyboard.press("Escape");
+  await expect(you).toHaveCount(0);
+  await expect(ari).toHaveURL(room);
+  await expect(bar.getByRole("button", { name: "You", exact: true })).toBeFocused();
 
   // The owner keeps the gear beside the avatar, so the owner page stays one click away.
   const ownerBar = owner.getByRole("complementary", { name: "People" });

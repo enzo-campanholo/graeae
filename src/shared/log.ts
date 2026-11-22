@@ -63,7 +63,8 @@
 // From a tab (`source: "tab"`), each with `page`, `up` and the tab's own `at`:
 // - `page.open` (`userAgent`, `language`, `screen`, `viewport`, `build`, and whether
 //   the instance `refused` the page), `page.route` (`route`,
-//   `params`, the page it `shows`), `page.hidden`, `page.visible`, `page.online`,
+//   `params`, the page it `shows`, and the page `under` it while that is an overlay),
+//   `page.hidden`, `page.visible`, `page.online`,
 //   `page.offline`, `page.leave`
 // - `ws.open`, `ws.close`, `ws.lost` (`why`), `ws.retry`, `ws.refused`, `ws.late` (a
 //   heartbeat answered after more than a second), `ws.in`, `ws.out`, each with the

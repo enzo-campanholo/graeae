@@ -21,15 +21,13 @@ test("an invite, from the owner page to the new member standing in the room", as
   await expect(inRoom.getByRole("heading", { name: "First room" })).toBeVisible();
   const room = inRoom.url();
 
-  // The gear opens the owner page in a new tab, beside the room; its Invites section holds the form.
-  const [owner] = await Promise.all([
-    inRoom.context().waitForEvent("page"),
-    inRoom.getByRole("link", { name: "Owner page" }).click(),
-  ]);
+  // The gear opens the owner page over the room, in the same tab; its Invites section holds the form.
+  await inRoom.getByRole("link", { name: "Owner page" }).click();
+  const owner = inRoom;
+  const panel = owner.getByRole("dialog", { name: "Owner" });
   await expect(owner).toHaveURL(/\/owner\/people$/);
-  await expect(inRoom).toHaveURL(room);
-  await owner.getByRole("link", { name: "Invites" }).click();
-  await expect(owner.getByRole("heading", { name: "Invites" })).toBeVisible();
+  await panel.getByRole("link", { name: "Invites" }).click();
+  await expect(panel.getByRole("heading", { name: "Invites" })).toBeVisible();
 
   const form = owner.getByRole("form", { name: "New invite" });
   await expect(form.getByRole("checkbox", { name: "First room" })).toBeChecked();

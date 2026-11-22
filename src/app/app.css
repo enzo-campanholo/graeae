@@ -96,12 +96,16 @@
   --avatar-lg-text: 14px;
 
   --header: 52px; /* the bar's and the owner navigation's header */
-  --bar: 316px; /* the room's bar and the owner page's navigation, one width */
+  --bar: 316px; /* the room's bar */
   --rail: 64px; /* the folded bar */
   --caption: 32px; /* under a share's picture: its line and the gap above it */
   --plain: 720px; /* the plain pages' column */
   --owner: 1000px; /* the owner page's content */
   --owner-side: 360px; /* an owner section's side column, which holds its inspector */
+  --owner-panel: 1280px; /* the owner page's panel, over the page it was opened from */
+  --owner-panel-h: 880px;
+  --owner-nav: 240px; /* the owner page's navigation, in its panel */
+  --you-panel: 640px; /* "You"'s panel */
   --choice: 224px; /* a large choice on the empty stage: to share, or a live share to watch */
   --choice-h: 136px;
 }
@@ -168,6 +172,10 @@
   --spacing-choice-h: var(--choice-h);
   --container-plain: var(--plain);
   --container-owner: var(--owner);
+  --container-owner-panel: var(--owner-panel);
+  --container-you-panel: var(--you-panel);
+  --spacing-owner-panel-h: var(--owner-panel-h);
+  --spacing-owner-nav: var(--owner-nav);
 
   --radius-sm: 4px;
   --radius-md: 6px; /* controls */

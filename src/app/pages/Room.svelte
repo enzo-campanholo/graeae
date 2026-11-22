@@ -256,7 +256,8 @@
     writeStored(FOLDED_KEY, value ? "1" : "0");
   }
 
-  // A room still on its way to the screen leaves keys to the page that is.
+  // A room still on its way to the screen leaves keys to the page that is, and one under an
+  // overlay leaves them to the overlay.
   const shown = viewShown();
   function onkeydown(event: KeyboardEvent) {
     if (!shown()) return;
@@ -332,7 +333,7 @@
         {#snippet foot()}
           {#if !askOnStage}{@render askFirst("rail")}{/if}
           <ShareButtons compact {...shareButtons} onscreen={() => shareScreen()} onwebcam={() => shareWebcam()} />
-          <div class="mt-3"><YouMenu name={me} {owner} side="right" large newTab /></div>
+          <div class="mt-3"><YouMenu name={me} {owner} side="right" large /></div>
         {/snippet}
       </Rail>
     {:else}

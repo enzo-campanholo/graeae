@@ -1,5 +1,5 @@
 <script lang="ts">
-  // A titled group on a plain page: its heading, an optional line saying what it is
+  // A titled group on "You": its heading, an optional line saying what it is
   // for, and its contents.
   import type { Snippet } from "svelte";
 

@@ -101,31 +101,58 @@ test("moving around the app", async ({ browser, baseURL }) => {
     () => here(reload).getByRole("link", { name: /you/ }),
   );
 
+  // The owner page and "You" over the room, and closing them back to it.
+  const inRoom = reload;
+  const ownerPanel = inRoom.getByRole("dialog", { name: "Owner" });
+  const youPanel = inRoom.getByRole("dialog", { name: "You" });
+  flashes += await move(
+    "room: gear → owner page",
+    inRoom,
+    () => inRoom.getByRole("link", { name: "Owner page" }).click(),
+    () => ownerPanel.getByRole("heading", { name: "People", level: 1 }),
+  );
+  for (const section of ["Invites", "Rooms", "Usage", "People", "Invites"]) {
+    flashes += await move(
+      `owner: ${section}`,
+      inRoom,
+      () => ownerPanel.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: section }).click(),
+      () => ownerPanel.getByRole("heading", { name: section, level: 1 }),
+    );
+  }
+  flashes += await move(
+    "owner: close → the room",
+    inRoom,
+    () => ownerPanel.getByRole("button", { name: "Close" }).click(),
+    () => inRoom.locator("h1:not([inert] *)", { hasText: "First room" }),
+  );
+  flashes += await move(
+    "room: own row → You",
+    inRoom,
+    () => here(inRoom).getByRole("link", { name: /you/ }).click(),
+    () => youPanel.getByLabel("Your devices"),
+  );
+  flashes += await move(
+    "You: Escape → the room",
+    inRoom,
+    () => inRoom.keyboard.press("Escape"),
+    () => inRoom.locator("h1:not([inert] *)", { hasText: "First room" }),
+  );
+
+  // Opened fresh, over the one room.
   const owner = await fresh();
   flashes += await move(
     "open /owner (new tab)",
     owner,
     () => owner.goto("/owner"),
-    () => owner.getByRole("list").first(),
+    () => owner.getByRole("dialog", { name: "Owner" }).getByRole("list").first(),
   );
-  for (const section of ["Invites", "Rooms", "Usage", "People", "Invites"]) {
-    flashes += await move(
-      `owner: ${section}`,
-      owner,
-      () => owner.getByRole("navigation", { name: "Owner page" }).getByRole("link", { name: section }).click(),
-      () => owner.getByRole("heading", { name: section, level: 1 }),
-    );
-  }
-
-  flashes += await move(
-    "owner: house → the one room",
-    owner,
-    () => owner.getByRole("link", { name: "Rooms" }).first().click(),
-    () => here(owner).getByRole("link", { name: /you/ }),
-  );
-
   const you = await fresh();
-  flashes += await move("open /you (new tab)", you, () => you.goto("/you"), () => you.getByLabel("Your devices"));
+  flashes += await move(
+    "open /you (new tab)",
+    you,
+    () => you.goto("/you"),
+    () => you.getByRole("dialog", { name: "You" }).getByLabel("Your devices"),
+  );
 
   // A second room, so the root address lists them.
   expect((await ownerContext.request.post("/api/owner/rooms", { data: { name: "Second room" } })).status()).toBe(200);
@@ -135,6 +162,18 @@ test("moving around the app", async ({ browser, baseURL }) => {
     list,
     () => list.goto("/"),
     () => list.getByRole("link", { name: /Second room/ }),
+  );
+  flashes += await move(
+    "list: gear → owner page",
+    list,
+    () => list.getByRole("link", { name: "Owner page" }).click(),
+    () => list.getByRole("dialog", { name: "Owner" }).getByRole("heading", { name: "People", level: 1 }),
+  );
+  flashes += await move(
+    "owner: Escape → list",
+    list,
+    () => list.keyboard.press("Escape"),
+    () => list.locator("a:not([inert] *)", { hasText: "Second room" }),
   );
   flashes += await move(
     "list → Second room",

@@ -4,20 +4,22 @@
 </script>
 
 <script lang="ts">
-  // The owner page: four sections in a navigation on the left, with the usage meter
-  // always in view at its foot, and the chosen section in the inset panel. The meter and
-  // the Usage section read the same figures, kept fresh while the page is in view.
+  // The owner page, in its panel over the page it was opened from: four sections in a
+  // navigation on the left, with the usage meter always in view at its foot, and the
+  // chosen section in the inset panel beside it, the close button at its top right. The
+  // meter and the Usage section read the same figures, kept fresh while the page is open.
   import Gauge from "@lucide/svelte/icons/gauge";
-  import House from "@lucide/svelte/icons/house";
   import Link from "@lucide/svelte/icons/link";
   import Users from "@lucide/svelte/icons/users";
   import DoorOpen from "@lucide/svelte/icons/door-open";
+  import X from "@lucide/svelte/icons/x";
   import type { Component } from "svelte";
   import { sample } from "$sample";
   import IconButton from "$lib/components/IconButton.svelte";
+  import { overlayClose } from "$lib/components/Overlay.svelte";
   import UsageMeter from "$lib/components/UsageMeter.svelte";
   import Loading from "$lib/components/Loading.svelte";
-  import { getJson, load, type Load } from "$lib/api.js";
+  import { load, type Load } from "$lib/api.js";
   import { heldBack } from "$lib/hold-back.js";
   import { holdUntil } from "$lib/swap.svelte.js";
   import PageTitle from "$lib/components/PageTitle.svelte";
@@ -31,6 +33,8 @@
   import Usage from "./owner/Usage.svelte";
 
   let { section }: { section: OwnerSection } = $props();
+
+  const close = overlayClose();
 
   const sections: Record<OwnerSection, { label: string; icon: Component; description: string }> = {
     people: {
@@ -67,17 +71,6 @@
   );
   if (!sample) load<MeAnswer>("/api/me", (value) => (me = value));
   const owner = $derived(me.state === "loaded" && me.data.owner);
-  // The house goes straight to the owner's one room, not through the list's redirect.
-  // A new room can make it the list, so the answer is asked again after one is made. A
-  // refresh that fails leaves the page as it is: the house is then at worst one redirect off.
-  const home = $derived(me.state === "loaded" ? me.data.home : "/");
-  function refreshHome() {
-    getJson<MeAnswer>("/api/me")
-      .then((data) => {
-        if (data) me = { state: "loaded", data };
-      })
-      .catch(() => {});
-  }
 
   // Asked for only once the instance has said this is the owner.
   const usage = new OwnerUsage();
@@ -93,16 +86,17 @@
 {#if owner}<PageTitle title="{sections[shown].label} · Owner · graeae" />{/if}
 
 {#if me.state === "loading"}
-  <main class="grid min-h-dvh place-items-center p-6"><Loading /></main>
+  <div class="grid h-full place-items-center p-6"><Loading /></div>
 {:else if !owner}
   <NothingHere />
 {:else}
-  <div class="flex h-dvh py-2 pr-2">
-    <aside class="flex w-bar shrink-0 flex-col px-2">
-      <!-- As the room's bar: the tools on a row, then the page's name under them at the
-           headline step. Not a heading: each section's own name is the page's heading. -->
+  <div class="flex h-full py-2 pr-2">
+    <aside class="flex w-owner-nav shrink-0 flex-col px-2">
+      <!-- As the room's bar: a row for tools, then the page's name under it at the headline
+           step. No house: closing goes back to the page under it. Not a heading: each
+           section's own name is the page's heading. -->
       <header>
-        <div class="flex h-header items-center"><IconButton label="Rooms" href={home}><House /></IconButton></div>
+        <div class="h-header"></div>
         <p class="px-2 text-xl font-medium">Owner</p>
       </header>
       <nav class="grid gap-0.5 pt-3" aria-label="Owner page">
@@ -136,6 +130,9 @@
     </aside>
 
     <main class="bg-stage min-w-0 flex-1 overflow-y-auto rounded-xl">
+      <div class="sticky top-0 z-10 flex h-0 justify-end">
+        <div class="pt-2.5 pr-2.5"><IconButton label="Close" key="Esc" onclick={close}><X /></IconButton></div>
+      </div>
       <div class="mx-auto max-w-owner px-10 pt-9 pb-16">
         <Swap key={section} value={section} onshow={(key) => (shown = key)}>
           {#snippet children(key)}
@@ -146,7 +143,7 @@
               </div>
               {#if key === "people" && !sample}<People />{/if}
               {#if key === "invites" && !sample}<Invites />{/if}
-              {#if key === "rooms" && !sample}<OwnerRooms oncreated={refreshHome} />{/if}
+              {#if key === "rooms" && !sample}<OwnerRooms />{/if}
               {#if key === "usage" && !sample}<Usage {usage} />{/if}
             </div>
           {/snippet}

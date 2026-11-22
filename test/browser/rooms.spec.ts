@@ -85,11 +85,15 @@ test("the owner makes and renames rooms, and a member with two finds them on the
   await expect(gil.getByRole("menu").getByRole("menuitem", { name: "You" })).not.toHaveAttribute("target");
   await gil.keyboard.press("Escape");
 
-  // The list is live, and looking at it makes Gil present nowhere.
+  // The list is live, and looking at it makes Gil present nowhere. The owner's room tab
+  // moving to Night shift shows there; First room keeps the owner through the owner
+  // page's tab, opened fresh while First room was the only one, so it is under it.
   await expect(owner.getByRole("region", { name: "Not here" }).getByText("Gil", { exact: true })).toBeVisible();
   await owner.goto(nightPath);
   await expect(nightLine).toContainText("Owner");
-  await expect(firstLine).toContainText("No one here");
+  await expect(firstLine).toContainText("Owner");
+  await expect(nightLine).not.toContainText("Gil");
+  await expect(firstLine).not.toContainText("Gil");
 
   // Into a room from the list: the bar links back, and a rename arrives live.
   await nightLine.click();

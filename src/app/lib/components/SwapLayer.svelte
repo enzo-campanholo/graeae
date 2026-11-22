@@ -2,21 +2,27 @@
   // One view of a `Swap`: on screen, or on its way, mounted but out of sight and out of
   // reach until it swaps in. Its components take holds on its gate while they mount. The
   // view is one element either way, so swapping in moves nothing and mounts nothing again.
+  // An overlay over a view on screen leaves it in sight but out of reach (`covered`).
   import type { Snippet } from "svelte";
   import { provideView, viewShown, type Gate } from "../swap.svelte.js";
 
-  let { gate, shown, children }: { gate: Gate; shown: boolean; children: Snippet } = $props();
+  let {
+    gate,
+    shown,
+    covered = false,
+    children,
+  }: { gate: Gate; shown: boolean; covered?: boolean; children: Snippet } = $props();
 
   // A view inside another is on screen only while that one is too.
   const outer = viewShown();
   // svelte-ignore state_referenced_locally
-  provideView(gate, () => shown && outer());
+  provideView(gate, () => shown && !covered && outer());
 
   // Runs once the view's components have mounted, and taken their holds.
   $effect(() => gate.mounted());
 </script>
 
-<div class={shown ? "shown" : "on-its-way"} inert={!shown} aria-hidden={shown ? undefined : "true"}>
+<div class={shown ? "shown" : "on-its-way"} inert={!shown || covered} aria-hidden={shown ? undefined : "true"}>
   {@render children()}
 </div>
 
