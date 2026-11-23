@@ -44,4 +44,6 @@ A request the instance does not understand is now logged as `request.not-underst
 - The Standards axis asked for the log test to sit under the instance's own lines, for the event to have its own bullet and a name that does not reuse "refused" (which elsewhere means an access check), and for one source of a request's name. All three are done.
 - The Spec axis found that 1000 KiB left too little room for JSON escaping (now 900 KiB), a wrong time span, and the Helium window share and the webcam left unexplained. All three are fixed above.
 
+**Deployed.** `graeae-test` runs `b2a396c` as version `4a371c09` (2026-11-23).
+
 **Left.** Checking it on real media: one tab watching 30 or more shares on one connection on `graeae-test`. If an evening ever outgrows about 390 shares on one connection, the next step is for the tab to rebuild its connection, which needs a ticket of its own.
