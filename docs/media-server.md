@@ -5,7 +5,9 @@ seen on `graeae-test` with `pnpm real-media` and read back with `pnpm logs`. The
 themselves are listed in `src/instance/media/cloudflare.ts`. What Chrome does with the
 same connection is in `src/app/lib/media/stopping.ts` (stopping a transceiver),
 `receiving.ts` (the codecs a transceiver it does not send on offers) and `browser.ts`
-(the rest).
+(the rest). ADR 0005 moves watching to a connection of its own, on which the tab makes
+no offer (ticket 61, not yet built); the section behaviours below then bear only on the
+sending connection, where nothing is watched.
 
 Each behaviour names where it was seen and whether the loopback's stand-in media server
 (`test/loopback/page/media-server.ts`, run by `pnpm test`) plays it. A change to how

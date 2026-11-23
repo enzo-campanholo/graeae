@@ -1,6 +1,6 @@
 # 60: A first watch leaves 42e01f in the tab's offers, and a later watch in a stopped share's section shows nothing
 
-**Status:** needs-triage
+**Status:** wontfix
 
 **Blocked by:** none
 
@@ -46,3 +46,9 @@ The descriptions of a red run are in the loop's `--dump` files: mid 0 `recvonly 
       --clip ~/.cache/graeae-real-media/clips/high-1080p60.h264 --steps "cam share share cam" --runs 3'
 
 Remove the members afterwards with `pnpm as-owner remove <name>`.
+
+## Comments
+
+### 2026-11-23: superseded by 61
+
+Not fixed on its own. 57, 58 and this ticket are one cause: a section the tab narrowed for sending was reused by the media server for a watch. Each fix to which codecs a section offers has rested on media server behaviour that was seen but is not documented. ADR 0005 splits the tab's media connection into a sending connection and a receiving connection, so no watch lands in a section the tab narrowed. Ticket 61 builds that, and its done check runs this ticket's order on `graeae-test` (`--steps "cam share share cam" --runs 3`). Neither the ways out above nor the stand-in check are to be built.
