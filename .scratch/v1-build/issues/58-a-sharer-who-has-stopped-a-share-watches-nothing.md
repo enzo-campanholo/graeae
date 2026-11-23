@@ -1,6 +1,6 @@
 # 58: A sharer who has stopped a share watches nothing
 
-**Status:** ready-for-human
+**Status:** resolved
 
 **Blocked by:** none
 
@@ -107,3 +107,11 @@ The ticket's other open question is unchanged: whether `Track doesn't exist or w
 2. Unchecked, and not new with this fix: a screen share in H.264 high, watched in a reused section that lists only baseline. This happens after the tab has watched a webcam, or after its own webcam share. It is likely to drop the same way. To check it, a sharer with a hardware H.264-high encoder (MONSTRAO) shares its screen while a member that has just watched a webcam watches it. If it fails, file it as its own ticket.
 
 The members Sharer58 and Watcher58 and their invite files in `.owner/invites/` stay on graeae-test for check 1. Remove them afterwards with `pnpm as-owner remove`.
+
+### 2026-11-23: checked on graeae-test; resolved
+
+Deployed `034d09b` to `graeae-test` as version `aaff375f`.
+- **`repro-58.ts --steps 'share watch share watch' --runs 3`: green in 3 of 3 runs, exit 0.** Before the fix it was red in 7 of 7. In each run the second watch went in mid 0 (published on) and decoded 156, 157 and 151 frames.
+- **The ticket's own run, 14 shares each followed by a watch, in one run: every watch decoded, 146 to 156 frames.** The watches went in mids 1, 0, then 2 to 13. Before, every watch after the first decoded nothing.
+
+The H.264-high case (check 2 above) needs MONSTRAO, and is ticket 59. Sharer58 and Watcher58 have been removed from `graeae-test`.
