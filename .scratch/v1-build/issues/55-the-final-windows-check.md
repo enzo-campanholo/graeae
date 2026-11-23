@@ -5,7 +5,7 @@
 **Why:** this server encodes in software only and has no window audio, so each of the three tickets leaves its Windows lines here:
 - A tab and a window still carry sound in Chrome and Helium (52).
 - A fresh share of a game window and a fresh share of a tab open at about 1080 lines in hardware and stay there (53).
-- A fresh share of a game window goes out as `64001f` in hardware (54).
+- A fresh share of a game window goes out as H.264 high (`6400xx`, any level) in hardware (54).
 - The owner looks at a real game and says the picture is no worse (54).
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
@@ -25,7 +25,7 @@ The split was decided in [The final Windows check](../../share-reliability/issue
   - **If a line fails:** comments the readings on the build ticket that owns it (52, 53 or 54) and sets that ticket to `needs-triage`. The wizard is not edited, and the owner is not asked to run it, until the fix is in and this run has passed again.
 - [ ] **The wizard's two edits**, made only after the run passes:
   - In `t32-game`, one line saying the share now goes out as H.264 high at full size, so a soft or blocky picture in fast motion is a fail. Keep the id `t32-game`, since nothing was recorded for it.
-  - In `webrtc_help`, the hardware encoder is named `D3D12VideoEncodeAccelerator` (the Windows evidence run), and the help also reads the `outbound-rtp` entry's codec: `64001f` for a screen share from Chrome or Brave, `42001f` for a webcam.
+  - In `webrtc_help`, the hardware encoder is named `D3D12VideoEncodeAccelerator` (the Windows evidence run), and the help also reads the `outbound-rtp` entry's codec: `6400xx` (H.264 high, any level) for a screen share from Chrome or Brave, `42001f` for a webcam.
 - [ ] **If the owner fails `t32-game`:** the owner had nothing to compare against, so a session here first reads that share's `stats` lines (profile, size, encoder, QP) with the log token (CLAUDE.md, Logs). High is turned off only if those lines point at it. No A/B switch is added for the owner.
 
 The owner's part: paste the message once, and later run the wizard once. Nothing else.
@@ -56,19 +56,19 @@ Sample with `sample 1000` (250 ms around each start), and read each sharing tab'
 
 1. **High is chosen on its merits.** In Chrome and in Helium, record:
    - `RTCRtpSender.getCapabilities("video")`'s H.264 entries;
-   - what `navigator.mediaCapabilities.encodingInfo({ type: "webrtc", video: { contentType: "video/H264; profile-level-id=64001f", width: 1920, height: 1080, framerate: 60, bitrate: 12000000 } })` answers (`supported`, `smooth`, `powerEfficient`), through `eval`.
-2. **Fresh window shares.** 8 starts by Win Chrome and 4 by Helium Share, each of a 1600x900 or larger `content.html` game window at 60 fps, with a `reload` before each start and Win Watcher watching. For each, record:
+   - what `navigator.mediaCapabilities.encodingInfo({ type: "webrtc", video: { contentType: "video/H264; profile-level-id=64001f; packetization-mode=1", width: 1920, height: 1080, framerate: 60, bitrate: 12000000 } })` answers (`supported`, `smooth`, `powerEfficient`), through `eval`.
+2. **Fresh window shares.** 4 starts by Win Chrome and 2 by Helium Share, each of a 1600x900 or larger `content.html` game window at 60 fps, with a `reload` before each start and Win Watcher watching. For each, record:
    - the first frame's size, encoder and `hardware`;
    - at 10 s and 25 s: size, encoder, `hardware`, codec and `profile-level-id`, and bitrate.
 
-   Pass: every start shows its first frame at about the window's full size, in hardware, as `64001f`, and is still that size in hardware at 25 s.
-3. **Fresh tab shares.** The same, with a tab of `content.html`: 8 starts in Chrome and 4 in Helium. Then one Chrome tab share resized down and back up, with devtools opened and closed, while live for 2 minutes.
+   Pass: every start shows its first frame at about the window's full size, in hardware, as H.264 high (`6400xx`, any level; record the level), and is still that size in hardware at 25 s.
+3. **Fresh tab shares.** The same, with a tab of `content.html`: 4 starts in Chrome and 2 in Helium. Then one Chrome tab share resized down and back up, with devtools opened and closed, while live for 2 minutes.
 
    Pass: the same as check 2, and the resized tab never leaves hardware, scaled only by the capture itself.
 4. **Watchers decode graeae's own high share.** Win Chrome shares the game window for 5 minutes, with Win Watcher and Win Firefox watching. At each watcher, record frames decoded and per second, dropped frames, freezes, key frames and the decoder, plus a fast-scene screenshot.
 
    Pass: both decode at about 60 fps, with no more than 1 freeze, and no growing drop count.
-5. **Sound still goes out.** In Chrome and in Helium:
+5. **Sound still goes out.** *Not run again after 2026-11-23, when it passed: the fix since touches only the video codec.* In Chrome and in Helium:
    - a tab share of `content.html` playing a tone, and a window share of a `content.html` window playing another tone;
    - for each, the audio track's `capture.label`, whether the sharing tab logged `capture.audio-dropped`, and the tone's `audioLevel` at Win Watcher.
 
