@@ -1,6 +1,6 @@
 # 56: A long-watching tab stops receiving new shares
 
-**Status:** ready-for-human (built; until a tab watching 30 or more shares on one connection is checked on real media)
+**Status:** ready-for-human (built and deployed; until ticket 55's check 7 on MONSTRAO watches 32 shares on one connection)
 
 **Blocked by:** none
 

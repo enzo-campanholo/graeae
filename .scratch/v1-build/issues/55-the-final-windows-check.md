@@ -10,7 +10,7 @@
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
 
-**Status:** ready-for-human (54's fix is on `graeae-test`, version `370be614`; until the owner says MONSTRAO is free)
+**Status:** ready-for-human (the rerun's invites are with the owner; until the MONSTRAO agent's report is pushed)
 
 **Blocked by:** 54
 
@@ -22,7 +22,8 @@ The split was decided in [The final Windows check](../../share-reliability/issue
 - [ ] **After the run, a session here:**
   - Reads the report on `evidence/windows-<date>` and writes the readings into this ticket as a comment.
   - **If every line passes:** makes the two edits to `scripts/owner-checks.sh` below, removes the five members in People, and resolves this ticket.
-  - **If a line fails:** comments the readings on the build ticket that owns it (52, 53 or 54) and sets that ticket to `needs-triage`. The wizard is not edited, and the owner is not asked to run it, until the fix is in and this run has passed again.
+  - **If check 7 passes:** writes its readings on 56 as a comment and resolves 56, whatever the other checks read.
+  - **If a line fails:** comments the readings on the build ticket that owns it (52, 53 or 54, or 56 for check 7) and sets that ticket to `needs-triage`. The wizard is not edited, and the owner is not asked to run it, until the fix is in and this run has passed again.
 - [ ] **The wizard's two edits**, made only after the run passes:
   - In `t32-game`, one line saying the share now goes out as H.264 high at full size, so a soft or blocky picture in fast motion is a fail. Keep the id `t32-game`, since nothing was recorded for it.
   - In `webrtc_help`, the hardware encoder is named `D3D12VideoEncodeAccelerator` (the Windows evidence run), and the help also reads the `outbound-rtp` entry's codec: `6400xx` (H.264 high, any level) for a screen share from Chrome or Brave, `42001f` for a webcam.
@@ -38,8 +39,8 @@ The owner pastes this, with the five invite links the session here gives them:
 
 ### Instructions for the MONSTRAO agent
 
-You check that three changes behave on Windows as they were built to. You decide nothing and change nothing in graeae's code. Read first:
-- 52, 53 and 54 in this folder;
+You check that four changes behave on Windows as they were built to. You decide nothing and change nothing in graeae's code. Read first:
+- 52, 53, 54 and 56 in this folder;
 - the earlier run, `.scratch/share-reliability/issues/09-windows-evidence-run.md`. Its "Instructions for the MONSTRAO agent" set out the tools, and its rules hold here unchanged: own user-data-dirs, no invite in a pushed file, ask before sharing the entire screen, quiet tones read from statistics.
 
 **What is different this time.** No `fixes.js` override: no `--codec`, `--degradation`, `--start-bitrate` or `--max-bitrate`. graeae's own code is what is checked. The instance is `https://graeae-test.cloudflare-item736.workers.dev`. Record the build shown in its footer.
@@ -76,6 +77,12 @@ Sample with `sample 1000` (250 ms around each start), and read each sharing tab'
 6. **A webcam is unchanged.** Win Chrome shares a webcam (Chrome's fake device if there is no camera, or the owner's if they say so) for 1 minute. Record its codec and `profile-level-id`.
 
    Pass: `42001f`, or VP8.
+7. **A watcher keeps receiving new shares** (56). Run it last. Reload Win Watcher once at its start, then never again until it is done, so it stays on one media connection. Win Chrome shares a tab of `content.html` playing a tone, with its audio on, 32 times in turn: each share starts, Win Watcher watches it, both wait 10 s, and Win Chrome stops it before the next starts. Each share leaves an audio and a video section on Win Watcher's connection, so its SDP passes 64 KiB at about share 28, where the first run's watcher stopped receiving. For each share, at Win Watcher, record:
+   - the seconds from the watch to the first decoded frame;
+   - the `mid` of its inbound video and audio streams;
+   - frames decoded in the 10 s, and the tone's `audioLevel`.
+
+   Pass: all 32 shares are decoded within 5 s of the watch, with the tone above silence, and Win Watcher is not reloaded. Record the last share's video `mid`; it should be 60 or more.
 
 **The report.** On a branch `evidence/windows-<YYYY-MM-DD>` from `v1-build` (add `-2` after the date if that branch already exists), add a file `docs/evidence/windows-<YYYY-MM-DD>.md` holding:
 - each browser's version, the Windows build, and the GPU driver;
@@ -112,3 +119,9 @@ As the ticket says for a failed line, the wizard is not edited and the owner is 
 - **Scope:** checks 2 and 3 drop to 4 starts from Chrome and 2 from Helium each, and check 5 is not run, because 52 passed and the fix touches only the codec choice. Checks 1, 4 and 6 run as before. Check 1's query now carries `packetization-mode=1`, as 54's fix will.
 
 The rerun waits for 54's fix to be on `graeae-test`. The five members from the first run are to be removed in People before new invites are made.
+
+**Before the rerun (2026-11-23).**
+- `graeae-test` runs version `4a371c09`, built from `b2a396c`, and its footer reads `b2a396c`. That build holds 52, 53, 54's fix (`a39db42`) and 56's. Nothing under `src/` or `scripts/` has changed on `v1-build` since, so it was not redeployed.
+- The first run's members (Win Chrome, Win Watcher, Win Firefox and Helium Share) were removed in People over the owner's API (204 each), and its unused Win Spare invite was cancelled. No other member, room or invite was touched.
+- Five new invites into "Windows evidence" were made the same way, from the owner's device that 49, 53 and 54 used: Win Chrome, Win Watcher, Win Firefox, Helium Share and Win Spare. They went to the owner in chat and are not written here. They work until 2026-11-30.
+- The owner said MONSTRAO is free, and chose to add check 7: one watcher on one connection through 32 shares, which is 56's last open line. `v1-build` was pushed so the MONSTRAO agent can read this.
