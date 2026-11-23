@@ -25,6 +25,8 @@ Node and pnpm come from `shell.nix`: run commands as `nix-shell --run '<command>
 - `pnpm perf`: times each move around the app on the fakes and fails when one flashes a loading state (painted for under 300ms). `GRAEAE_PERF_RTT=60` adds a round trip to HTTP and the sockets. Not a test; see `scripts/perf/`.
 - `pnpm run deploy`: see `scripts/deploy.mjs`.
 
+Sharing a window of a browser that also holds a watching graeae tab (another profile or the same one) sends that tab's sound back out, and it loops until the watching tab is muted. To share and watch on one Windows machine, use two browsers, as `scripts/owner-checks.sh` does.
+
 Seam 1 tests use the harness in `test/harness.ts`: HTTP, sockets, the test's clock, the fake media server's controls (`instance.media`) and the instance's log lines (`instance.logs()`) only. `test/harness.test.ts`, the harness's own test, may reach inside the instance.
 
 ## Logs

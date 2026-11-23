@@ -1,10 +1,13 @@
-// What graeae asks the browser to capture for a screen share: one pure rule, taking the
-// browser family (spec, Screen audio). Both media clients use it: the real one hands it
-// to `getDisplayMedia`, the fake records it.
+// A screen share's capture, as pure rules (spec, Screen audio): what graeae asks the
+// browser for, taking the browser family, which both media clients use (the real one
+// hands it to `getDisplayMedia`, the fake records it); which audio the picker gives is
+// screen audio, which the real client keeps and drops by; and the description that
+// sends that audio in stereo.
 //
 // The app never checks the operating system and never blocks a browser. Every browser
 // that is not Firefox is asked as Chromium is, and takes what it understands of the
-// request: a hint it does not know is ignored, and any audio its picker gives is sent.
+// request: a hint it does not know is ignored. Audio its picker gives is sent only when
+// `isScreenAudio` keeps it.
 
 import { encodingPlan, type BrowserFamily } from "../../../shared/encoding.ts";
 
@@ -65,6 +68,22 @@ export function screenCapture(browser: BrowserFamily): ScreenCaptureRequest {
     windowAudio: "window",
     selfBrowserSurface: "exclude",
   };
+}
+
+/**
+ * The labels Chromium gives a tab's audio and one application's
+ * (`GetAudioMediaStreamDeviceName`), read on Windows 11 with Chrome 158 and Helium.
+ */
+const SCREEN_AUDIO_LABELS = new Set(["Tab audio", "Application Audio"]);
+
+/**
+ * Whether a captured audio track with this label is screen audio: a tab's or one
+ * application's, exactly as Chromium names them. Anything else (`System Audio`, which a
+ * window share falls back to on Windows 10 and on some Windows 11 builds and which holds
+ * every voice in the call, a track with no label, or a name not yet seen) is not.
+ */
+export function isScreenAudio(label: string): boolean {
+  return SCREEN_AUDIO_LABELS.has(label);
 }
 
 /** The family of the browser that sent `userAgent`. */

@@ -13,7 +13,7 @@
 import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
-import { browserFamily, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
+import { browserFamily, isScreenAudio, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
@@ -84,7 +84,14 @@ export class BrowserMediaClient implements MediaClient {
     // A game moves: the encoder treats the picture as motion rather than a still document,
     // and gives up resolution before frame rate.
     for (const track of stream.getVideoTracks()) track.contentHint = "motion";
-    // Any audio the picker gave is sent, whatever the system: it is the member's choice.
+    // Audio that is not screen audio is stopped, so the browser lets go of it, and taken
+    // out of the stream, so the share goes out video only as if the picker gave none.
+    for (const track of stream.getAudioTracks()) {
+      if (isScreenAudio(track.label)) continue;
+      track.stop();
+      stream.removeTrack(track);
+      tabLog.warn("capture.audio-dropped", { kind: "screen" });
+    }
     return { kind: "screen", stream, audio: stream.getAudioTracks().length > 0, ended: endedOf(stream) };
   }
 

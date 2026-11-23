@@ -76,7 +76,9 @@
 //   `pc.restarted`, `pc.restart-failed`
 // - `capture.asked`, `capture.granted`, `capture.refused` (with the `error` name),
 //   `capture.track` (what the browser captured), `capture.ended` (by the browser),
-//   `capture.track-ended`, `capture.muted`, `capture.unmuted`
+//   `capture.track-ended`, `capture.muted`, `capture.unmuted`, `capture.audio-dropped`
+//   (a screen share's audio that was not a tab's or one application's, by `kind`, never
+//   its label)
 // - `share.asked`, `share.offered`, `share.confirmed`, `share.failed`, `share.stopped`,
 //   `share.handed-over`, `watch.asked`, `watch.pulled`, `watch.confirmed`, `watch.shown`
 //   (its first frame), `watch.refused`, `watch.failed`, `watch.left`, `watch.moved`,

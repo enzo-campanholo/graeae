@@ -1,9 +1,9 @@
-// What graeae asks the browser's picker for when a member shares their screen: one pure
-// rule, taking the browser family. The expected values come from the spec's Screen audio
-// section, not from the code.
+// A screen share's capture: what graeae asks the browser's picker for, taking the browser
+// family, and which audio the picker gives is screen audio. The expected values come from
+// the spec's Screen audio section and Chromium's own track labels, not from the code.
 
 import { describe, expect, it } from "vitest";
-import { browserFamily, screenCapture, stereoOpus } from "../src/app/lib/media/capture.ts";
+import { browserFamily, isScreenAudio, screenCapture, stereoOpus } from "../src/app/lib/media/capture.ts";
 
 describe("a screen capture on Chromium", () => {
   const asked = screenCapture("chromium");
@@ -69,6 +69,19 @@ describe("the browser family", () => {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
       ),
     ).toBe("chromium");
+  });
+});
+
+describe("which captured audio is screen audio", () => {
+  it("is a tab's sound or one application's, by the names Chromium gives them", () => {
+    expect(isScreenAudio("Tab audio")).toBe(true);
+    expect(isScreenAudio("Application Audio")).toBe(true);
+  });
+
+  it("is never the whole system's sound, a track with no name, or a name spelt otherwise", () => {
+    expect(isScreenAudio("System Audio")).toBe(false);
+    expect(isScreenAudio("")).toBe(false);
+    expect(isScreenAudio("tab audio")).toBe(false);
   });
 });
 

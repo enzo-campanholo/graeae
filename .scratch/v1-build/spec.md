@@ -245,6 +245,7 @@ Four deep modules carry the design. Each is described by what it does, not where
 | Whole screen | Video only | Video only |
 
 - The whole system's sound is never captured, on any platform.
+- A captured audio track is sent only when it is a tab's or one application's; any other is dropped and the share goes out video only, on every platform and browser.
 - graeae asks the browser's picker to have its audio checkbox ticked. graeae has no audio toggle of its own before the picker; the sharer's own live share has an audio on and off control.
 - The sharing page's own audio is always excluded from a capture, with no setting.
 - Screen audio is sent in stereo with echo cancellation, noise suppression and automatic gain switched off.
@@ -375,7 +376,7 @@ Three levels. Supported: the targets hold and a failure is a bug. Limited: it wo
 
 - 2026-11-20, the owner's decision: ~~Vivaldi~~ leaves the Supported row for best effort, ~~macOS~~ leaves the Limited row for best effort (no Mac to test on; macOS is untested), and Zen joins the Firefox row. Zen is built on Firefox and gets its gaps; it is not yet verified ([Remaining browser checks](../v1/issues/21-remaining-browser-checks.md)). The Linux row was checked Linux to Linux in Chromium 157 on 2026-11-20 (build ticket 32); steps 3 and 5 of the Linux pass under Verification, against a Windows member, are in the owner's wizard (`scripts/owner-checks.sh`).
 - "Everything else" covers macOS in any browser, Vivaldi, Edge, Opera and other Chromium browsers, Firefox and Zen off Windows, Windows 10, Safari, and every phone browser.
-- The app never checks the operating system and never blocks a browser. Extra audio a picker offers on Linux or a best-effort platform is passed through, not promised.
+- The app never checks the operating system and never blocks a browser. Extra audio a picker offers on Linux or a best-effort platform is passed through, not promised, when it is a tab's or one application's; any other is dropped.
 - A gap is shown only when it matters and only to the member affected. No banner on arrival, no badge for viewers.
 - **4 simultaneous screens at 1080p60 is the promise**, kept on the owner's judgement and unproven: the decode load of 3 or 4 game shares was never measured.
 - A sharer on a 144 Hz monitor gets 48 fps until Chrome's upstream fix ships. This is a named caveat on the Supported level.
