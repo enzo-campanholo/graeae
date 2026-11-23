@@ -88,6 +88,22 @@ describe("with two qualities switched off", () => {
   });
 });
 
+describe("what the browser gives up above a share's last step", () => {
+  it("is frame rate on a Chromium screen share, which keeps its size, at one quality or two", () => {
+    expect(encodingPlan("chromium", "screen").degradation).toBe("maintain-resolution");
+    expect(encodingPlan("chromium", "screen", SENT_AT_TWO_QUALITIES).degradation).toBe("maintain-resolution");
+  });
+
+  it("is resolution on a Firefox screen share", () => {
+    expect(encodingPlan("firefox", "screen").degradation).toBe("maintain-framerate");
+  });
+
+  it("is the browser's choice on a webcam share", () => {
+    expect(encodingPlan("chromium", "webcam").degradation).toBe("balanced");
+    expect(encodingPlan("firefox", "webcam").degradation).toBe("balanced");
+  });
+});
+
 describe("every share", () => {
   it("never offers HEVC, and offers H.264 in baseline profile alone", () => {
     for (const browser of ["chromium", "firefox"] as const) {

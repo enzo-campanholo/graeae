@@ -15,13 +15,14 @@
 // Both media clients run every share they send through `follow`: the real one feeds it
 // the browser's `getStats()`, the fake whatever a Seam 2 journey says.
 
-import type { EncodingPlan } from "../../../shared/encoding.ts";
+import type { Degradation, EncodingPlan } from "../../../shared/encoding.ts";
 import { sendEncodings } from "./encodings.ts";
 
 /**
  * The step-down, the one place it is switched on or off. Off: a share always goes out at
- * its full plan, the browser alone gives up what it must on a weak upload (resolution
- * first), and its sharer gets no note on the upload. The notes on 48 fps and on software
+ * its full plan, the browser alone gives up what it must on a weak upload (frame rate
+ * first on a Chromium screen share, which keeps its size; the plan's `degradation`), and
+ * its sharer gets no note on the upload. The notes on 48 fps and on software
  * encoding stay.
  *
  * Off since the owner's check on Cloudflare (ticket 18). On a 288 Mbps upload, with
@@ -87,9 +88,6 @@ export const STEPPED = { height: 720, lastFramerate: 30 } as const;
  * the one quality scaled down), or 720p at 30 fps.
  */
 export type Step = "full" | "720p" | "720p30";
-
-/** What the browser gives up first when the upload is short: `RTCRtpSendParameters.degradationPreference`. */
-export type Degradation = "maintain-framerate" | "balanced";
 
 /** One reading of a share's statistics. What the browser did not report is left out. */
 export interface Reading {
@@ -305,11 +303,12 @@ export function stepEncodings(plan: EncodingPlan, step: Step, captureHeight: num
 
 /**
  * What the browser gives up first when the upload is short of even the step's limits:
- * resolution, so motion stays smooth, until the share's last step, below which the
- * browser degrades as it sees fit.
+ * what the plan says (`EncodingPlan.degradation`) until the share's last step, below
+ * which the browser degrades as it sees fit. A Chromium screen share gives up frame rate
+ * and keeps its size; its steps set the scale and frame rate themselves.
  */
 export function degradationPreference(sending: Sending): Degradation {
-  return sending.step === sending.steps.at(-1) ? "balanced" : "maintain-framerate";
+  return sending.step === sending.steps.at(-1) ? "balanced" : sending.plan.degradation;
 }
 
 /** One entry of a sender's `RTCStatsReport`, as far as a reading reads it. */

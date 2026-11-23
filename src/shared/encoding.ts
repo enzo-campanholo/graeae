@@ -48,6 +48,14 @@ export type QualityName = "1080p" | "720p";
  */
 export const RIDS: Record<QualityName, string> = { "1080p": "f", "720p": "h" };
 
+/**
+ * What the browser gives up first when the upload or the encoder is short:
+ * `RTCRtpSendParameters.degradationPreference`. "maintain-resolution" gives up frame rate
+ * and keeps the picture's size, "maintain-framerate" gives up size, and "balanced" leaves
+ * the browser to choose.
+ */
+export type Degradation = "maintain-resolution" | "maintain-framerate" | "balanced";
+
 /** One quality a share goes out at: one encode of its picture. */
 export interface Quality {
   name: QualityName;
@@ -72,6 +80,11 @@ export interface EncodingPlan {
   capture: { width: number; height: number; frameRate: number };
   /** The most one viewer can receive of it, in bits per second: the usage count's figure for a gap. */
   maxBitrate: number;
+  /**
+   * What the browser gives up first above the share's last step down; at its last step
+   * the browser chooses ("balanced"). A share with one step only is always "balanced".
+   */
+  degradation: Degradation;
 }
 
 /**
@@ -93,26 +106,36 @@ export function encodingPlan(
   { twoQualities = TWO_QUALITIES }: { twoQualities?: boolean } = {},
 ): EncodingPlan {
   if (kind === "webcam") {
-    return plan(HARDWARE_FIRST, [{ name: "720p", height: 720, maxFramerate: 30, maxBitrate: 1_500_000 }], {
-      width: 1280,
-      height: 720,
-      frameRate: 30,
-    });
+    // Nobody has seen a webcam open small: the browser chooses, as it always has.
+    return plan(
+      HARDWARE_FIRST,
+      [{ name: "720p", height: 720, maxFramerate: 30, maxBitrate: 1_500_000 }],
+      { width: 1280, height: 720, frameRate: 30 },
+      "balanced",
+    );
   }
   if (browser === "firefox") {
     // Firefox encodes H.264 in software only, where VP9 gives it the better picture: one
-    // quality in VP9.
+    // quality in VP9. Nobody has seen a Firefox share open small: it gives up size first,
+    // as it always has.
     return plan(
       [{ mimeType: "video/VP9" }, { mimeType: "video/VP8" }],
       [{ name: "1080p", height: 1080, maxFramerate: 30, maxBitrate: 6_000_000 }],
       { ...SCREEN_CAPTURE, frameRate: 30 },
+      "maintain-framerate",
     );
   }
   // Capture follows the monitor's refresh rate on Windows 11 and is polled slower than
   // asked: asking for 120 lets a full 60 through, and the sender is limited to 60.
   const capture = { ...SCREEN_CAPTURE, frameRate: 120 };
   const full: Quality = { name: "1080p", height: 1080, maxFramerate: 60, maxBitrate: 12_000_000 };
-  if (!twoQualities) return plan(HARDWARE_FIRST, [full], capture);
+  // A Chromium screen share keeps its size and gives up frame rate. Giving up size first,
+  // Chrome shrinks the capture before the first frame and encodes it in software, and only
+  // some shares grow back: 13 of 16 on this server stayed at 480x270, and on Windows every
+  // one opened under 360 lines in software. Keeping size, every one on Windows opened at
+  // about 1080 lines in hardware and stayed there (share-reliability tickets 11 and 09).
+  const degradation = "maintain-resolution";
+  if (!twoQualities) return plan(HARDWARE_FIRST, [full], capture, degradation);
   return plan(
     HARDWARE_FIRST,
     [
@@ -120,10 +143,17 @@ export function encodingPlan(
       { name: "720p", rid: RIDS["720p"], height: 720, maxFramerate: 60, maxBitrate: 4_000_000 },
     ],
     capture,
+    degradation,
   );
 }
 
-function plan(codecs: Codec[], qualities: Quality[], capture: EncodingPlan["capture"]): EncodingPlan {
+function plan(
+  codecs: Codec[],
+  qualities: Quality[],
+  capture: EncodingPlan["capture"],
+  degradation: Degradation,
+): EncodingPlan {
   // A viewer receives one quality at a time, the best at most.
-  return { codecs, qualities, capture, maxBitrate: Math.max(...qualities.map((quality) => quality.maxBitrate)) };
+  const maxBitrate = Math.max(...qualities.map((quality) => quality.maxBitrate));
+  return { codecs, qualities, capture, maxBitrate, degradation };
 }

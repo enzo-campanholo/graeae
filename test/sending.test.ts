@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   degradationPreference,
+  follow,
   nextSending,
   readingOf,
   sharerNotes,
@@ -14,7 +15,7 @@ import {
   type Reading,
   type Sending,
 } from "../src/app/lib/media/sending.ts";
-import { encodingPlan, type EncodingPlan } from "../src/shared/encoding.ts";
+import { encodingPlan, type Degradation, type EncodingPlan } from "../src/shared/encoding.ts";
 
 // A Chromium screen share sent at two qualities, whose 1080p quality is the first to stop.
 const chromiumScreen = encodingPlan("chromium", "screen", { twoQualities: true });
@@ -38,14 +39,14 @@ const limited = { limited: true };
 const calm = { limited: false };
 
 describe("the step-down switched off", () => {
-  it("never steps a share down or tells its sharer of the upload, and still gives up resolution first", () => {
+  it("never steps a share down or tells its sharer of the upload, and a Chromium screen share still keeps its size", () => {
     // Switched off since the owner's check: on a 288 Mbps upload, the browser's estimate
     // sat at 5 to 10 Mbps by itself, as under a 10 Mbps cap.
     for (const plan of [chromiumScreen, encodingPlan("chromium", "screen", { twoQualities: false })]) {
       const sending = after(start(plan, { stepDown: false }), 100, { limited: true, target: 5_000_000 }, 0);
       expect(sending.step).toBe("full");
       expect(sharerNotes(sending).upload).toBeNull();
-      expect(degradationPreference(sending)).toBe("maintain-framerate");
+      expect(degradationPreference(sending)).toBe("maintain-resolution");
     }
   });
 
@@ -227,15 +228,57 @@ describe("a share on a weak upload", () => {
 });
 
 describe("what the browser gives up when even a step's limits do not fit", () => {
-  it("is resolution, so motion stays smooth, until the share's last step, where the browser chooses", () => {
-    let sending = start(chromiumScreen);
+  // Under "maintain-framerate", 13 of 16 Chromium screen shares on this server opened at
+  // 480x270 and stayed there, and every one on Windows opened under 360 lines in software;
+  // under "maintain-resolution" every one on Windows opened at about 1080 lines in hardware
+  // (share-reliability tickets 11 and 09).
+  it("is frame rate on a Chromium screen share, so it keeps its size, until its last step, where the browser chooses", () => {
+    for (const plan of [chromiumScreen, encodingPlan("chromium", "screen", { twoQualities: false })]) {
+      let sending = start(plan);
+      expect(degradationPreference(sending)).toBe("maintain-resolution");
+      sending = after(sending, 12, limited, 0);
+      expect(sending.step).toBe("720p");
+      expect(degradationPreference(sending)).toBe("maintain-resolution");
+      sending = after(sending, 16, limited, 24);
+      expect(sending.step).toBe("720p30");
+      expect(degradationPreference(sending)).toBe("balanced");
+    }
+  });
+
+  it("is resolution on a Firefox screen share until its last step, where the browser chooses", () => {
+    let sending = start(encodingPlan("firefox", "screen"));
     expect(degradationPreference(sending)).toBe("maintain-framerate");
     sending = after(sending, 12, limited, 0);
-    expect(degradationPreference(sending)).toBe("maintain-framerate");
-    sending = after(sending, 16, limited, 24);
+    expect(sending.step).toBe("720p");
     expect(degradationPreference(sending)).toBe("balanced");
-    expect(degradationPreference(after(start(encodingPlan("firefox", "screen")), 12, limited, 0))).toBe("balanced");
-    expect(degradationPreference(start(encodingPlan("chromium", "webcam")))).toBe("balanced");
+  });
+
+  it("is the browser's choice on a webcam share", () => {
+    for (const browser of ["chromium", "firefox"] as const)
+      expect(degradationPreference(start(encodingPlan(browser, "webcam")))).toBe("balanced");
+  });
+});
+
+describe("following a live share", () => {
+  /** What `follow` applies to a share of `plan` as it starts, before any reading. */
+  function firstApplied(plan: EncodingPlan) {
+    const applied: { degradation: Degradation; active: boolean[] }[] = [];
+    follow(plan, 1080, 0, {
+      apply: (encodings, degradation) =>
+        applied.push({ degradation, active: encodings.map((encoding) => encoding.active) }),
+      notes: () => {},
+    });
+    return applied;
+  }
+
+  it("sends a Chromium screen share at its full plan at once, keeping its size", () => {
+    expect(firstApplied(encodingPlan("chromium", "screen"))).toEqual([{ degradation: "maintain-resolution", active: [true] }]);
+    expect(firstApplied(chromiumScreen)).toEqual([{ degradation: "maintain-resolution", active: [true, true] }]);
+  });
+
+  it("sends a Firefox screen share and a webcam as before", () => {
+    expect(firstApplied(encodingPlan("firefox", "screen"))).toEqual([{ degradation: "maintain-framerate", active: [true] }]);
+    expect(firstApplied(encodingPlan("chromium", "webcam"))).toEqual([{ degradation: "balanced", active: [true] }]);
   });
 });
 

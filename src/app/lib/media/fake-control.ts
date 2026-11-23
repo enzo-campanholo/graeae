@@ -1,10 +1,10 @@
 // What a Seam 2 journey reads and steers of the fake media client, on
 // `window.graeaeFakeMedia`. Types only, so the journeys can import them too.
 
-import type { QualityName } from "../../../shared/encoding.ts";
+import type { Degradation, QualityName } from "../../../shared/encoding.ts";
 import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
 import type { BrowserFamily, ScreenCaptureRequest } from "./capture.ts";
-import type { Degradation, StatsEntry, StepEncoding } from "./sending.ts";
+import type { StatsEntry, StepEncoding } from "./sending.ts";
 
 /**
  * What the browser's picker returns: the surface picked, and whether its audio checkbox

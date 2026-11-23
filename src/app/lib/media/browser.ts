@@ -10,13 +10,13 @@
 // tested. The
 // owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
 
-import { encodingPlan, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
+import { encodingPlan, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { browserFamily, isScreenAudio, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
-import { follow, NotesBoard, READ_EVERY_MS, readingOf, type Degradation, type SharerNotes } from "./sending.ts";
+import { follow, NotesBoard, READ_EVERY_MS, readingOf, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
 import { pairSummary, STATS_EVERY_MS, streamSummaries, type CaptureNow, type Counted } from "./stats.ts";
 import { every } from "../ticker.ts";
@@ -81,8 +81,9 @@ export class BrowserMediaClient implements MediaClient {
       throw error;
     }
     watchTracks("screen", stream);
-    // A game moves: the encoder treats the picture as motion rather than a still document,
-    // and gives up resolution before frame rate.
+    // A game moves: the encoder treats the picture as motion rather than a still document.
+    // What it gives up first on a short upload is the plan's `degradation`, set with the
+    // encodings: a Chromium screen share keeps its size and gives up frame rate.
     for (const track of stream.getVideoTracks()) track.contentHint = "motion";
     // Audio that is not screen audio is stopped, so the browser lets go of it, and taken
     // out of the stream, so the share goes out video only as if the picker gave none.
