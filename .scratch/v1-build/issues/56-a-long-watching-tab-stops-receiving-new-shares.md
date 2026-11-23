@@ -1,6 +1,6 @@
 # 56: A long-watching tab stops receiving new shares
 
-**Status:** ready-for-human (built and deployed; until ticket 55's check 7 on MONSTRAO watches 32 shares on one connection)
+**Status:** resolved
 
 **Blocked by:** none
 
@@ -47,3 +47,12 @@ A request the instance does not understand is now logged as `request.not-underst
 **Deployed.** `graeae-test` runs `b2a396c` as version `4a371c09` (2026-11-23).
 
 **Left.** Checking it on real media: one tab watching 30 or more shares on one connection on `graeae-test`. If an evening ever outgrows about 390 shares on one connection, the next step is for the tab to rebuild its connection, which needs a ticket of its own.
+
+### 2026-11-23: checked on real media, and closed
+
+Ticket 55's check 7 on MONSTRAO (`evidence/windows-2026-11-23-2`, commit `353621b`, `graeae-test` at `b2a396c`) settled it. Win Watcher, in Chrome 158, was reloaded once. It then received 32 Chrome tab shares with sound in turn, on one connection.
+- Each share's first frame was decoded 0.9 to 3.5 s after the watch, and its tone read 0.022 to 0.034 above silence.
+- The last share took mids 62 (video) and 63 (audio).
+- The watcher's local SDP grew by 2,340 bytes a share, as found here. It passed 64 KiB at share 28 (66,967 bytes) and reached 76,327 bytes at share 32.
+
+The sharer's side of the same run found a sibling. Each stopped share's transceiver also stays on the sharer's connection, and keeps its hardware encoder. That is ticket 57.

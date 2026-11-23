@@ -10,21 +10,21 @@
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
 
-**Status:** ready-for-human (the rerun's invites are with the owner; until the MONSTRAO agent's report is pushed)
+**Status:** resolved
 
 **Blocked by:** 54
 
-- [ ] **Before the run, a session here:**
+- [x] **Before the run, a session here:**
   - Checks that `graeae-test` runs a build holding 52, 53 and 54 (the version in its footer or `wrangler deployments list`), and deploys `v1-build` if not.
   - Makes five invites into the room "Windows evidence", which already exists: Win Chrome, Win Watcher, Win Firefox, Helium Share and Win Spare. The invites go to the owner in chat, never into a file.
   - Gives the owner the paste below with the five links filled in.
-- [ ] **The owner** opens an agent on MONSTRAO, pastes the message, approves what it asks, and says when it is done.
-- [ ] **After the run, a session here:**
+- [x] **The owner** opens an agent on MONSTRAO, pastes the message, approves what it asks, and says when it is done.
+- [x] **After the run, a session here:**
   - Reads the report on `evidence/windows-<date>` and writes the readings into this ticket as a comment.
   - **If every line passes:** makes the two edits to `scripts/owner-checks.sh` below, removes the five members in People, and resolves this ticket.
   - **If check 7 passes:** writes its readings on 56 as a comment and resolves 56, whatever the other checks read.
   - **If a line fails:** comments the readings on the build ticket that owns it (52, 53 or 54, or 56 for check 7) and sets that ticket to `needs-triage`. The wizard is not edited, and the owner is not asked to run it, until the fix is in and this run has passed again.
-- [ ] **The wizard's two edits**, made only after the run passes:
+- [x] **The wizard's two edits**, made only after the run passes:
   - In `t32-game`, one line saying the share now goes out as H.264 high at full size, so a soft or blocky picture in fast motion is a fail. Keep the id `t32-game`, since nothing was recorded for it.
   - In `webrtc_help`, the hardware encoder is named `D3D12VideoEncodeAccelerator` (the Windows evidence run), and the help also reads the `outbound-rtp` entry's codec: `6400xx` (H.264 high, any level) for a screen share from Chrome or Brave, `42001f` for a webcam.
 - [ ] **If the owner fails `t32-game`:** the owner had nothing to compare against, so a session here first reads that share's `stats` lines (profile, size, encoder, QP) with the log token (CLAUDE.md, Logs). High is turned off only if those lines point at it. No A/B switch is added for the owner.
@@ -125,3 +125,22 @@ The rerun waits for 54's fix to be on `graeae-test`. The five members from the f
 - The first run's members (Win Chrome, Win Watcher, Win Firefox and Helium Share) were removed in People over the owner's API (204 each), and its unused Win Spare invite was cancelled. No other member, room or invite was touched.
 - Five new invites into "Windows evidence" were made the same way, from the owner's device that 49, 53 and 54 used: Win Chrome, Win Watcher, Win Firefox, Helium Share and Win Spare. They went to the owner in chat and are not written here. They work until 2026-11-30.
 - The owner said MONSTRAO is free, and chose to add check 7: one watcher on one connection through 32 shares, which is 56's last open line. `v1-build` was pushed so the MONSTRAO agent can read this.
+
+**The rerun (2026-11-23): passed.** The report is `docs/evidence/windows-2026-11-23.md` on `evidence/windows-2026-11-23-2` (commit `353621b`). The agent kept the first run's file name on the new branch. The readings are beside the report, 6.9 MiB, and hold no invite. The run used `v1-build` at `208c6a8`, and every browser's `page.open` read `b2a396c`. The machine and browsers were as in the first run: Windows 11 Pro build 26300.9974, RTX 5070 Ti on NVIDIA 621.24, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158.0.8127.36), Firefox 160.0.1. The run used no `fixes.js` override. I checked the report's figures against the readings files here for a sample of starts and for all of check 7.
+
+| Check | Owner | Result | Readings |
+| --- | --- | --- | --- |
+| 1. High chosen on its merits | 54 | Pass | Both browsers list high as `640033` (mode 1). With `packetization-mode=1`, `encodingInfo` answers supported, smooth and power-efficient in both. |
+| 2. Fresh window shares (4 Chrome, 2 Helium) | 53, 54 | Pass | 6/6 sent `H264 64001f` at 1920x1080 with `D3D12VideoEncodeAccelerator` in hardware, from the first sampled frame through 25 s. They sent 5.0 to 7.5 Mbps at 10 s and 11.6 to 12.0 Mbps at 25 s. The offer carries level `1f`. The sharers' own `stats` lines agree. |
+| 3. Fresh tab shares (4 Chrome, 2 Helium) | 53, 54 | Pass | 6/6 sent the same, at full size (Chrome 1904x928, Helium 1896x956). The live resize ran 120 s through a resize down and up and docked devtools opened and closed. It stayed in hardware throughout (1904x928, 1896x974, 1920x934, 1576x1080), scaled only by the capture. One sample lagged the capture by a second at the devtools change. |
+| 4. Watchers decode the high share (5 min) | 54 | Pass | Chrome watcher: 17,961 frames at 59.9 fps on D3D11 in hardware. Firefox watcher: 18,037 frames at 59.9 fps on WMF D3D11 in hardware. Both had 0 freezes, 0 drops and 6 to 7 key frames. Inbound is labelled `42e01f`, as the media server labels every stream. |
+| 5. Sound still goes out | 52 | Not rerun | Carried forward from the first run, as decided. |
+| 6. Webcam unchanged | 54 | Pass | Chrome's fake camera: `H264 42001f`, `D3D12VideoEncodeAccelerator`, 60 s. |
+| 7. One watcher through 32 shares | 56 | Pass | Win Watcher was reloaded once, then received all 32 Chrome tab shares with tone on one connection. The first frame came in 0.9 to 3.5 s, and the tone read 0.022 to 0.034. The last mids were 62 (video) and 63 (audio). Its SDP passed 64 KiB at share 28 (66,967 bytes) and reached 76,327. |
+
+**Found by check 7, and in none of the pass lines.** Win Chrome made all 32 shares from one page load. Shares 1 to 12 went out on `D3D12VideoEncodeAccelerator`. Shares 13 to 32 went out on OpenH264, in software, still labelled `64001f`. A stopped share's transceiver stays on the connection, inactive, and keeps its hardware encoder, so the GPU had no session left for the 13th. The watcher saw no difference, at 60 fps. This is now ticket 57 (`needs-triage`). The owner closed 55 on the written checks: the wizard shares from fresh page loads, far fewer than 12 times.
+
+**Closed (2026-11-23).**
+- The two wizard edits are made in `scripts/owner-checks.sh`. `t32-game` says a soft or blocky picture in fast motion is a fail. `webrtc_help` names `D3D12VideoEncodeAccelerator` and reads the codec's `profile-level-id`.
+- The rerun's four members were removed in People (204 each), and the unused Win Spare invite was cancelled. No other member or invite was touched.
+- 54 and 56 are resolved with their readings. The owner runs the wizard once for 0.1. If `t32-game` fails, the item above it applies.

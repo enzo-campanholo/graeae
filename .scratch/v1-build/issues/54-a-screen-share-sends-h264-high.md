@@ -13,7 +13,7 @@ The owner chose this in [Whether a share sends H.264 high](../../share-reliabili
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** ready-for-human (built and on `graeae-test`; until ticket 55's rerun reads hardware high on MONSTRAO)
+**Status:** resolved
 
 **Blocked by:** none
 
@@ -192,3 +192,12 @@ The lines about the query's own content type are unchanged.
 - Ticket 55's status now says 54 is on `graeae-test`.
 
 Hardware high is still unchecked: this server has no GPU. Ticket 55's rerun checks it on MONSTRAO and records the level the offer carries.
+
+### 2026-11-23: checked on MONSTRAO, and closed
+
+Ticket 55's rerun checked this on Windows 11 with an RTX 5070 Ti (`evidence/windows-2026-11-23-2`, commit `353621b`), on `graeae-test` at `b2a396c`, with no override.
+- `encodingInfo` for `64001f` with `packetization-mode=1` reads power-efficient in Chrome 158 and Helium 0.22.2.1. Both list high only as `640033`.
+- All 12 fresh window and tab starts sent `H264 64001f` in hardware (`D3D12VideoEncodeAccelerator`), at full size, from the first frame through 25 s. The offer carries level `1f`.
+- Over a 5-minute high share, the Chrome and Firefox watchers on Windows each decoded at 59.9 fps in hardware, with no freezes or drops. A webcam still sends `42001f`.
+
+The full readings are in 55's comments. Check 7 also found that a stopped share keeps its hardware encoder, so the 13th share in one page load goes out in software. That is ticket 57.
