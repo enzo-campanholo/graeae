@@ -106,3 +106,9 @@ The Windows lines of 52 and 53 pass. 54's fails on every share: the hardware che
 - A watcher on one connection through about 27 shares stopped receiving new ones (ticket 56, `needs-triage`).
 
 As the ticket says for a failed line, the wizard is not edited and the owner is not asked to run it. The five members stay on `graeae-test`, and their browser profiles on MONSTRAO were deleted. A rerun needs five new invites, and whoever closes this ticket removes the old members.
+
+**Decided for the rerun (2026-11-23, owner).** Owner's decisions:
+- **Level:** high is accepted at any level (`6400xx`), since Chrome and Helium list it only as `640033`. The level an offer carries only sets a ceiling. The pass lines and the wizard edit now say so, and the agent records the level it reads.
+- **Scope:** checks 2 and 3 drop to 4 starts from Chrome and 2 from Helium each, and check 5 is not run, because 52 passed and the fix touches only the codec choice. Checks 1, 4 and 6 run as before. Check 1's query now carries `packetization-mode=1`, as 54's fix will.
+
+The rerun waits for 54's fix to be on `graeae-test`. The five members from the first run are to be removed in People before new invites are made.

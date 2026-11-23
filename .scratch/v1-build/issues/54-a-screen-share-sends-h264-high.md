@@ -13,7 +13,7 @@ The owner chose this in [Whether a share sends H.264 high](../../share-reliabili
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 **Blocked by:** none
 
@@ -140,3 +140,9 @@ Not checked here: hardware high, which this server lacks. It is ticket 55's, whi
 - **Everything else on the path held.** Every share opened at the full capture size, in hardware, and kept it at 10 s and 25 s. Window shares opened at 1920x1080. Tab shares opened at 1920x934 in Chrome and 1912x964 in Helium. The resized tab never left hardware. Chrome and Firefox watchers decoded the 5-minute share in hardware at 59.9 fps, with 0 freezes and no growing drop count, but it was baseline. Decoding high from graeae's own sender is still unchecked on Windows.
 
 Ticket 55 is to be run again once this is fixed and on `graeae-test`, and the wizard stays unedited until then.
+
+**Brief for the fix (2026-11-23, owner's decisions).**
+- **The query:** `hardwareQuery` asks for `video/H264; profile-level-id=64001f; packetization-mode=1`, at the plan's size, frame rate and bitrate as now. `test/encoding.test.ts`'s exact-query test pins it. Nothing else in the choice changes. High still counts only when `getCapabilities` lists a `6400` profile in mode 1 and the query says `powerEfficient`.
+- **The level:** high is accepted at any level (`6400xx`). Chrome and Helium on Windows list only `640033`, and the offer takes the level from that entry. The level an offer carries only sets a ceiling. Change `64001f` to "H.264 high (`6400xx`)" wherever a line expects it on the wire: this ticket's acceptance line, the spec's table and Hardware encoding section, and ticket 29's comment if it names it. Leave the line about the query's own content type as it is. Ticket 55's lines are already changed.
+- **Here, on real media:** a Linux Chromium sharer without a GPU must still answer `powerEfficient: false` to the new query, and still offer and send baseline `42001f`. Read it from `encodingInfo` and the `stats` line. If it answers true, high would go out in software on machines like this one: stop and comment here instead of deploying.
+- **Then:** deploy `v1-build` to `graeae-test` and record the version. Ticket 55's rerun checks hardware high on MONSTRAO.
