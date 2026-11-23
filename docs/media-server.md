@@ -3,8 +3,9 @@
 What Cloudflare's Realtime SFU does with a tab's media connection beyond what its docs say,
 seen on `graeae-test` with `pnpm real-media` and read back with `pnpm logs`. The calls
 themselves are listed in `src/instance/media/cloudflare.ts`. What Chrome does with the
-same connection is in `src/app/lib/media/stopping.ts` (stopping a transceiver) and
-`browser.ts` (the rest).
+same connection is in `src/app/lib/media/stopping.ts` (stopping a transceiver),
+`receiving.ts` (the codecs a transceiver it does not send on offers) and `browser.ts`
+(the rest).
 
 Each behaviour names where it was seen and whether the loopback's stand-in media server
 (`test/loopback/page/media-server.ts`, run by `pnpm test`) plays it. A change to how
@@ -21,9 +22,25 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
 - **Chrome answers inactive for that section** unless its transceiver is set to receive
   first, and then nothing arrives. `pull` sets it to `recvonly`. *Ticket 57, run 2.*
   The stand-in plays it: a plain Chrome peer.
-- **A watch in a section the tab once published on gets no media**, though every call
-  succeeds and the tab answers `recvonly`. *Ticket 58, open.* The stand-in does not
-  play it: there, the watch arrives.
+- **A watch's offer lists the codecs the tab last gave its section.** A new section
+  lists only the codec the watch goes out in, with its retransmissions. A reused one
+  lists what the tab's own last offer listed there, whatever the watch goes out in.
+  *Ticket 58: a new section offered 102 and 103 alone, and a reused one the tab's own
+  ten (`repro-58.ts`, the red runs).* The stand-in plays it.
+- **A watch goes out on a payload type the tab offered for its codec**, in any section,
+  and so maybe one its own section never listed. For H.264 baseline it takes 42e01f's
+  over 42001f's. Chrome counts those packets, then drops them all, so the watch shows
+  nothing: no frames and no codec, and the tab sends no PLI. *Ticket 58: a webcam sent
+  in 42001f, as the encoding plan has it, went out on 102 (42001f) until the tab's offer
+  listed 108 (42e01f) in an ended watch's section, and then on 108 in a section that
+  knew only 102 (`repro-58.ts`, run 1, in Chrome's RTC event log).* Seen from the tab's
+  last offer; whether the session remembers what an earlier offer listed is not known.
+  So `browser.ts` sets each transceiver it does not send on to the codecs its section
+  negotiated (`receiving.ts`) before each offer it makes, as its section stands when
+  the tab makes no offer. The stand-in plays it for H.264 baseline, the codec of every
+  watch there. Unchecked, and as before ticket 58: a watch in a codec the reused
+  section does not list, such as a screen share in H.264 high put in a section that has
+  only baseline. The same drop is likely there.
 
 ## The transport
 

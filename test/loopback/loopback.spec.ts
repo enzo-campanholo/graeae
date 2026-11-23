@@ -78,3 +78,23 @@ test("a watch the media server puts on a stopped share's section arrives, on the
   expect(seen.shares.map((share) => share.error)).toEqual([null, null, null]);
   expect(new Set(seen.ufrags).size).toBe(1);
 });
+
+test("a watch on a stopped share's section arrives after a share whose offer named an ended watch's section", async ({ page }) => {
+  const seen = await scenario<WatchSeen>(page, "watchAfterAShareThatFollowedAWatch()");
+
+  // As on graeae-test: the first share's section, its offer listing only the codecs it negotiated.
+  expect(seen.mid).toBe("0");
+  expect(seen.answered).toBe("recvonly");
+  expect(seen.quality).toBe("720p");
+  expect(seen.shares.map((share) => share.error)).toEqual([null, null]);
+  expect(new Set(seen.ufrags).size).toBe(1);
+});
+
+test("a watch on a stopped share's section arrives after a restart whose offer named an ended watch's section", async ({ page }) => {
+  const seen = await scenario<WatchSeen>(page, "watchAfterARestartThatFollowedAWatch()");
+
+  expect(seen.mid).toBe("0");
+  expect(seen.answered).toBe("recvonly");
+  expect(seen.quality).toBe("720p");
+  expect(seen.shares.map((share) => share.error)).toEqual([null]);
+});

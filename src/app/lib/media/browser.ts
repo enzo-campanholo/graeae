@@ -8,9 +8,10 @@
 // is read against. It is kept thin enough to read against the spec's Screen audio,
 // Encoding and quality and Relay sections; what a screen capture asks for, the encoding
 // plan, how the browser's API takes it, and what a live share sends on a weak upload with
-// the notes its sharer sees, and how a stopped share's transceiver is let go of, are pure
-// rules in `capture.ts`, `src/shared/encoding.ts`, `encodings.ts`, `sending.ts` and
-// `stopping.ts`, which are tested. The owner's real-media pass (tickets 13 and 27) proves
+// the notes its sharer sees, how a stopped share's transceiver is let go of, and the codecs
+// a transceiver the tab does not send on keeps in its offers, are pure rules in
+// `capture.ts`, `src/shared/encoding.ts`, `encodings.ts`, `sending.ts`, `stopping.ts` and
+// `receiving.ts`, which are tested. The owner's real-media pass (tickets 13 and 27) proves
 // it on a deployed instance.
 
 import { encodingPlan, type Codec, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
@@ -19,6 +20,7 @@ import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { browserFamily, isScreenAudio, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, hardwareQuery, lists, receivedQuality, sendEncodings } from "./encodings.ts";
+import { receivingCodecs } from "./receiving.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type SharerNotes } from "./sending.ts";
 import { stopping } from "./stopping.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
@@ -181,6 +183,7 @@ export class BrowserMediaClient implements MediaClient {
     // The media server takes no offer without a track: this one sends nothing.
     const spare = connection.addTransceiver("audio", { direction: "sendonly" });
     this.spare = spare;
+    this.keepReceivingCodecs(connection);
     const offer = await connection.createOffer({ iceRestart: true });
     await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
     if (!connection.localDescription || spare.mid === null) throw new Error("The browser made no restart offer");
@@ -240,6 +243,7 @@ export class BrowserMediaClient implements MediaClient {
     const audioSender = audio ? connection.addTransceiver(audio, { direction: "sendonly", streams }) : null;
     this.sending.set(capture, audioSender ? [videoSender, audioSender] : [videoSender]);
     this.offered = { capture, transceiver: videoSender, plan, ...(height === undefined ? {} : { height }) };
+    this.keepReceivingCodecs(connection);
     const offer = await connection.createOffer();
     await connection.setLocalDescription({ type: "offer", sdp: stereoOpus(offer.sdp ?? "") });
     if (!videoSender.mid || !connection.localDescription) throw new Error("The offer gave the capture no mid");
@@ -379,6 +383,30 @@ export class BrowserMediaClient implements MediaClient {
     this.spare = null;
     this.sending.clear();
     this.offered = null;
+  }
+
+  /**
+   * Before an offer of the tab's own: each negotiated transceiver it does not send on is
+   * set to the codecs its section negotiated, so the offer adds no payload type the media
+   * server could send a later watch on in another section (`receiving.ts`, ticket 58).
+   */
+  private keepReceivingCodecs(connection: RTCPeerConnection) {
+    const sending = new Set([...this.sending.values()].flat());
+    for (const transceiver of connection.getTransceivers()) {
+      const negotiated = transceiver.currentDirection;
+      if (sending.has(transceiver) || negotiated === null || negotiated === "stopped" || transceiver.direction === "stopped") continue;
+      const { receiver } = transceiver;
+      // The receiver's capabilities, not the sender's: these sections only receive, and
+      // Chrome checks a preference against what it can decode.
+      const codecs = receivingCodecs(receiver.getParameters().codecs, RTCRtpReceiver.getCapabilities(receiver.track.kind)?.codecs ?? []);
+      if (codecs.length === 0 || !("setCodecPreferences" in transceiver)) continue;
+      try {
+        transceiver.setCodecPreferences(codecs);
+      } catch {
+        // A browser that refuses the list offers its own, as before ticket 58: the watch
+        // still works unless the media server reuses a section for a later one.
+      }
+    }
   }
 
   private transceiver(mid: string): RTCRtpTransceiver | undefined {

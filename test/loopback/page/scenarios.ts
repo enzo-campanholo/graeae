@@ -74,6 +74,12 @@ class Run {
     await this.client.abandonRestart();
   }
 
+  /** A restart the media server answers, as on a socket's return or a renewed credential. */
+  async answeredRestart() {
+    const { sdp } = await this.client.restart([]);
+    await this.client.restarted(await this.server.answer(this.note(sdp)));
+  }
+
   /** A watch of another member's share, through to the quality it arrives at. */
   async watch(): Promise<Omit<WatchSeen, keyof RunSeen>> {
     const { offer, mid } = await this.server.pull(capture().stream!.getVideoTracks()[0]!);
@@ -92,6 +98,12 @@ class Run {
       }, 5000);
     });
     return { mid, answered: directionOf(answer, mid), quality };
+  }
+
+  /** Stops watching the share on `mid`, as the room client does: no negotiation until the next. */
+  async unwatch(mid: string) {
+    await this.server.unpull(mid);
+    this.client.drop(mid);
   }
 
   close() {
@@ -143,6 +155,33 @@ export async function watchOnAStoppedSharesSection(): Promise<WatchSeen> {
   await run.share();
   const watch = await run.watch();
   await run.share();
+  run.close();
+  return { ...run.seen, ...watch };
+}
+
+/**
+ * A share, a watch ended, a second share, whose offer still names the ended watch's
+ * section, then a watch the stand-in puts on the first share's section (ticket 58).
+ */
+export async function watchAfterAShareThatFollowedAWatch(): Promise<WatchSeen> {
+  const run = new Run();
+  await run.share();
+  const first = await run.watch();
+  await run.unwatch(first.mid);
+  await run.share();
+  const watch = await run.watch();
+  run.close();
+  return { ...run.seen, ...watch };
+}
+
+/** The same with a restart, the tab's other offer, in place of the second share (ticket 58). */
+export async function watchAfterARestartThatFollowedAWatch(): Promise<WatchSeen> {
+  const run = new Run();
+  await run.share();
+  const first = await run.watch();
+  await run.unwatch(first.mid);
+  await run.answeredRestart();
+  const watch = await run.watch();
   run.close();
   return { ...run.seen, ...watch };
 }
