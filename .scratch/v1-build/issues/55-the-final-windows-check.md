@@ -87,3 +87,5 @@ Put the readings files and screenshots beside it in `docs/evidence/windows-<YYYY
 **Clean up.** Close every browser you started and delete the user-data-dirs you made. Leave the members on `graeae-test`: a session on the other machine removes them.
 
 ## Comments
+
+**Before the run (2026-11-23).** `graeae-test` runs version `b6d04cf6`, whose footer reads `eca6adf-dirty`. That is ticket 54's working tree before it was committed as `6c3ce33`. Its front-end bundle is byte for byte a production build of `98f62aa` (v1-build's head, the last commit to touch `src/`), apart from the build label. So it holds 52, 53 and 54 and was not redeployed. The MONSTRAO agent should expect `eca6adf-dirty` in the footer. `v1-build` was pushed to origin so that agent can read this ticket. The owner said MONSTRAO is free. Five invites into "Windows evidence" were made through the owner's API from the device that 53 and 54 reused: Win Chrome, Win Watcher, Win Firefox, Helium Share and Win Spare. They were given to the owner in chat and are not written here. They work for 7 days. No other member, room or invite was touched.
