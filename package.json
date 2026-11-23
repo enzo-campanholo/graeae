@@ -6,6 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@12.9.0",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "dev": "vite dev",
     "dev:fake-media": "vite dev --mode fake-media",
     "build": "vite build",
@@ -18,7 +19,8 @@
     "test:browser": "vite build --mode fake-media && playwright test",
     "capture": "vite build --mode fake-media && playwright test -c scripts/capture/capture.config.ts",
     "perf": "vite build --mode fake-media && playwright test -c scripts/perf/perf.config.ts",
-    "real-media": "node scripts/real-media/member.ts"
+    "real-media": "node scripts/real-media/member.ts",
+    "logs": "node scripts/logs/pull.ts"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",

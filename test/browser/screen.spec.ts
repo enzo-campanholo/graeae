@@ -319,3 +319,27 @@ test("Share screen names its key in a tooltip, as the rail's buttons do, not bes
   await railScreen.hover();
   await expect(railScreen).toHaveAccessibleDescription("Share screen S");
 });
+
+test("a tab that watches share after share on one media connection gets every new one", async ({ browser, baseURL }) => {
+  // Each pull leaves its media sections on the watcher's connection, so its answers grow
+  // some 2,340 bytes a screen share with sound. A real tab's 28th answer outgrew what the
+  // instance took, and its watches after that never came (ticket 56).
+  test.setTimeout(120_000);
+  const { owner, join } = await ownerInRoom(browser, baseURL);
+  const ivo = await join("Ivo");
+  const here = owner.getByRole("region", { name: "Here" });
+  const picture = owner.getByRole("main", { name: "Stage" }).getByRole("img", { name: "Ivo's screen, with no picture" });
+  const shareScreen = inBar(ivo).getByRole("button", { name: "Share screen" });
+  const watch = here.getByRole("button", { name: "Watch Ivo's screen" });
+
+  await shareScreen.click();
+  await ivo.getByRole("dialog", { name: "Before you pick" }).getByRole("button", { name: "Choose what to share" }).click();
+  for (let share = 1; share <= 32; share++) {
+    await expect(watch, `share ${share} could not be watched`).toBeVisible();
+    await watch.click();
+    await expect(picture, `share ${share} was not watched`).toBeVisible();
+    await ivo.getByRole("button", { name: "Stop sharing your screen" }).click();
+    await expect(picture).toHaveCount(0);
+    await shareScreen.click();
+  }
+});

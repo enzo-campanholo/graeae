@@ -2,7 +2,8 @@
 // share has no picture and the browser asks for no camera and opens no picker. It still
 // makes a stand-in offer, with a new mid for each track as a real connection would, and
 // answers the media server's offers for the shares it watches, so the page goes through
-// every step the real client does.
+// every step the real client does. Its offers and answers are the size a real tab's are,
+// and grow with each share it watches as theirs do.
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
 // browser family, whether a Chromium screen share goes out at two qualities, what the
@@ -152,7 +153,8 @@ export class FakeMediaClient implements MediaClient {
     const fake = control();
     fake.iceServers = iceServers;
     fake.restarts += 1;
-    return { sdp: "v=0 a stand-in offer restarting ICE", mid: this.mid() };
+    const mid = this.mid();
+    return { sdp: this.standIn("a stand-in offer restarting ICE"), mid };
   }
 
   async abandonRestart() {}
@@ -169,7 +171,7 @@ export class FakeMediaClient implements MediaClient {
     this.offered = capture;
     const video = this.mid();
     const audio = capture.audio ? this.mid() : undefined;
-    return { sdp: `v=0 a stand-in offer for a ${capture.kind}`, video, ...(audio === undefined ? {} : { audio }) };
+    return { sdp: this.standIn(`a stand-in offer for a ${capture.kind}`), video, ...(audio === undefined ? {} : { audio }) };
   }
 
   async accept(answer: string) {
@@ -209,7 +211,7 @@ export class FakeMediaClient implements MediaClient {
     void offer;
     this.pulled.add(video);
     if (audio !== undefined) this.pulled.add(audio);
-    return { answer: "v=0 a stand-in answer", stream: null };
+    return { answer: this.standIn("a stand-in answer"), stream: null };
   }
 
   received(video: string, heard: (quality: QualityName | null) => void): () => void {
@@ -251,6 +253,28 @@ export class FakeMediaClient implements MediaClient {
     while (this.pulled.has(String(this.nextMid))) this.nextMid++;
     return String(this.nextMid++);
   }
+
+  /**
+   * A stand-in SDP the size a real one is: a media section for every mid the connection
+   * has used, since a pull's sections stay on it once the pull ends. So it grows as a
+   * real tab's does, some 2,340 bytes a screen share with sound watched (ticket 56).
+   */
+  private standIn(what: string): string {
+    const mids = this.nextMid + [...this.pulled].filter((mid) => Number(mid) >= this.nextMid).length;
+    let sdp = `v=0\r\ns=${what}\r\n`;
+    for (let mid = 0; mid < mids; mid++) sdp += standInSection(mid);
+    return sdp;
+  }
+}
+
+/** The size of one media section of a real tab's SDP: Chromium's on Windows, read in ticket 56. */
+const SECTION_BYTES = 1_170;
+
+/** One media section of a stand-in SDP: short lines ending in CRLF, as a real one's. */
+function standInSection(mid: number): string {
+  let section = `m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:${mid}\r\n`;
+  for (let line = 0; section.length < SECTION_BYTES; line++) section += `a=x-stand-in:${line} as long as a real line\r\n`;
+  return section;
 }
 
 function capture(kind: Capture["kind"], audio: boolean): FakeCapture {

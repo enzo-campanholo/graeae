@@ -4,7 +4,7 @@ import globals from "globals";
 import ts from "typescript-eslint";
 
 export default ts.config(
-  { ignores: ["dist/", ".wrangler/", "worker-configuration.d.ts", "src/app/lib/components/ui/"] },
+  { ignores: ["dist/", ".wrangler/", ".logs/", "worker-configuration.d.ts", "src/app/lib/components/ui/"] },
   js.configs.recommended,
   ...ts.configs.recommended,
   ...svelte.configs.recommended,

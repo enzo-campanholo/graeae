@@ -105,10 +105,9 @@ export function requestNameOf(message: unknown): string | null {
  * The longest SDP the instance passes on. A tab's media connection keeps the media
  * sections of every pull it has made, so its answers and restart offers grow some 2,340
  * bytes a share it watches: at 64 KiB a tab hit the limit after 28 shares (ticket 56); at
- * this, after some 390. It stays well under the socket's limit on a message, 1 MiB
- * (`MAX_BATCH_BYTES`), since in its message every line's CRLF is written as four
- * characters, some 6% more for an SDP's short lines. The tests' runtime does not hold a
- * socket to that limit, so nothing there would catch one too close to it.
+ * this, after some 390. It is graeae's own bound, on a tab gone wrong: neither the media
+ * server nor a Durable Object's socket, which takes 32 MiB in a message, holds an SDP to
+ * less.
  */
 const SDP_MAX = 900 * 1024;
 

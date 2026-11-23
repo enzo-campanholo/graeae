@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Typechecks and lints before a commit that touches code. Commits of tickets, docs and
+# other Markdown alone skip it. `pnpm prepare` (run by `pnpm install`) points git here.
+set -euo pipefail
+
+code=$(git diff --cached --name-only --diff-filter=ACMR | grep -v -E '^(\.scratch|docs)/|\.md$' || true)
+[ -z "$code" ] && exit 0
+
+check='pnpm typecheck && pnpm lint'
+if command -v pnpm >/dev/null && command -v node >/dev/null; then bash -c "$check"; else nix-shell --run "$check"; fi

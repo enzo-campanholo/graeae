@@ -17,8 +17,9 @@ export const LOG_PATH = "/api/log";
 export const MAX_BATCH_EVENTS = 200;
 
 /**
- * The most a batch may weigh, as JSON, before the instance takes none of it: a socket's
- * own limit on a message. A tab's batch of 200 events is a fraction of it.
+ * The most a batch may weigh, as JSON, before the instance takes none of it. graeae's own
+ * bound, far under the 32 MiB a Durable Object's socket takes in a message; a tab's batch
+ * of 200 events is a fraction of it.
  */
 export const MAX_BATCH_BYTES = 1024 * 1024;
 

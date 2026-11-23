@@ -25,7 +25,7 @@ On the tab, `negotiate` runs one negotiation at a time, and the answer's `reques
 
 A reload made a new connection of two sections, and each repeat was received at once. So the cause was not the harness.
 
-**Fix.** `SDP_MAX` is now 900 KiB, about 390 shares on one connection. That stays well under the socket's 1 MiB limit on a message, since JSON writes each line's CRLF as four characters, adding some 6% to an SDP of short lines. The tests' runtime does not hold a socket to that limit (a 1,000 KiB answer went through there), so this margin is by reasoning, not by test. A media restart's offer grows the same way and is checked by the same limit.
+**Fix.** `SDP_MAX` is now 900 KiB, about 390 shares on one connection. It is graeae's own bound on a tab gone wrong. A Durable Object's socket takes 32 MiB in a message (developers.cloudflare.com/durable-objects/platform/limits/), not the 1 MiB first assumed here from `MAX_BATCH_BYTES`'s comment, which is now corrected. The media server states no limit on tracks in a session (developers.cloudflare.com/realtime/sfu/limits/). A media restart's offer grows the same way and is checked by the same limit.
 
 A request the instance does not understand is now logged as `request.not-understood`, with its name (`<area>.<type>`, or null), and listed in `src/shared/log.ts`. That name comes from `requestNameOf` in `requests.ts`, which `checkRequest` now uses too. The tab's negotiations stay one at a time, with no timeout (owner's call).
 
@@ -34,6 +34,11 @@ A request the instance does not understand is now logged as `request.not-underst
 - `test/logs.test.ts`, under the instance's own lines, checks that a request with bad fields, one with an unknown name and one with no name each leave a `request.not-understood` line.
 - Both failed before the fix. An answer of the exact 67,091 bytes went from red to green.
 - Typecheck passes, and lint passes on `src` and `test`. All 481 tests pass.
+
+**Retro (2026-11-23).**
+- The fake media client's offers and answers are now the size a real tab's are, a section of some 1,170 bytes for each mid the connection has used, so they grow with each share watched as a real tab's do.
+- A browser journey in `test/browser/screen.spec.ts` has one tab watch 32 shares in turn on one connection. With `SDP_MAX` back at 64 KiB it fails with "share 28 could not be watched"; with the fix it passes.
+- The earlier counts were of the Workers tests only; `pnpm test` runs the browser journeys too. CLAUDE.md now says so.
 
 **Review.**
 - The Standards axis asked for the log test to sit under the instance's own lines, for the event to have its own bullet and a name that does not reuse "refused" (which elsewhere means an access check), and for one source of a request's name. All three are done.
