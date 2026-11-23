@@ -19,11 +19,12 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 Node and pnpm come from `shell.nix`: run commands as `nix-shell --run '<command>'`.
 
 - `pnpm dev`: the whole app locally (Worker, Durable Object and front end), on the real media server, so sharing needs real secrets in `.dev.vars`. `pnpm dev:fake-media` runs it on the fakes instead.
-- `pnpm test`: builds the front end with `--mode fake-media`, runs the tests in the Workers runtime (Vitest), then the browser journeys (Playwright); a report gives both counts and the exit status. Once a build exists, `pnpm exec vitest run <file>` runs one file and `pnpm exec playwright test <file> -g <name>` one journey. Every test runs on the fakes; nothing automated may call Cloudflare.
+- `pnpm test`: builds the front end with `--mode fake-media`, runs the tests in the Workers runtime (Vitest), then the browser journeys and the media client's loopback (Playwright, `test/loopback`: the real media client in Chromium against a stand-in media server); a report gives both counts and the exit status. Once a build exists, `pnpm exec vitest run <file>` runs one file and `pnpm exec playwright test <file> -g <name>` one journey. Every test runs on the fakes; nothing automated may call Cloudflare. The pre-push hook runs it.
 - `pnpm typecheck`, `pnpm lint`.
 - `pnpm capture`: screenshots of every surface and state on the fakes, at 1920x953 and 1366x768, dark and light, into `.impeccable/review/captures/<label>/` with a contact sheet (`GRAEAE_CAPTURE=<label>`, and `GRAEAE_CAPTURE_AGAINST=<label>` to compare with an earlier set). It is not a test; see `scripts/capture/`.
 - `pnpm perf`: times each move around the app on the fakes and fails when one flashes a loading state (painted for under 300ms). `GRAEAE_PERF_RTT=60` adds a round trip to HTTP and the sockets. Not a test; see `scripts/perf/`.
 - `pnpm run deploy`: see `scripts/deploy.mjs`.
+- `pnpm real-media`: one member of a deployed instance in a real Chromium, on the real media server, driven by typed or piped commands; not a test. See `scripts/real-media/member.ts`. `pnpm as-owner` (`scripts/owner.ts`) makes its invites into files and removes its members afterwards.
 
 Sharing a window of a browser that also holds a watching graeae tab (another profile or the same one) sends that tab's sound back out, and it loops until the watching tab is muted. To share and watch on one Windows machine, use two browsers, as `scripts/owner-checks.sh` does.
 
@@ -33,14 +34,9 @@ Seam 1 tests use the harness in `test/harness.ts`: HTTP, sockets, the test's clo
 
 A deployed instance writes one JSON line per event to Workers Logs: its own (every request, socket, message, state change, media server call and exception) and each tab's, which the tabs send it in batches. The events, their fields and what is never logged are listed at the top of `src/shared/log.ts`; every line goes through that file. Workers Logs keeps lines for 3 days (7 from 1 December 2026), and drops them past the free plan's daily allowance.
 
-To debug an evening, run `pnpm logs <worker> <from> <to>` (the Worker is `graeae-test`, or the `--name` it was deployed with) once the window is a few minutes old, since lines keep arriving minutes after it ends, and work from the file it saves in `.logs/`, gitignored because the lines hold friends' display names. `scripts/logs/pull.ts` says what the file keeps and drops.
+To debug an evening, run `pnpm logs <worker> <from> <to>` (the Worker is `graeae-test`, or the `--name` it was deployed with) once the window is a few minutes old, since lines keep arriving minutes after it ends, and work from the file it saves in `.logs/`, gitignored because the lines hold friends' display names. `scripts/logs/pull.ts` says what the file keeps and drops. `pnpm logs:view <file>` reads it by tab, by media server call, or by failure (`scripts/logs/view.ts`).
 
-It reads the owner's API token from `.logs/cloudflare-token` and checks it first; the wrangler login cannot read logs. When the token is missing or expired, give the owner these steps, then ask for it with `request_secret`, `delivery: "file"`, never in chat, and save it with `install -m 600 <file> .logs/cloudflare-token`:
-
-1. dash.cloudflare.com/profile/api-tokens, **Create Token**, then **Custom token › Get started**. Name it `graeae logs`.
-2. One permission: **Account**, **Workers Observability**, **Edit**. The query endpoint accepts only Edit.
-3. Their one account; **Token expiration** the next day; no IP filtering.
-4. **Continue to summary**, **Create Token**, and copy it (shown once, starts with `cfut_`).
+It reads the owner's API token from `.logs/cloudflare-token`. When it says the token is missing or no longer active, give the owner the steps it prints, then ask for the token with `request_secret`, `delivery: "file"`, never in chat.
 
 In each event, the line graeae wrote is the object at `.source` (so its own `source` field is `.source.source`), next to Cloudflare's `$workers` and `$metadata`. The file is in `.source.at` order, which lines up a tab's view with the instance's: a tab's lines arrive in batches, seconds after their `at`, and the lead-up to a dropped socket arrives after it reconnects.
 

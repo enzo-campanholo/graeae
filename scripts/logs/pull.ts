@@ -7,8 +7,9 @@
 //   pnpm logs <worker> <from> <to>
 //
 // `from` and `to` are milliseconds since the epoch or anything `Date` reads
-// ("2026-11-22T11:30Z"). The token is the owner's, kept in `.logs/cloudflare-token`
-// (CLAUDE.md, "Logs"); it is checked before every pull. The account is
+// ("2026-11-22T11:30Z"). The token is the owner's, kept in `.logs/cloudflare-token`; it is
+// checked before every pull, and when it is missing or no longer active this prints how the
+// owner makes a new one (`NEW_TOKEN`). The wrangler login cannot read logs. The account is
 // `CLOUDFLARE_ACCOUNT_ID`, or the one the wrangler login belongs to.
 
 import { execFileSync } from "node:child_process";
@@ -32,6 +33,14 @@ interface ApiAnswer<Result> {
 const TOKEN_FILE = ".logs/cloudflare-token";
 const API = "https://api.cloudflare.com/client/v4";
 const PAGE = 2000;
+
+/** How the owner makes a token, for an agent to hand them (CLAUDE.md, "Logs"). */
+const NEW_TOKEN = `The owner makes a new token:
+  1. dash.cloudflare.com/profile/api-tokens, Create Token, then Custom token > Get started. Name it "graeae logs".
+  2. One permission: Account, Workers Observability, Edit. The query endpoint accepts only Edit.
+  3. Their one account; Token expiration the next day; no IP filtering.
+  4. Continue to summary, Create Token, and copy it (shown once, starts with cfut_).
+Then: install -m 600 <file holding it> ${TOKEN_FILE}`;
 
 const [worker, fromArg, toArg] = process.argv.slice(2);
 if (!worker || !fromArg || !toArg) fail("usage: pnpm logs <worker> <from> <to>");
@@ -101,14 +110,17 @@ async function call<Result>(path: string, init: RequestInit = {}): Promise<ApiAn
 }
 
 function readToken() {
-  if (!existsSync(TOKEN_FILE)) fail(`no ${TOKEN_FILE}: ask the owner for a token (CLAUDE.md, "Logs")`);
+  if (!existsSync(TOKEN_FILE)) fail(`no ${TOKEN_FILE}.\n${NEW_TOKEN}`);
   if (statSync(TOKEN_FILE).mode & 0o077) fail(`${TOKEN_FILE} is readable by others: chmod 600 it`);
   return readFileSync(TOKEN_FILE, "utf8").trim();
 }
 
 async function checkToken() {
-  const { result } = await call<{ status: string; expires_on?: string }>("/user/tokens/verify");
-  if (result.status !== "active") fail(`the token in ${TOKEN_FILE} is ${result.status}: ask the owner for a new one`);
+  const response = await fetch(`${API}/user/tokens/verify`, { headers: { Authorization: `Bearer ${token}` } });
+  const { result } = (await response.json().catch(() => ({}))) as Partial<ApiAnswer<{ status: string; expires_on?: string }>>;
+  if (!response.ok || result?.status !== "active") {
+    fail(`the token in ${TOKEN_FILE} is ${result?.status ?? `refused (${response.status})`}.\n${NEW_TOKEN}`);
+  }
   if (result.expires_on) console.error(`token active until ${result.expires_on}`);
 }
 

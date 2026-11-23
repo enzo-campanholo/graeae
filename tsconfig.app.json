@@ -9,7 +9,7 @@
       "$sample": ["./src/app/sample/index.ts"]
     }
   },
-  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/shared/**/*.ts"],
+  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/shared/**/*.ts", "test/loopback/page/**/*.ts", "test/loopback/observations.ts"],
   // shadcn-svelte's index files re-export names from .svelte files, which only svelte-check
   // can read; tsc would reject them.
   "exclude": ["src/app/lib/components/ui/**/index.ts"]

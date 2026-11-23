@@ -7,6 +7,9 @@
 //
 //   pnpm real-media --url https://<instance>/invite/<code> --name tux [options]
 //
+// or `--url-file <file>` for an address kept in a file, as `pnpm as-owner invite` writes one,
+// so the invite stays off the command line and out of every log.
+//
 // then, say, `watch "Bia" screen` to watch Bia's screen, or `share screen` with
 // `--pick tab:<title>` to share a tab. A viewer's decoder prints as "?": Chromium names
 // it only to a page that is capturing.
@@ -98,6 +101,7 @@ const SIGNALS = join(homedir(), ".cache", "graeae-real-media", "signals");
 const { values: options } = parseArgs({
   options: {
     url: { type: "string" },
+    "url-file": { type: "string" },
     name: { type: "string", default: "member" },
     size: { type: "string", default: "1920x953" },
     pick: { type: "string" },
@@ -116,8 +120,9 @@ const { values: options } = parseArgs({
   },
 });
 
+if (options["url-file"]) options.url = readFileSync(options["url-file"], "utf8").trim();
 if (!options.url) {
-  console.error("usage: pnpm real-media --url <invite or room address> [--name <label>] [--pick <source>] ...");
+  console.error("usage: pnpm real-media --url <invite or room address> | --url-file <file> [--name <label>] [--pick <source>] ...");
   process.exit(2);
 }
 const label = options.name;

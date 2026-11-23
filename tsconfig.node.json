@@ -6,5 +6,5 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "test/browser/**/*.ts", "svelte.config.js", "eslint.config.js", "scripts/**/*.mjs", "scripts/**/*.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "test/browser/**/*.ts", "test/loopback/*.ts", "svelte.config.js", "eslint.config.js", "scripts/**/*.mjs", "scripts/**/*.ts"]
 }

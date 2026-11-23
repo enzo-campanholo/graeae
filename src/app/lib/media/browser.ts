@@ -2,13 +2,16 @@
 // through `getDisplayMedia`, and the tab's one media connection to the media server as
 // one `RTCPeerConnection`, which sends what the tab shares and receives what it watches.
 //
-// No test reaches this file: Seam 2 runs on the fake. It is kept thin enough to read
-// against the spec's Screen audio, Encoding and quality and Relay sections; what a screen
-// capture asks for, the encoding plan, how the browser's API takes it, and what a live
-// share sends on a weak upload with the notes its sharer sees, and how a stopped share's
-// transceiver is let go of, are pure rules in `capture.ts`, `src/shared/encoding.ts`,
-// `encodings.ts`, `sending.ts` and `stopping.ts`, which are tested. The
-// owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
+// Seam 2 runs on the fake. Its negotiations run in the loopback (`test/loopback`), in a
+// real Chromium against a stand-in for the media server; what the media server does that
+// the stand-in does not is in `docs/media-server.md`, which a change to a negotiation here
+// is read against. It is kept thin enough to read against the spec's Screen audio,
+// Encoding and quality and Relay sections; what a screen capture asks for, the encoding
+// plan, how the browser's API takes it, and what a live share sends on a weak upload with
+// the notes its sharer sees, and how a stopped share's transceiver is let go of, are pure
+// rules in `capture.ts`, `src/shared/encoding.ts`, `encodings.ts`, `sending.ts` and
+// `stopping.ts`, which are tested. The owner's real-media pass (tickets 13 and 27) proves
+// it on a deployed instance.
 
 import { encodingPlan, type Codec, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";

@@ -42,6 +42,19 @@ export default defineConfig({
       testMatch: "people.spec.ts",
       dependencies: ["several rooms"],
     },
+    // The real media client against a stand-in media server, on no app (test/loopback).
+    {
+      name: "media client",
+      testDir: "./test/loopback",
+      use: {
+        browserName: "chromium",
+        launchOptions: {
+          executablePath: process.env.GRAEAE_CHROMIUM || undefined,
+          // Host candidates by address, so the stand-in in the same page reaches them.
+          args: ["--disable-features=WebRtcHideLocalIpsWithMdns"],
+        },
+      },
+    },
   ],
   // The built app, as `pnpm test` leaves it, on an instance that starts empty each run.
   webServer: {

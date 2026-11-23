@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Runs the whole of `pnpm test` before a push that carries code: Seam 1, Seam 2 and the
+# media client's loopback, all on the fakes, so nothing here calls Cloudflare. A push of
+# tickets, docs and other Markdown alone skips it, as the pre-commit hook does.
+# `pnpm prepare` (run by `pnpm install`) points git here.
+set -euo pipefail
+
+zero=0000000000000000000000000000000000000000
+code=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # a deleted branch carries nothing
+  if [ "$remote_sha" = "$zero" ]; then
+    # A new branch on the remote: what it adds over the main branch.
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null || git rev-list --max-parents=0 "$local_sha" | tail -1)
+  else
+    base=$remote_sha
+  fi
+  code+=$(git diff --name-only "$base" "$local_sha" | grep -v -E '^(\.scratch|docs)/|\.md$' || true)
+done
+[ -z "$code" ] && exit 0
+
+check='pnpm test'
+if command -v pnpm >/dev/null && command -v node >/dev/null; then bash -c "$check"; else nix-shell --run "$check"; fi

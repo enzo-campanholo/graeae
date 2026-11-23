@@ -9,7 +9,7 @@ export default ts.config(
   ...ts.configs.recommended,
   ...svelte.configs.recommended,
   {
-    files: ["src/app/**/*.{ts,svelte}", "src/app/**/*.svelte.ts"],
+    files: ["src/app/**/*.{ts,svelte}", "src/app/**/*.svelte.ts", "test/loopback/page/**/*.ts"],
     languageOptions: { globals: globals.browser },
   },
   {
@@ -17,7 +17,7 @@ export default ts.config(
     languageOptions: { parserOptions: { parser: ts.parser, extraFileExtensions: [".svelte"] } },
   },
   {
-    files: ["*.{js,ts}", "scripts/**/*.{mjs,ts}", "test/browser/**/*.ts"],
+    files: ["*.{js,ts}", "scripts/**/*.{mjs,ts}", "test/browser/**/*.ts", "test/loopback/*.ts"],
     languageOptions: { globals: globals.node },
   },
 );

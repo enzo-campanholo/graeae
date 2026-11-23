@@ -20,3 +20,6 @@ playwright-report/
 
 # Screenshots of other products, used locally by the design lens; not ours to republish.
 .impeccable/reference/craft/images/
+
+# The owner's device cookie for each deployed instance, kept by `pnpm as-owner` (scripts/owner.ts).
+.owner/

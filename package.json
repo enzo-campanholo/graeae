@@ -20,7 +20,9 @@
     "capture": "vite build --mode fake-media && playwright test -c scripts/capture/capture.config.ts",
     "perf": "vite build --mode fake-media && playwright test -c scripts/perf/perf.config.ts",
     "real-media": "node scripts/real-media/member.ts",
-    "logs": "node scripts/logs/pull.ts"
+    "logs": "node scripts/logs/pull.ts",
+    "logs:view": "node scripts/logs/view.ts",
+    "as-owner": "node scripts/owner.ts"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",
