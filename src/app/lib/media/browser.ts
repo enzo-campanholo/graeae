@@ -10,12 +10,12 @@
 // tested. The
 // owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
 
-import { encodingPlan, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
+import { encodingPlan, type Codec, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
 import type { IceServer } from "../../../shared/socket/index.ts";
 import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { browserFamily, isScreenAudio, screenCapture, stereoOpus, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
-import { codecPreferences, receivedQuality, sendEncodings } from "./encodings.ts";
+import { codecPreferences, hardwareQuery, lists, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type SharerNotes } from "./sending.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
 import { pairSummary, STATS_EVERY_MS, streamSummaries, type CaptureNow, type Counted } from "./stats.ts";
@@ -228,7 +228,8 @@ export class BrowserMediaClient implements MediaClient {
     const height = video.getSettings().height;
     const encodings = sendEncodings(plan, height);
     const videoSender = connection.addTransceiver(video, { direction: "sendonly", streams, sendEncodings: encodings });
-    preferCodecs(videoSender, plan);
+    // Before the offer, which carries the codecs offered.
+    await preferCodecs(videoSender, plan);
     // A screen share's sound goes with its picture, as one unit.
     const audioSender = audio ? connection.addTransceiver(audio, { direction: "sendonly", streams }) : null;
     this.sending.set(capture, audioSender ? [videoSender, audioSender] : [videoSender]);
@@ -387,19 +388,45 @@ export class BrowserMediaClient implements MediaClient {
 }
 
 /**
- * Offers only the first of the plan's codecs this browser has: hardware H.264 baseline,
- * or the software codec on a browser without it, since the media server picks its own
- * favourite among several. A browser that refuses the list is left to its own order, so
- * the share still starts.
+ * Offers only the first of the plan's codecs this browser has, since the media server
+ * picks its own favourite among several: on a Chromium screen share at one quality,
+ * H.264 high when the browser encodes it in hardware; otherwise H.264 baseline, in
+ * hardware on Chrome on Windows; or the software codec on a browser with neither. A
+ * browser that refuses the list is left to its own order, so the share still starts.
  */
-function preferCodecs(transceiver: RTCRtpTransceiver, plan: EncodingPlan) {
-  const codecs = codecPreferences(plan.codecs, RTCRtpSender.getCapabilities("video")?.codecs ?? []);
+async function preferCodecs(transceiver: RTCRtpTransceiver, plan: EncodingPlan) {
+  const capabilities = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
+  const inHardware = await codecsInHardware(plan, capabilities);
+  const codecs = codecPreferences(plan.codecs, capabilities, inHardware);
   if (codecs.length === 0 || !("setCodecPreferences" in transceiver)) return;
   try {
     transceiver.setCodecPreferences(codecs);
   } catch {
     // Left to the browser's own order.
   }
+}
+
+/** How long the browser has to say whether it encodes a codec in hardware before the answer counts as no. */
+const HARDWARE_QUERY_MS = 1000;
+
+/**
+ * Which of the plan's codecs that are offered only in hardware (H.264 high) this browser
+ * lists and says it encodes power-efficiently. A browser without the check, or whose check
+ * throws, takes too long or says no, has none of them, and goes on to the next codec.
+ * Chrome lists high, and main, even with no hardware encoder for them, hence the check.
+ */
+async function codecsInHardware(plan: EncodingPlan, capabilities: readonly RTCRtpCodec[]): Promise<Codec[]> {
+  const found: Codec[] = [];
+  for (const codec of plan.codecs) {
+    const query = hardwareQuery(codec, plan);
+    if (!query || !lists(codec, capabilities) || !navigator.mediaCapabilities?.encodingInfo) continue;
+    const answer = await Promise.race([
+      navigator.mediaCapabilities.encodingInfo(query).catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), HARDWARE_QUERY_MS)),
+    ]);
+    if (answer?.supported && answer.powerEfficient) found.push(codec);
+  }
+  return found;
 }
 
 /**

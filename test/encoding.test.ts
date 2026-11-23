@@ -2,10 +2,12 @@
 // expected values are the spec's table under Encoding and quality, not the code's.
 
 import { describe, expect, it } from "vitest";
-import { codecPreferences, receivedQuality, sendEncodings } from "../src/app/lib/media/encodings.ts";
+import { codecPreferences, hardwareQuery, receivedQuality, sendEncodings } from "../src/app/lib/media/encodings.ts";
 import { encodingPlan } from "../src/shared/encoding.ts";
 
 const HARDWARE_FIRST = [{ mimeType: "video/H264", profile: "baseline" }, { mimeType: "video/VP8" }];
+/** A Chromium screen share at one quality: H.264 high when encoded in hardware, then as `HARDWARE_FIRST` (ticket 54). */
+const HIGH_FIRST = [{ mimeType: "video/H264", profile: "high" }, ...HARDWARE_FIRST];
 
 const SENT_AT_TWO_QUALITIES = { twoQualities: true };
 
@@ -60,7 +62,7 @@ describe.each(["chromium", "firefox"] as const)("a webcam share on %s", (browser
     expect(plan.capture).toEqual({ width: 1280, height: 720, frameRate: 30 });
   });
 
-  it("follows the same codec rule as a Chromium screen share", () => {
+  it("offers H.264 baseline profile, then a software codec last", () => {
     expect(plan.codecs).toEqual(HARDWARE_FIRST);
   });
 
@@ -77,9 +79,12 @@ describe("with two qualities switched off", () => {
   it("leaves a Chromium screen share one 1080p60 quality at 12 Mbps", () => {
     const plan = encodingPlan("chromium", "screen", { twoQualities: false });
     expect(plan.qualities).toEqual([{ name: "1080p", height: 1080, maxFramerate: 60, maxBitrate: 12_000_000 }]);
-    expect(plan.codecs).toEqual(HARDWARE_FIRST);
     expect(plan.capture.frameRate).toBe(120);
     expect(plan.maxBitrate).toBe(12_000_000);
+  });
+
+  it("offers a Chromium screen share H.264 high profile, then baseline, then a software codec last", () => {
+    expect(encodingPlan("chromium", "screen", { twoQualities: false }).codecs).toEqual(HIGH_FIRST);
   });
 
   it("changes nothing else", () => {
@@ -105,12 +110,15 @@ describe("what the browser gives up above a share's last step", () => {
 });
 
 describe("every share", () => {
-  it("never offers HEVC, and offers H.264 in baseline profile alone", () => {
+  it("never offers HEVC, and offers H.264 in baseline profile, or high on a Chromium screen share at one quality only", () => {
     for (const browser of ["chromium", "firefox"] as const) {
       for (const kind of ["screen", "webcam"] as const) {
-        for (const codec of encodingPlan(browser, kind).codecs) {
-          expect(codec.mimeType).not.toMatch(/H265|HEVC/i);
-          if (codec.mimeType === "video/H264") expect(codec.profile).toBe("baseline");
+        for (const twoQualities of [false, true]) {
+          const highAllowed = browser === "chromium" && kind === "screen" && !twoQualities;
+          for (const codec of encodingPlan(browser, kind, { twoQualities }).codecs) {
+            expect(codec.mimeType).not.toMatch(/H265|HEVC/i);
+            if (codec.mimeType === "video/H264") expect(codec.profile).toEqual(highAllowed ? expect.stringMatching(/^(high|baseline)$/) : "baseline");
+          }
         }
       }
     }
@@ -145,6 +153,9 @@ const FIREFOX_CODECS = [
   { mimeType: "video/rtx", clockRate: 90000 },
 ];
 
+/** H.264 high, as the browser's hardware check finds it (`mediaCapabilities.encodingInfo` says power-efficient). */
+const HIGH = { mimeType: "video/H264", profile: "high" } as const;
+
 const fmtp = (codec: { mimeType: string; sdpFmtpLine?: string }) =>
   `${codec.mimeType} ${codec.sdpFmtpLine?.match(/profile-level-id=(\w+)/)?.[1] ?? ""}`.trim();
 
@@ -157,15 +168,47 @@ describe("the codec order a browser is given", () => {
     expect(order[0]?.sdpFmtpLine).toMatch(/packetization-mode=1/);
   });
 
+  it("on Chromium is H.264 high alone when the browser lists it and encodes it in hardware", () => {
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, CHROMIUM_CODECS, [HIGH]);
+    expect(order.map(fmtp)).toEqual(["video/H264 640034", "video/rtx", "video/red", "video/ulpfec"]);
+  });
+
+  it("on Chromium is H.264 baseline alone when the browser lists high but not in hardware", () => {
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, CHROMIUM_CODECS, []);
+    expect(order.map(fmtp)).toEqual(["video/H264 42001f", "video/rtx", "video/red", "video/ulpfec"]);
+  });
+
+  it("on Chromium is H.264 baseline alone when the browser does not list high, whatever it says of hardware", () => {
+    const noHigh = CHROMIUM_CODECS.filter((codec) => !codec.sdpFmtpLine?.includes("profile-level-id=6400"));
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, noHigh, [HIGH]);
+    expect(order.map(fmtp)).toEqual(["video/H264 42001f", "video/rtx", "video/red", "video/ulpfec"]);
+  });
+
+  it("never takes high in packetization mode 0", () => {
+    const highMode0 = CHROMIUM_CODECS.map((codec) =>
+      codec.sdpFmtpLine?.includes("profile-level-id=6400") ? { ...codec, sdpFmtpLine: codec.sdpFmtpLine.replace("packetization-mode=1", "packetization-mode=0") } : codec,
+    );
+    const order = codecPreferences(encodingPlan("chromium", "screen").codecs, highMode0, [HIGH]);
+    expect(order.map(fmtp)[0]).toBe("video/H264 42001f");
+  });
+
   it("is VP8 alone on a browser with no H.264 baseline", () => {
     const noH264 = CHROMIUM_CODECS.filter((codec) => codec.mimeType !== "video/H264");
     const order = codecPreferences(encodingPlan("chromium", "screen").codecs, noH264).map(fmtp);
     expect(order).toEqual(["video/VP8", "video/rtx", "video/red", "video/ulpfec"]);
   });
 
-  it("never holds constrained baseline, main, high or HEVC", () => {
-    const order = codecPreferences(encodingPlan("chromium", "webcam").codecs, CHROMIUM_CODECS).map(fmtp);
-    expect(order.join(" ")).not.toMatch(/42e01f|4d001f|640034|H265/);
+  it("never holds constrained baseline, main or HEVC, and high only for a Chromium screen share at one quality", () => {
+    for (const [browser, kind, twoQualities] of [
+      ["chromium", "screen", false],
+      ["chromium", "screen", true],
+      ["chromium", "webcam", false],
+      ["firefox", "webcam", false],
+    ] as const) {
+      const order = codecPreferences(encodingPlan(browser, kind, { twoQualities }).codecs, CHROMIUM_CODECS, [HIGH]).map(fmtp);
+      expect(order.join(" ")).not.toMatch(/42e01f|4d001f|H265/);
+      if (browser !== "chromium" || kind !== "screen" || twoQualities) expect(order.join(" ")).not.toMatch(/640034/);
+    }
   });
 
   it("is H.264 baseline alone for a webcam on Firefox", () => {
@@ -216,5 +259,21 @@ describe("the quality a watched share is received at", () => {
     expect(receivedQuality(720)).toBe("720p");
     expect(receivedQuality(540)).toBe("720p");
     expect(receivedQuality(undefined)).toBeNull();
+  });
+});
+
+describe("what the browser is asked before it offers a codec", () => {
+  const plan = encodingPlan("chromium", "screen");
+
+  it("is whether it encodes H.264 high power-efficiently, at 1080p60 and 12 Mbps, in a call", () => {
+    expect(hardwareQuery(HIGH, plan)).toEqual({
+      type: "webrtc",
+      video: { contentType: "video/H264; profile-level-id=64001f", width: 1920, height: 1080, framerate: 60, bitrate: 12_000_000 },
+    });
+  });
+
+  it("is nothing for H.264 baseline or VP8, which are offered whenever the browser lists them", () => {
+    expect(hardwareQuery({ mimeType: "video/H264", profile: "baseline" }, plan)).toBeNull();
+    expect(hardwareQuery({ mimeType: "video/VP8" }, plan)).toBeNull();
   });
 });

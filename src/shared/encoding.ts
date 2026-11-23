@@ -27,14 +27,20 @@ export const TWO_QUALITIES = false;
 export type BrowserFamily = "chromium" | "firefox";
 
 /**
- * A codec a share may go out in, best first. H.264 is only ever baseline profile
- * (`42001f`): Chrome on Windows encodes it in hardware, the media server accepts it on a
- * share sent at two qualities, and Firefox decodes it. Never constrained baseline, which
- * Chrome on Windows encodes in software; never main or high, which the media server
- * answers with VP8 on a share sent at two qualities and Firefox cannot decode; never HEVC.
+ * A codec a share may go out in, best first. H.264 goes out in one of two profiles, and
+ * Chromium and Firefox watchers decode both:
+ * - High (`64001f`), on a Chromium screen share at one quality only, and only when the
+ *   sharer's browser encodes it in hardware: at the same bitrate it gives the better
+ *   picture (share-reliability tickets 09 and 14). The media server answers it with VP8
+ *   on a share sent at two qualities (ticket 17).
+ * - Baseline (`42001f`) everywhere else: Chrome on Windows encodes it in hardware, and
+ *   the media server accepts it on a share sent at two qualities.
+ *
+ * Never constrained baseline, which Chrome on Windows encodes in software; never main;
+ * never HEVC.
  */
 export type Codec =
-  | { mimeType: "video/H264"; profile: "baseline" }
+  | { mimeType: "video/H264"; profile: "high" | "baseline" }
   | { mimeType: "video/VP8" }
   | { mimeType: "video/VP9" };
 
@@ -93,6 +99,13 @@ export interface EncodingPlan {
  */
 const HARDWARE_FIRST: Codec[] = [{ mimeType: "video/H264", profile: "baseline" }, { mimeType: "video/VP8" }];
 
+/**
+ * H.264 high profile first, on a Chromium screen share at one quality. The plan lists it
+ * whatever the sharer's machine: the browser offers it only when it encodes it in
+ * hardware, and goes on to baseline otherwise (`codecPreferences`).
+ */
+const HIGH_FIRST: Codec[] = [{ mimeType: "video/H264", profile: "high" }, ...HARDWARE_FIRST];
+
 const SCREEN_CAPTURE = { width: 1920, height: 1080 };
 
 /**
@@ -135,7 +148,7 @@ export function encodingPlan(
   // one opened under 360 lines in software. Keeping size, every one on Windows opened at
   // about 1080 lines in hardware and stayed there (share-reliability tickets 11 and 09).
   const degradation = "maintain-resolution";
-  if (!twoQualities) return plan(HARDWARE_FIRST, [full], capture, degradation);
+  if (!twoQualities) return plan(HIGH_FIRST, [full], capture, degradation);
   return plan(
     HARDWARE_FIRST,
     [

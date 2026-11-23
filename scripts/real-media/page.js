@@ -17,6 +17,28 @@ window.RTCPeerConnection = new Proxy(Native, {
   },
 });
 
+// A copy of each "stats" line the page's log sends the instance on its socket, once each:
+// a batch the socket loses goes again.
+kept.statsLines = [];
+const seen = new Set();
+const send = window.WebSocket.prototype.send;
+window.WebSocket.prototype.send = function (data, ...rest) {
+  if (typeof data === "string" && data.includes('"stats"')) {
+    try {
+      const message = JSON.parse(data);
+      for (const event of message.type === "log" ? (message.request?.events ?? []) : []) {
+        const key = JSON.stringify(event);
+        if (event.event !== "stats" || seen.has(key)) continue;
+        seen.add(key);
+        kept.statsLines.push(event);
+      }
+    } catch {
+      // Not a batch of the page's log.
+    }
+  }
+  return send.call(this, data, ...rest);
+};
+
 // Every capture, with a line in the console when the browser ends one of its tracks.
 const devices = window.navigator.mediaDevices;
 for (const method of ["getDisplayMedia", "getUserMedia"]) {
@@ -170,7 +192,11 @@ kept.sampleStart = (ms) => {
             height: entry.frameHeight,
             fps: entry.framesPerSecond,
             keyFrames: entry.keyFramesDecoded,
+            pli: entry.pliCount,
+            fir: entry.firCount,
+            nack: entry.nackCount,
             decoder: entry.decoderImplementation,
+            hardware: entry.powerEfficientDecoder,
             codec: codecOf(byId.get(entry.codecId)),
             audioLevel: entry.audioLevel,
             audioEnergy: entry.totalAudioEnergy,

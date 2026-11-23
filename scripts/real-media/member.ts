@@ -1,9 +1,9 @@
-// `pnpm real-media`: one member of a deployed graeae instance in a real, headed Chromium,
-// on the real media server, driven by commands typed or piped in. It joins by an invite
-// address (or a room's, once its profile is remembered), shares or watches on command,
-// and prints what it sends and receives every few seconds: resolution, frame rate,
-// frames encoded or decoded, codec, encoder or decoder, and sound level. Not a test:
-// it calls Cloudflare's media server, which `pnpm test` never does.
+// `pnpm real-media`: one member of a deployed graeae instance in a real, headed Chromium
+// (or Firefox, to watch), on the real media server, driven by commands typed or piped in.
+// It joins by an invite address (or a room's, once its profile is remembered), shares or
+// watches on command, and prints what it sends and receives every few seconds:
+// resolution, frame rate, frames encoded or decoded, codec, encoder or decoder, and sound
+// level. Not a test: it calls Cloudflare's media server, which `pnpm test` never does.
 //
 //   pnpm real-media --url https://<instance>/invite/<code> --name tux [options]
 //
@@ -34,6 +34,13 @@
 //   --codec <codec>      offers only this video codec instead of the page's own: VP8, AV1, or
 //                        H264:<profile-level-id prefix>, such as H264:6400 for high; all five
 //                        are in fixes.js and change what the page does
+//   --fake-h264 <file.h264>  sends this clip in place of each frame a screen share's encoder
+//                        makes, looped (fake-h264.js, which says how to make one): a share
+//                        in a profile this browser cannot encode, such as H.264 high. The
+//                        page still offers what it would send: add --codec H264:6400 to
+//                        offer high from a browser that lists it but not in hardware
+//   --browser chromium|firefox  the browser (default chromium); firefox is the one at
+//                        GRAEAE_FIREFOX, driven over WebDriver BiDi, for watching
 //
 // Commands, one a line (a "quoted name" may hold spaces):
 //   share screen|webcam          press Share screen (and the first-time notice) or Share webcam
@@ -65,6 +72,8 @@
 //   sample <ms> | unsample <file>   reads the page's connections every <ms> (estimate, round
 //                                trip, bytes, target, frames, freezes) and writes them, one
 //                                JSON a line, to <file>
+//   statslines <file>            writes the page's own "stats" log lines so far, as they left
+//                                for the instance, one JSON a line
 //   wait <seconds> | stats | eval <js> | quit
 
 import { execFileSync } from "node:child_process";
@@ -74,7 +83,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
-import { chromium, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
+import { chromium, firefox, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
 import { fakeWebcam } from "./webcam.ts";
 
 const HERE = import.meta.dirname;
@@ -102,6 +111,8 @@ const { values: options } = parseArgs({
     degradation: { type: "string" },
     "content-hint": { type: "string" },
     codec: { type: "string" },
+    "fake-h264": { type: "string" },
+    browser: { type: "string", default: "chromium" },
   },
 });
 
@@ -172,6 +183,7 @@ function listen(tab: Page): Page {
 }
 
 async function launch(): Promise<BrowserContext> {
+  if (options.browser === "firefox") return launchFirefox();
   const args = [`--window-position=${options.position}`, `--window-size=${viewport.width},${viewport.height + 90}`];
   if (options.pick?.startsWith("tab:")) args.push(`--auto-select-tab-capture-source-by-title=${options.pick.slice(4)}`);
   else if (options.pick) args.push(`--auto-select-desktop-capture-source=${options.pick}`);
@@ -190,6 +202,13 @@ async function launch(): Promise<BrowserContext> {
     permissions: ["camera"],
   });
   await launched.addInitScript({ path: join(HERE, "page.js") });
+  if (options["fake-h264"]) {
+    // Served at the instance's own address, so the page fetches it with no CORS.
+    const clip = readFileSync(resolve(options["fake-h264"]));
+    await launched.route("**/__real-media/clip.h264", (route) => route.fulfill({ body: clip, contentType: "application/octet-stream" }));
+    await launched.addInitScript({ content: `window.__realMediaFake = { clip: "/__real-media/clip.h264" };` });
+    await launched.addInitScript({ path: join(HERE, "fake-h264.js") });
+  }
   if (options["max-bitrate"] || options["start-bitrate"] || options["content-hint"] !== undefined || options.degradation || options.codec) {
     const kbps = (value: string | undefined) => (value ? Number(value) : undefined);
     const fixes = {
@@ -203,6 +222,32 @@ async function launch(): Promise<BrowserContext> {
     await launched.addInitScript({ path: join(HERE, "fixes.js") });
   }
   return launched;
+}
+
+/**
+ * Firefox, with page.js and none of the other options but the page's size. A persistent
+ * profile hangs over BiDi, so the device's cookies are kept in the profile's folder
+ * instead, written once in the room and again on quitting.
+ */
+async function launchFirefox(): Promise<BrowserContext> {
+  if (!process.env.GRAEAE_FIREFOX) throw new Error("set GRAEAE_FIREFOX to a Firefox, such as nixpkgs' firefox/bin/firefox");
+  const browser = await firefox.launch({
+    headless: false,
+    channel: "moz-firefox",
+    executablePath: process.env.GRAEAE_FIREFOX,
+    // Firefox's own default, which Playwright turns off: it fetches the OpenH264 plugin,
+    // its only H.264 for calls on Linux, a minute or so after it first starts.
+    firefoxUserPrefs: { "media.autoplay.default": 0, "media.gmp-manager.updateEnabled": true },
+  });
+  const state = join(profile, "firefox-state.json");
+  const launched = await browser.newContext({ viewport, ...(existsSync(state) ? { storageState: state } : {}) });
+  await launched.addInitScript({ path: join(HERE, "page.js") });
+  return launched;
+}
+
+/** Firefox's cookies, kept for its next run. */
+async function keepFirefoxState() {
+  if (options.browser === "firefox") await context.storageState({ path: join(profile, "firefox-state.json") }).catch(() => undefined);
 }
 
 /** Into the room: by the invite the first time, by the room's address once remembered. */
@@ -220,6 +265,7 @@ async function enter() {
   }
   await page.getByRole("main", { name: "Stage" }).waitFor({ timeout: 30_000 });
   writeFileSync(remembered, page.url());
+  await keepFirefoxState();
   say(`in the room at ${new URL(page.url()).pathname}`);
 }
 
@@ -387,6 +433,12 @@ async function run(line: string) {
       writeFileSync(file, samples.map((sample) => JSON.stringify(sample)).join("\n") + "\n");
       return say(`saved ${samples.length} readings to ${file}`);
     }
+    case "statslines": {
+      const lines = (await page.evaluate("window.__realMedia.statsLines")) as unknown[];
+      const file = resolve(rest[0] ?? "stats.jsonl");
+      writeFileSync(file, lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+      return say(`saved ${lines.length} stats lines to ${file}`);
+    }
     case "eval":
       return say(JSON.stringify(await page.evaluate(line.slice(5))));
     case "signal":
@@ -544,6 +596,7 @@ async function quit() {
   if (quitting) return;
   quitting = true;
   if (ticker) clearInterval(ticker);
+  await keepFirefoxState();
   await context.close().catch(() => undefined);
   server.close();
   process.exit(0);
