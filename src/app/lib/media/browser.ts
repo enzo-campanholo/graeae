@@ -344,9 +344,11 @@ export class BrowserMediaClient implements MediaClient {
     for (const track of capture.stream?.getTracks() ?? []) track.stop();
     for (const transceiver of this.sending.get(capture) ?? []) {
       if (this.connection?.signalingState === "closed") break;
-      void transceiver.sender.replaceTrack(null);
-      // Takes effect with the next offer; the media server has force-closed it already.
-      transceiver.direction = "inactive";
+      // Stopped, not made inactive: Chrome keeps an inactive transceiver's encoder, and
+      // a GPU has only so many in hardware (12 on ticket 57's). The next negotiation
+      // rejects its media section and lets the encoder go; the media server has
+      // force-closed its track already.
+      transceiver.stop();
     }
     this.sending.delete(capture);
   }
