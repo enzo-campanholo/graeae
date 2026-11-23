@@ -96,3 +96,44 @@ if (clipAddress) {
     return transceiver;
   };
 }
+
+// --fake-h264-as <profile-level-id>: each offer the page sends names the baseline H.264 of
+// its sending video sections as this profile instead, and each answer is given back to the
+// browser as it offered, so the media server takes the share for that profile while the
+// browser sends what it negotiated. For a browser that lists no high to send, as Linux
+// Chromium does not: with the clip, the share is high on the wire and in the description
+// (v1-build ticket 59).
+const { as: relabelledAs } = window.__realMediaFake ?? {};
+if (clipAddress && relabelledAs) {
+  /** The baseline profile-level-id the browser offered, which each answer is given back as. */
+  let offeredProfile = null;
+  const relabel = (sdp) =>
+    sdp
+      .split(/(?=^m=)/m)
+      .map((section) =>
+        /^m=video/.test(section) && /^a=sendonly/m.test(section)
+          ? section.replace(/profile-level-id=(42[0-9a-f]{4})/gi, (_, profile) => ((offeredProfile = profile), `profile-level-id=${relabelledAs}`))
+          : section,
+      )
+      .join("");
+  const local = Object.getOwnPropertyDescriptor(RTCPeerConnection.prototype, "localDescription");
+  Object.defineProperty(RTCPeerConnection.prototype, "localDescription", {
+    ...local,
+    get() {
+      const description = local.get.call(this);
+      if (description?.type !== "offer") return description;
+      const sdp = relabel(description.sdp);
+      return { type: "offer", sdp, toJSON: () => ({ type: "offer", sdp }) };
+    },
+  });
+  const setRemote = RTCPeerConnection.prototype.setRemoteDescription;
+  RTCPeerConnection.prototype.setRemoteDescription = function (description, ...rest) {
+    if (description?.type === "answer" && description.sdp && offeredProfile) {
+      const named = new RegExp(`profile-level-id=${relabelledAs}`, "gi");
+      const sdp = description.sdp.replace(named, `profile-level-id=${offeredProfile}`);
+      console.info(`[real-media] fake H.264: offered as ${relabelledAs}; the answer ${named.test(description.sdp) ? "named it, and is" : "did not name it, and is still"} given back as ${offeredProfile}`);
+      return setRemote.call(this, { type: "answer", sdp }, ...rest);
+    }
+    return setRemote.call(this, description, ...rest);
+  };
+}

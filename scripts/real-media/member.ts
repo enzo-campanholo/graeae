@@ -42,6 +42,9 @@
 //                        in a profile this browser cannot encode, such as H.264 high. The
 //                        page still offers what it would send: add --codec H264:6400 to
 //                        offer high from a browser that lists it but not in hardware
+//   --fake-h264-as <profile-level-id>  with --fake-h264: the page's offers name the share's
+//                        baseline H.264 as this profile (64001f, high), and its answers go
+//                        back to the browser as offered, for a browser that lists no high
 //   --browser chromium|firefox  the browser (default chromium); firefox is the one at
 //                        GRAEAE_FIREFOX, driven over WebDriver BiDi, for watching
 //
@@ -116,6 +119,7 @@ const { values: options } = parseArgs({
     "content-hint": { type: "string" },
     codec: { type: "string" },
     "fake-h264": { type: "string" },
+    "fake-h264-as": { type: "string" },
     browser: { type: "string", default: "chromium" },
   },
 });
@@ -211,7 +215,7 @@ async function launch(): Promise<BrowserContext> {
     // Served at the instance's own address, so the page fetches it with no CORS.
     const clip = readFileSync(resolve(options["fake-h264"]));
     await launched.route("**/__real-media/clip.h264", (route) => route.fulfill({ body: clip, contentType: "application/octet-stream" }));
-    await launched.addInitScript({ content: `window.__realMediaFake = { clip: "/__real-media/clip.h264" };` });
+    await launched.addInitScript({ content: `window.__realMediaFake = ${JSON.stringify({ clip: "/__real-media/clip.h264", as: options["fake-h264-as"] })};` });
     await launched.addInitScript({ path: join(HERE, "fake-h264.js") });
   }
   if (options["max-bitrate"] || options["start-bitrate"] || options["content-hint"] !== undefined || options.degradation || options.codec) {

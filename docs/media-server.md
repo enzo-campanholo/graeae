@@ -38,9 +38,21 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
   So `browser.ts` sets each transceiver it does not send on to the codecs its section
   negotiated (`receiving.ts`) before each offer it makes, as its section stands when
   the tab makes no offer. The stand-in plays it for H.264 baseline, the codec of every
-  watch there. Unchecked, and as before ticket 58: a watch in a codec the reused
-  section does not list, such as a screen share in H.264 high put in a section that has
-  only baseline. The same drop is likely there.
+  watch there.
+- **H.264's profile does not count.** A share published as H.264 high goes out on the
+  same payload type as baseline would, by the rule above, and Chrome decodes it there.
+  *Ticket 59: a share offered as 64001f, sending an x264 high clip, was watched in a
+  reused section that knew only 102 (42001f); it went out on 102 and decoded at
+  1920x1080 (`repro-59.ts`, `share share screen` and `share cam share screen`, two runs
+  of each). Ticket 55: a fresh watcher's section labelled a high share 42e01f.* The
+  stand-in sends baseline only.
+- **A session's first section lists the media server's own codecs.** A watch made
+  before the tab has made any offer of its own gets a new section with H.264 42e01f at
+  125, VP9, VP8, H.265 and AV1, each with its retransmissions, and goes out on 125.
+  *Ticket 59: every first watch after a reload (`repro-59.ts`).* So once `receiving.ts`
+  keeps that section's codecs, the tab's later offers list 42e01f, and by the rule above
+  a later watch in a section that knows only 42001f decodes nothing (ticket 60). The
+  stand-in does not play it: with no offer of the tab's, it offers Chrome's own list.
 
 ## The transport
 
