@@ -10,9 +10,9 @@
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
 
-**Status:** ready-for-human (until 52, 53 and 54 are resolved and on `graeae-test`, and the owner says MONSTRAO is free)
+**Status:** ready-for-human (until 54 is fixed again and on `graeae-test`, and the owner says MONSTRAO is free)
 
-**Blocked by:** 52, 53, 54
+**Blocked by:** 54
 
 - [ ] **Before the run, a session here:**
   - Checks that `graeae-test` runs a build holding 52, 53 and 54 (the version in its footer or `wrangler deployments list`), and deploys `v1-build` if not.
@@ -89,3 +89,20 @@ Put the readings files and screenshots beside it in `docs/evidence/windows-<YYYY
 ## Comments
 
 **Before the run (2026-11-23).** `graeae-test` runs version `b6d04cf6`, whose footer reads `eca6adf-dirty`. That is ticket 54's working tree before it was committed as `6c3ce33`. Its front-end bundle is byte for byte a production build of `98f62aa` (v1-build's head, the last commit to touch `src/`), apart from the build label. So it holds 52, 53 and 54 and was not redeployed. The MONSTRAO agent should expect `eca6adf-dirty` in the footer. `v1-build` was pushed to origin so that agent can read this ticket. The owner said MONSTRAO is free. Five invites into "Windows evidence" were made through the owner's API from the device that 53 and 54 reused: Win Chrome, Win Watcher, Win Firefox, Helium Share and Win Spare. They were given to the owner in chat and are not written here. They work for 7 days. No other member, room or invite was touched.
+
+**The run (2026-11-23): failed on 54.** The report is `docs/evidence/windows-2026-11-23.md` on `evidence/windows-2026-11-23` (commit `75d6581`), with the readings beside it. The run used `v1-build` at `b0922c8`, and `graeae-test` was on `eca6adf-dirty`, as expected. MONSTRAO: Windows 11 Pro build 26300.9974, RTX 5070 Ti, NVIDIA driver 32.0.16.2124 (621.24), Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158.0.8127.36), Firefox 160.0.1. The run used no `fixes.js` override.
+
+| Check | Owner | Result | Readings |
+| --- | --- | --- | --- |
+| 1. High chosen on its merits | 54 | Fail | Both browsers list high only as `640033` (mode 1). `encodingInfo` for the ticket's `64001f` query says supported and smooth but not power-efficient. With `packetization-mode=1` added, every H.264 profile reads power-efficient. |
+| 2. Fresh window shares (8 Chrome, 4 Helium) | 53, 54 | Fail on the codec, pass on size | 12/12 at 1920x1080 from the first frame to 25 s, all with `D3D12VideoEncodeAccelerator` in hardware, 3 to 9 Mbps at 10 s and 8 to 12 Mbps at 25 s. 0/12 high: every share sent `42001f`. |
+| 3. Fresh tab shares (8 Chrome, 4 Helium) | 53, 54 | Fail on the codec, pass on size | 12/12 at full size (Chrome 1920x934, Helium 1912x964), in hardware throughout. 0/12 high. The live resize passed: 120 s through a resize down and up and docked devtools opened and closed. It stayed in hardware at 1920x934, 1920x996 and 1576x1080, scaled only by the capture. |
+| 4. Watchers decode the share (5 min) | 54 | Fail for high, the picture passes | Chrome watcher: 18,095 frames at 59.9 fps, D3D11 decoder in hardware. Firefox watcher: 18,123 frames at 59.9 fps, Media Foundation H.264. Both had 0 freezes and 0 drop growth, but the share was baseline `42001f`. |
+| 5. Sound still goes out | 52 | Pass | Chrome tab and Helium tab carried `Tab audio`, and the Chrome and Helium windows `Application Audio`. No `capture.audio-dropped`. The tone was heard at about 0.020 and silence read 0.000. Three trials were repeated after reloading the watcher (ticket 56). |
+| 6. Webcam unchanged | 54 | Pass | Chrome's fake camera, since MONSTRAO has none: `H264 42001f`, `D3D12VideoEncodeAccelerator`, 60 s. |
+
+The Windows lines of 52 and 53 pass. 54's fails on every share: the hardware check in `hardwareQuery` asks without `packetization-mode=1`, so Chrome on Windows never reads the query as power-efficient and goes to baseline. 54 has the readings and is back to `needs-triage`. Two side findings:
+- Chrome lists high only at level `33`, so the `64001f` in the pass lines and the wizard edits may need to change once high goes out. This is noted on 54.
+- A watcher on one connection through about 27 shares stopped receiving new ones (ticket 56, `needs-triage`).
+
+As the ticket says for a failed line, the wizard is not edited and the owner is not asked to run it. The five members stay on `graeae-test`, and their browser profiles on MONSTRAO were deleted. A rerun needs five new invites, and whoever closes this ticket removes the old members.

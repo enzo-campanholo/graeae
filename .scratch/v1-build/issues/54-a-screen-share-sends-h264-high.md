@@ -13,7 +13,7 @@ The owner chose this in [Whether a share sends H.264 high](../../share-reliabili
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** resolved
+**Status:** needs-triage
 
 **Blocked by:** none
 
@@ -131,3 +131,12 @@ Both browsers encoding and decoding 1080p60 in software on one machine with no G
 - `*.out`: `member.ts`'s own lines, with invite addresses redacted.
 
 Not checked here: hardware high, which this server lacks. It is ticket 55's, which already has both lines. Afterwards Probe S, Probe W and Probe F were removed in People, and their browser profiles and invite codes deleted. The other members were not touched. The desktop on `:98` was stopped.
+
+**Failed the final Windows check (ticket 55, 2026-11-23).** The report is `docs/evidence/windows-2026-11-23.md` on `evidence/windows-2026-11-23`. MONSTRAO: Windows 11 build 26300, RTX 5070 Ti, NVIDIA driver 621.24, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158.0.8127.36). `graeae-test` was on `eca6adf-dirty`, the same front end as `98f62aa`.
+
+- **High is never chosen.** All 24 fresh shares sent `H264 42001f`: 8 window and 4 tab shares from Chrome, and the same from Helium. Each was encoded by `D3D12VideoEncodeAccelerator`, in hardware. So did the 5-minute watched share.
+- **Why: `hardwareQuery` leaves out the packetization mode.** It asks `encodingInfo` for `video/H264; profile-level-id=64001f`, the query this ticket wrote (`src/app/lib/media/encodings.ts:38`). Both browsers answer `supported: true, smooth: true, powerEfficient: false`. With `; packetization-mode=1` appended, both answer `powerEfficient: true`. That holds for `64001f`, `64002a` and `640033`, and also for baseline `42001f`. The agent varied the query in fresh profiles, at the same 1920x1080, 60 fps and 12 Mbps. Without the mode, Chrome on Windows seems to judge the query against mode 0, which its hardware encoder does not take. The readings are in `chrome-encoding-diagnostics.json` and `helium-encoding-diagnostics.json` beside the report.
+- **A second thing to settle: the level Chrome lists.** `getCapabilities("video")` lists high only as `640033` (mode 1), not `64001f`, in both browsers. The ticket, the spec, ticket 55's pass line and the wizard edit all expect `64001f` on the wire. Ticket 09 read `64001f`, which may have been from the offer, not the capabilities. Once the query is fixed, check which level the offer and `outbound-rtp` actually carry before those lines are kept.
+- **Everything else on the path held.** Every share opened at the full capture size, in hardware, and kept it at 10 s and 25 s. Window shares opened at 1920x1080. Tab shares opened at 1920x934 in Chrome and 1912x964 in Helium. The resized tab never left hardware. Chrome and Firefox watchers decoded the 5-minute share in hardware at 59.9 fps, with 0 freezes and no growing drop count, but it was baseline. Decoding high from graeae's own sender is still unchecked on Windows.
+
+Ticket 55 is to be run again once this is fixed and on `graeae-test`, and the wizard stays unedited until then.
