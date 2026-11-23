@@ -10,7 +10,7 @@
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
 
-**Status:** ready-for-human (until 54 is fixed again and on `graeae-test`, and the owner says MONSTRAO is free)
+**Status:** ready-for-human (54's fix is on `graeae-test`, version `370be614`; until the owner says MONSTRAO is free)
 
 **Blocked by:** 54
 

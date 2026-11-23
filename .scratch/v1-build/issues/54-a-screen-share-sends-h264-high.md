@@ -13,7 +13,7 @@ The owner chose this in [Whether a share sends H.264 high](../../share-reliabili
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (built and on `graeae-test`; until ticket 55's rerun reads hardware high on MONSTRAO)
 
 **Blocked by:** none
 
@@ -146,3 +146,49 @@ Ticket 55 is to be run again once this is fixed and on `graeae-test`, and the wi
 - **The level:** high is accepted at any level (`6400xx`). Chrome and Helium on Windows list only `640033`, and the offer takes the level from that entry. The level an offer carries only sets a ceiling. Change `64001f` to "H.264 high (`6400xx`)" wherever a line expects it on the wire: this ticket's acceptance line, the spec's table and Hardware encoding section, and ticket 29's comment if it names it. Leave the line about the query's own content type as it is. Ticket 55's lines are already changed.
 - **Here, on real media:** a Linux Chromium sharer without a GPU must still answer `powerEfficient: false` to the new query, and still offer and send baseline `42001f`. Read it from `encodingInfo` and the `stats` line. If it answers true, high would go out in software on machines like this one: stop and comment here instead of deploying.
 - **Then:** deploy `v1-build` to `graeae-test` and record the version. Ticket 55's rerun checks hardware high on MONSTRAO.
+
+### 2026-11-23: the fix built, checked here and deployed to graeae-test
+
+**The query.** `hardwareQuery` now asks `encodingInfo` for `video/H264; profile-level-id=64001f; packetization-mode=1`, at the plan's size, frame rate and bitrate (1920x1080, 60, 12 Mbps). The exact-query test in `test/encoding.test.ts` pins it: it failed first, then passed. Nothing else in the choice changed. The doc comment says why the mode is there, in the words of the Windows reading: asked with no mode, Chrome on Windows says high is not power-efficient.
+
+**The level.** `matches()` already compared only the first four digits (`6400`) and the mode. The test capabilities list high as `640034`, and the "high alone" test expects it, so high is taken at any level and tested. The following now say "H.264 high (`6400xx`)":
+- this ticket's acceptance line, and its line for ticket 55;
+- the spec's table, and its Hardware encoding section, which also gives the reason (`640033` on Windows, and the level only sets a ceiling);
+- the spec's relabelling line in Unverified facts;
+- ticket 29's comment;
+- `Codec`'s doc comment.
+
+The lines about the query's own content type are unchanged.
+
+**Tests.** Typecheck passes. All 481 tests pass in the Workers runtime, and all 60 browser journeys pass with no reruns. Lint's only errors are in the untracked `.logs/upload-estimate/scripts`, as before.
+
+**Review.** Both axes found the brief done.
+- **Fixed:** the cause was stated more firmly than the Windows reading allows, in the code and the spec. Both now say what was seen. Also fixed: a comment line wider than its block, and "viewers" on the spec line this fix touched.
+- **Kept:**
+  - This ticket's checked-off lines that still quote `64001f` (the rig, and the spec item). They record what was built then.
+  - The mode written twice, in the query and in `matches()`.
+
+**Here, on real media.** First, headed Linux Chromium 158 on this server (no GPU), on its own, answered the new query `supported: true, smooth: true, powerEfficient: false`. It answered the same with no mode, and the same for baseline `42001f` in mode 1. `getCapabilities` lists no `6400` profile here at all. That cleared the deploy.
+
+**Deployed.** `a39db42` went to `graeae-test` as version **`370be614-b6ee-406b-94dd-14731dff103e`**. The served bundle carries `a39db42` and the new query. Then, on an Xvfb desktop (`:98`):
+- **Probe S** shared a fresh 1920x1080 game window (`content game`), captured at 1920x1080.
+  - Its page, asked the new query, said `powerEfficient: false`.
+  - The offer's only H.264 line was `profile-level-id=42001f`, packetization mode 1.
+  - Every sender `stats` line read `H264 42001f`, OpenH264, software, 1920x1080, 59–60 fps, about 12.0 Mbps, not limited, no resolution changes.
+- **Probe W** watched for 72 s and read it as `42e01f`:
+  - 4,184 of 4,185 frames decoded, at 1920x1080;
+  - 59.9 fps on average, 57 lowest;
+  - 0 dropped, 0 freezes, 0 lost, 1 PLI.
+
+  Its screenshot (`.impeccable/review/real-media/fix-baseline-watcher.dark.1280x720.png`, not committed) shows the game clean.
+- **A first try didn't count.** Without `xdotool` on the PATH, the game window never opened, and the picker shared another 1348x890 window. That share also went out as `42001f` in software. Its files are in `.logs/h264-high/first-try/`.
+- **Both probes failed to join when started together.** Neither found "Join as" within 30 s. Each joined alone at once, and then both entered by their remembered room.
+
+**Files**, in `.logs/h264-high/` (gitignored): `fix-{s,w}.out` (invite addresses redacted), `fix-{s,w}.jsonl` and `fix-{s,w}-stats.jsonl`.
+
+**Afterwards.**
+- Probe S and Probe W were made over the owner's API, and removed the same way (both 204).
+- Their browser profiles and invite links were deleted, and the desktop on `:98` was stopped. No other member was touched.
+- Ticket 55's status now says 54 is on `graeae-test`.
+
+Hardware high is still unchecked: this server has no GPU. Ticket 55's rerun checks it on MONSTRAO and records the level the offer carries.
