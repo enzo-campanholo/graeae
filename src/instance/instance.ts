@@ -21,7 +21,7 @@ import type {
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
 import type { BudgetLevel, ClientMessage, LiveShare, RoomView, UsageState } from "../shared/socket/index.ts";
-import { checkRequest, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
+import { checkRequest, requestNameOf, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { LOG_PATH } from "../shared/socket/log.ts";
 import { routeOf } from "../shared/log.ts";
@@ -415,11 +415,15 @@ export class Instance extends DurableObject<Env> {
    * A request from a tab showing a room. The tab is present there, since its socket is
    * open on the room; its device and its access are checked again here, as they may
    * have gone since the socket opened. A request the instance does not understand, or
-   * from a tab that fails a check, gets the refusal its area has, or nothing.
+   * from a tab that fails a check, gets the refusal its area has, or nothing. One it does
+   * not understand is written to the logs, since the tab may be waiting on it (ticket 56).
    */
   private async request(tab: Tab, message: ClientMessage) {
     const request = checkRequest(message);
-    if (!request) return;
+    if (!request) {
+      log.warn("request.not-understood", { ...tagsOf(tab), request: requestNameOf(message) });
+      return;
+    }
     const member = this.people.deviceMember(tab.device);
     const allowed = member !== null && member.id === tab.member && this.people.room(member, tab.room) !== null;
     const handle = this.handlers[request.name] as (tab: Tab, request: CheckedRequest, allowed: boolean) => Promise<void> | void;

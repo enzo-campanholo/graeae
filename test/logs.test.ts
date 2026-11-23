@@ -140,6 +140,22 @@ describe("the instance's own lines", () => {
       expect(written, secret).not.toContain(secret);
     }
   });
+
+  it("record a request the instance does not understand, by its name, since a tab may be waiting on it", async () => {
+    const { instance, bia, room } = await ownerAndBia();
+    const { tab } = await openRoom(bia, room);
+
+    tab.send({ type: "media", request: { type: "answer", answer: "" } });
+    tab.send({ type: "media", request: { type: "no-such-request" } } as never);
+    tab.send({ type: "media" } as never);
+    await tab.heartbeat();
+
+    expect(linesOf(instance, "request.not-understood")).toEqual([
+      expect.objectContaining({ source: "instance", tab: tab.id, room, request: "media.answer" }),
+      expect.objectContaining({ source: "instance", tab: tab.id, room, request: "media.no-such-request" }),
+      expect.objectContaining({ source: "instance", tab: tab.id, room, request: null }),
+    ]);
+  });
 });
 
 async function describeAnswer(response: Response) {

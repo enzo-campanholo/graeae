@@ -1,6 +1,6 @@
 # 56: A long-watching tab stops receiving new shares
 
-**Status:** needs-triage
+**Status:** ready-for-human (built; until a tab watching 30 or more shares on one connection is checked on real media)
 
 **Blocked by:** none
 
@@ -11,3 +11,32 @@
 **If it is graeae:** see whether it follows the count of streams on one connection, the time the connection has been open, or a stream that ended without being removed.
 
 ## Comments
+
+### 2026-11-23: diagnosed from the logs, and fixed
+
+**It is graeae.** The logs are pulled into `.logs/graeae-test-1795432000000-1795438500000.jsonl`: 7,334 lines, with `at` from 11:37 to 12:36 UTC. Win Watcher's media connection keeps the media sections of every pull. When a pull ends, its sections stay on the connection, inactive, and the media server gives each new pull new mids rather than reusing them. So the answer grew about 2,340 bytes a share: 62,411 bytes at 52 sections, 64,751 at 54 (the Chrome tab share with audio, answered), and 67,091 at 56 (the Helium tab share). `checkRequest` passed on no SDP over `SDP_MAX`, 64 KiB, and the instance ignored a request it did not pass without writing a line. It wrote the `ws.in` at 1795437117501, then nothing: no `renegotiate`, and no `media.answered`.
+
+Of the ticket's three options, it is the streams that ended without being removed, through the count of sections they leave on one connection. It is not the time the connection had been open: shares up to 19 minutes in were answered, and the failure falls exactly at 65,536 bytes.
+
+On the tab, `negotiate` runs one negotiation at a time, and the answer's `request` waits for `answered` with no end. Every later negotiation queued behind it:
+- the Chrome window share's `watch.asked` (1795437146757) never went out on the socket;
+- the Helium window share was never asked for at all. The Helium tab share stayed in the tab's `asking`, since its negotiation never finished, and `watch` returns early for a share already in `asking` (the same member and kind);
+- Win Chrome's webcam (`watch.asked` 1795437202022) never went out either.
+
+A reload made a new connection of two sections, and each repeat was received at once. So the cause was not the harness.
+
+**Fix.** `SDP_MAX` is now 900 KiB, about 390 shares on one connection. That stays well under the socket's 1 MiB limit on a message, since JSON writes each line's CRLF as four characters, adding some 6% to an SDP of short lines. The tests' runtime does not hold a socket to that limit (a 1,000 KiB answer went through there), so this margin is by reasoning, not by test. A media restart's offer grows the same way and is checked by the same limit.
+
+A request the instance does not understand is now logged as `request.not-understood`, with its name (`<area>.<type>`, or null), and listed in `src/shared/log.ts`. That name comes from `requestNameOf` in `requests.ts`, which `checkRequest` now uses too. The tab's negotiations stay one at a time, with no timeout (owner's call).
+
+**Tests.**
+- `test/watching.test.ts` checks that a watcher's answer the size of one after some 200 shares (468,004 bytes) is answered, and reaches the media server.
+- `test/logs.test.ts`, under the instance's own lines, checks that a request with bad fields, one with an unknown name and one with no name each leave a `request.not-understood` line.
+- Both failed before the fix. An answer of the exact 67,091 bytes went from red to green.
+- Typecheck passes, and lint passes on `src` and `test`. All 481 tests pass.
+
+**Review.**
+- The Standards axis asked for the log test to sit under the instance's own lines, for the event to have its own bullet and a name that does not reuse "refused" (which elsewhere means an access check), and for one source of a request's name. All three are done.
+- The Spec axis found that 1000 KiB left too little room for JSON escaping (now 900 KiB), a wrong time span, and the Helium window share and the webcam left unexplained. All three are fixed above.
+
+**Left.** Checking it on real media: one tab watching 30 or more shares on one connection on `graeae-test`. If an evening ever outgrows about 390 shares on one connection, the next step is for the tab to rebuild its connection, which needs a ticket of its own.

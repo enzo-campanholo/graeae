@@ -87,18 +87,30 @@ const CHECKS: { [Name in RequestName]: (request: Fields) => Checked<Name> | null
 
 /** The request `message` holds, checked; null when the instance does not understand it. */
 export function checkRequest(message: unknown): CheckedRequest | null {
+  const name = requestNameOf(message);
+  if (name === null || !Object.hasOwn(CHECKS, name)) return null;
+  return CHECKS[name as RequestName]((message as { request: Fields }).request);
+}
+
+/** The name `message` gives its request, `<area>.<type>`, whether the instance knows it or not; null when it gives none. */
+export function requestNameOf(message: unknown): string | null {
   if (typeof message !== "object" || message === null) return null;
   const { type: area, request } = message as { type?: unknown; request?: unknown };
   if (typeof area !== "string" || typeof request !== "object" || request === null) return null;
   const { type } = request as { type?: unknown };
-  if (typeof type !== "string") return null;
-  const name = `${area}.${type}`;
-  if (!Object.hasOwn(CHECKS, name)) return null;
-  return CHECKS[name as RequestName](request as Fields);
+  return typeof type === "string" ? `${area}.${type}` : null;
 }
 
-/** The longest SDP the instance passes on. A real one is a few kilobytes. */
-const SDP_MAX = 64 * 1024;
+/**
+ * The longest SDP the instance passes on. A tab's media connection keeps the media
+ * sections of every pull it has made, so its answers and restart offers grow some 2,340
+ * bytes a share it watches: at 64 KiB a tab hit the limit after 28 shares (ticket 56); at
+ * this, after some 390. It stays well under the socket's limit on a message, 1 MiB
+ * (`MAX_BATCH_BYTES`), since in its message every line's CRLF is written as four
+ * characters, some 6% more for an SDP's short lines. The tests' runtime does not hold a
+ * socket to that limit, so nothing there would catch one too close to it.
+ */
+const SDP_MAX = 900 * 1024;
 
 function isSdp(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= SDP_MAX;

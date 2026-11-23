@@ -36,6 +36,8 @@
 //   left, lost, list, closed by the instance, unknown), `ws.error`, `ws.silent` (closed when its
 //   grace period ran out), `ws.taken-back`, `ws.cut`, and `ws.in` and `ws.out` with the
 //   `message`: every one but heartbeats, a full state by its `bytes` and `areas`
+// - `request.not-understood`: a request the instance ignores, since it does not know its
+//   name or its fields fail their check, by its `request` (`<area>.<type>`, or null)
 // - `grace.start`, `grace.end` (taken back in time), `grace.expired`
 // - `presence.arrived`, `presence.left`, `presence.reconnecting`,
 //   `presence.reconnected`, `tab.silent`, `tab.heard` (a tab's own shares' mark)

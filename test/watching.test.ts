@@ -91,6 +91,23 @@ describe("watching a share", () => {
     expect(instance.media.answers()[1]).toEqual(["v=0 a stand-in answer"]);
   });
 
+  it("takes the answer of a tab that has watched share after share on one media connection", async () => {
+    // A pull adds its media sections to the viewer's connection for good, so its answer
+    // grows some 2,340 bytes a share. One a tab sent after 28 shares (ticket 56) was
+    // 67,091 bytes; this is one after some 200.
+    const { instance, ownerTab, biasWebcam } = await biaSharing();
+    await connectMedia(ownerTab);
+    startWatching(ownerTab, biasWebcam);
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "watching", change: { type: "watched" } });
+
+    const answer = `v=0 ${"a".repeat(200 * 2_340)}`;
+    ownerTab.send({ type: "media", request: { type: "answer", answer } });
+
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "answered" } });
+    expect(instance.media.answers()[1]).toEqual([answer]);
+  });
+
   it("starts with nothing watched: a tab opens on an empty stage and pulls nothing", async () => {
     const { instance, owner, room } = await biaSharing();
 
