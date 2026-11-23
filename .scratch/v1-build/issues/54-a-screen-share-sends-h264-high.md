@@ -1,6 +1,6 @@
 # 54: A screen share sends H.264 high
 
-**What to build:** a Chromium screen share on one quality offers H.264 high profile (`64001f`) when the sharer's browser encodes it in hardware, and baseline (`42001f`) otherwise, as today. VP8 stays last. Webcam shares, Firefox screen shares and the two-quality plan keep the list they have today.
+**What to build:** a Chromium screen share on one quality offers H.264 high profile (`6400xx`, any level) when the sharer's browser encodes it in hardware, and baseline (`42001f`) otherwise, as today. VP8 stays last. Webcam shares, Firefox screen shares and the two-quality plan keep the list they have today.
 
 **Why:** at the same bitrate, high gives a better picture.
 - On Windows 11 with Chrome 158 on an RTX 5070 Ti ([Windows evidence run on MONSTRAO](../../share-reliability/issues/09-windows-evidence-run.md), section 3), high was answered and encoded in hardware, with CABAC and the 8x8 transform on.
@@ -55,7 +55,7 @@ Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 - [x] **On this server, with `scripts/real-media/`, against `graeae-test` once it is deployed, with the rig off.** A Linux Chromium screen share offers and sends baseline (`42001f`), with no high in hardware here. A watcher sees it as today.
 
 The agent does all of this alone. Hardware high is left to the map's final Windows check, which gains two lines:
-- In Chrome and Helium, a fresh game-window share goes out as `64001f` in hardware, read from its `stats` line.
+- In Chrome and Helium, a fresh game-window share goes out as H.264 high (`6400xx`, any level) in hardware, read from its `stats` line.
 - The owner looks at a real game and says the picture is no worse.
 
 The owner checks nothing for this ticket alone.

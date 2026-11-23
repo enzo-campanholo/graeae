@@ -29,10 +29,10 @@ export type BrowserFamily = "chromium" | "firefox";
 /**
  * A codec a share may go out in, best first. H.264 goes out in one of two profiles, and
  * Chromium and Firefox watchers decode both:
- * - High (`64001f`), on a Chromium screen share at one quality only, and only when the
- *   sharer's browser encodes it in hardware: at the same bitrate it gives the better
- *   picture (share-reliability tickets 09 and 14). The media server answers it with VP8
- *   on a share sent at two qualities (ticket 17).
+ * - High (`6400xx`, any level), on a Chromium screen share at one quality only, and only
+ *   when the sharer's browser encodes it in hardware: at the same bitrate it gives the
+ *   better picture (share-reliability tickets 09 and 14). The media server answers it
+ *   with VP8 on a share sent at two qualities (ticket 17).
  * - Baseline (`42001f`) everywhere else: Chrome on Windows encodes it in hardware, and
  *   the media server accepts it on a share sent at two qualities.
  *

@@ -268,7 +268,7 @@ describe("what the browser is asked before it offers a codec", () => {
   it("is whether it encodes H.264 high power-efficiently, at 1080p60 and 12 Mbps, in a call", () => {
     expect(hardwareQuery(HIGH, plan)).toEqual({
       type: "webrtc",
-      video: { contentType: "video/H264; profile-level-id=64001f", width: 1920, height: 1080, framerate: 60, bitrate: 12_000_000 },
+      video: { contentType: "video/H264; profile-level-id=64001f; packetization-mode=1", width: 1920, height: 1080, framerate: 60, bitrate: 12_000_000 },
     });
   });
 

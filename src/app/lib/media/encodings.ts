@@ -27,7 +27,10 @@ const H264_PROFILE = { high: "6400", baseline: "4200" } as const;
  * the browser encodes it in hardware, at the share's full size, frame rate and bitrate;
  * null for a codec offered whenever the browser lists it. H.264 high is the one: Chrome
  * lists high, and main, even with no hardware encoder for them, and encodes them in
- * software at their profile's cost.
+ * software at their profile's cost. The query names packetization mode 1, the only mode
+ * graeae sends: asked with no mode, Chrome on Windows says high is not power-efficient,
+ * seemingly judging it in mode 0, which its hardware encoder does not take (build
+ * ticket 55).
  */
 export function hardwareQuery(codec: Codec, plan: EncodingPlan): VideoEncodingQuery | null {
   if (!needsHardware(codec)) return null;
@@ -35,7 +38,7 @@ export function hardwareQuery(codec: Codec, plan: EncodingPlan): VideoEncodingQu
   return {
     type: "webrtc",
     video: {
-      contentType: `video/H264; profile-level-id=${H264_PROFILE.high}1f`,
+      contentType: `video/H264; profile-level-id=${H264_PROFILE.high}1f; packetization-mode=1`,
       width: plan.capture.width,
       height: plan.capture.height,
       framerate: best?.maxFramerate ?? plan.capture.frameRate,
