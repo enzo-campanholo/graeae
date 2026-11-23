@@ -108,7 +108,10 @@ function codeIn(file: string): string {
 
 function fromEnvFile(): string | undefined {
   if (!existsSync(".env.owner-checks")) return undefined;
-  return /^GRAEAE_INSTANCE=(.+)$/m.exec(readFileSync(".env.owner-checks", "utf8"))?.[1]?.trim();
+  return /^GRAEAE_INSTANCE=(.+)$/m
+    .exec(readFileSync(".env.owner-checks", "utf8"))?.[1]
+    ?.trim()
+    .replace(/^(["'])(.*)\1$/, "$2");
 }
 
 function fail(message: string): never {
