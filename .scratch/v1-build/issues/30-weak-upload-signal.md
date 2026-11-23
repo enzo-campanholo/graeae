@@ -18,3 +18,5 @@ Spec: [Encoding and quality](../spec.md#encoding-and-quality). User story 63.
 ## Comments
 
 **2026-11-20: triage for the 0.1 release.** Not in 0.1. The step-down is switched off (`STEP_DOWN`), so a weak upload is not stepped down and nothing false is said; the spec and README promise no step-down. After the release, this needs the owner: every reading so far comes from their Windows sharer on their own 288 Mbps upload with the hardware encoder, which is where the false sign appears.
+
+**2026-11-22, from [A share that opens small](../../share-reliability/issues/13-a-share-that-opens-small.md).** The last item is decided: [A screen share keeps its size](53-a-screen-share-keeps-its-size.md) sends every Chromium screen share under "maintain-resolution" above its last step. Under "maintain-framerate" a share opened small and in software on Linux and on the owner's Windows machine, and often stayed that way. Any step-down built here starts from "maintain-resolution": between steps the browser gives up frame rate, not size.

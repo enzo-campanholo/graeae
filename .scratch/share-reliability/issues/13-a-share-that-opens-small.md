@@ -1,7 +1,7 @@
 # A share that opens small
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 09
 Map: ../map.md
 
@@ -26,3 +26,31 @@ Write the build ticket or tickets.
 - **"maintain-resolution" does**: 8 of 8 opened at 1904x1072 in hardware and stayed there. A shared tab held 1920x934 in hardware for 3 minutes, through resizing, devtools, fullscreen and switching away.
 - **Fix A changed nothing on Windows**: every fall of the estimate was a probe coming back near 5 Mbps, never the line; at full size in hardware the estimate was back at 12 Mbps within 2 to 8.5 s of every fall with or without it, and nothing padded or froze at the watcher.
 - **Also settle here the second part of the tab-share fix** (from the map's fog): the 720p step to retry hardware when software is named. Under "maintain-resolution" the run found no software spell for it to act on; the one turn to software it saw followed a shrink under 360 lines, as today.
+
+## Answer
+
+Decided with the owner on 2026-11-22. Build ticket: [A screen share keeps its size](../../v1-build/issues/53-a-screen-share-keeps-its-size.md) (v1-build 53, `ready-for-agent`, nothing for the owner).
+
+**The fix: "maintain-resolution" for every Chromium screen share.**
+- It applies to a tab, a window or an entire screen, at every step except the last, which stays "balanced" for a step-down if it is ever switched back on.
+- Not tab shares only, as [Why a shared tab falls back to software encoding](01-tab-share-software-encoding.md) proposed: game windows opened small too.
+- Webcam shares ("balanced") and Firefox screen shares ("maintain-framerate") are unchanged. Nobody has seen either open small, and nothing changes where nothing has failed.
+- It is the change the Windows run measured: graeae already sets `degradationPreference` at the `setParameters` call that `fixes.js` overrode.
+
+**Its cost is accepted.** On a truly weak upload, a Chromium screen share now drops frame rate and keeps its size. That reverses the spec's "the browser alone gives up what it must, resolution first", and ticket 17's and 18's resolution-first stance for games. A weak upload is something wrong on the sharer's side, which this map's destination leaves out, and the step-down that would handle it ([v1-build ticket 30](../../v1-build/issues/30-weak-upload-signal.md)) is after 0.1. The spec line is rewritten, and ticket 30 is told that its "maintain-resolution above the last step" candidate is now decided.
+
+**Left out, each because it removes no failure once a share keeps its size.**
+- **The start bitrate** (fix C, `x-google-start-bitrate`): it failed on Windows (5 of 8 stayed small) and is redundant under "maintain-resolution". The first 10 s at 5 to 7.5 Mbps is an acceptable start.
+- **Fix A** (`x-google-max-bitrate`), with or without periodic probing: on Windows every fall of the estimate was a probe, not the line. At full size in hardware, the estimate was back at 12 Mbps within 2 to 8.5 s of every fall, with or without it, and nothing padded or froze at the watchers.
+- **The 720p step to retry hardware** (the second part of the tab-share fix): under "maintain-resolution" the Windows run found no software spell for it to act on. The sharer's software-encoding note and the `stats` log lines would catch one.
+
+**Opus stereo, set by rewriting the local offer (from the map's fog): left as it is.** The fog meant to move it into the hook that would carry the start bitrate or fix A. Neither ships, so moving it would be a change of its own, with no failure behind it. It works on every browser today, and the logs would show a refused description at once if Chrome stopped allowing the edit.
+
+**Verification.** The agent checks on `graeae-test` with `scripts/real-media/` and no overrides:
+- 8 fresh starts each of a window and a tab open at full capture size and keep it at 25 s;
+- a tab resized while live keeps its size;
+- ticket 11's readings are the before.
+
+The map's final Windows check gains one line: in Chrome and Helium, a fresh game-window share and a fresh tab share open at about 1080 lines in hardware and stay there.
+
+No ADR: the change is one value and easy to reverse; the trade-off is recorded here, in the spec and on ticket 30. The glossary does not change.
