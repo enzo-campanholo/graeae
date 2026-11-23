@@ -5,9 +5,9 @@
 // No test reaches this file: Seam 2 runs on the fake. It is kept thin enough to read
 // against the spec's Screen audio, Encoding and quality and Relay sections; what a screen
 // capture asks for, the encoding plan, how the browser's API takes it, and what a live
-// share sends on a weak upload with the notes its sharer sees are pure rules in
-// `capture.ts`, `src/shared/encoding.ts`, `encodings.ts` and `sending.ts`, which are
-// tested. The
+// share sends on a weak upload with the notes its sharer sees, and how a stopped share's
+// transceiver is let go of, are pure rules in `capture.ts`, `src/shared/encoding.ts`,
+// `encodings.ts`, `sending.ts` and `stopping.ts`, which are tested. The
 // owner's real-media pass (tickets 13 and 27) proves it on a deployed instance.
 
 import { encodingPlan, type Codec, type Degradation, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
@@ -17,6 +17,7 @@ import { browserFamily, isScreenAudio, screenCapture, stereoOpus, type BrowserFa
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
 import { codecPreferences, hardwareQuery, lists, receivedQuality, sendEncodings } from "./encodings.ts";
 import { follow, NotesBoard, READ_EVERY_MS, readingOf, type SharerNotes } from "./sending.ts";
+import { stopping } from "./stopping.ts";
 import { transportTotals, type StatsEntry, type TransportTotals } from "./transport.ts";
 import { pairSummary, STATS_EVERY_MS, streamSummaries, type CaptureNow, type Counted } from "./stats.ts";
 import { every } from "../ticker.ts";
@@ -187,8 +188,10 @@ export class BrowserMediaClient implements MediaClient {
     const connection = this.connection;
     if (!connection || connection.signalingState !== "have-local-offer") return;
     await connection.setLocalDescription({ type: "rollback" });
-    // Never negotiated, it would otherwise go out with the next offer.
-    this.spare?.stop();
+    // Never negotiated, so made inactive, not stopped: once a share's transceiver has been
+    // stopped, a stopped spare makes Chrome refuse every later offer (ticket 57). It goes
+    // out with the next offer as an inactive section.
+    if (this.spare) this.spare.direction = "inactive";
     this.spare = null;
   }
 
@@ -299,6 +302,9 @@ export class BrowserMediaClient implements MediaClient {
     const tracks = [video, ...(audio === undefined ? [] : [audio])].map((mid) => {
       const transceiver = this.transceiver(mid);
       if (!transceiver) throw new Error(`The media server's offer has no transceiver ${mid}`);
+      // The media server puts a pull on any section it has closed, a stopped share's left
+      // inactive among them, and Chrome answers inactive for it unless told to receive.
+      if (transceiver.direction === "inactive") transceiver.direction = "recvonly";
       return transceiver.receiver.track;
     });
     const answer = await connection.createAnswer();
@@ -342,13 +348,16 @@ export class BrowserMediaClient implements MediaClient {
   stop(capture: Capture) {
     this.unfollow(capture);
     for (const track of capture.stream?.getTracks() ?? []) track.stop();
+    const localSdp = this.connection?.currentLocalDescription?.sdp;
     for (const transceiver of this.sending.get(capture) ?? []) {
       if (this.connection?.signalingState === "closed") break;
-      // Stopped, not made inactive: Chrome keeps an inactive transceiver's encoder, and
-      // a GPU has only so many in hardware (12 on ticket 57's). The next negotiation
-      // rejects its media section and lets the encoder go; the media server has
-      // force-closed its track already.
-      transceiver.stop();
+      // The media server has force-closed its track already; `stopping` says why most
+      // are stopped and some only made inactive.
+      if (stopping(transceiver, localSdp) === "stop") transceiver.stop();
+      else {
+        void transceiver.sender.replaceTrack(null);
+        transceiver.direction = "inactive";
+      }
     }
     this.sending.delete(capture);
   }

@@ -55,3 +55,49 @@ The watcher decoded every share at 60 fps, so nothing on screen showed it. It co
 **Left, on real media.**
 1. **Here, on `graeae-test` (once deployed).** A Linux Chromium sharer makes 14 or more webcam shares in turn from one page load. After each stop, it watches another member's share, then shares again. Each share and watch must start, and the sharer's `stats` lines should list one outbound video stream at a time. This settles the media server's side, all three paths in a few minutes.
 2. **On MONSTRAO.** Rerun ticket 55's check 7: share 13 and every later share should stay on `D3D12VideoEncodeAccelerator`.
+
+### 2026-11-23: checked on graeae-test; two of Chrome's limits found and kept clear of
+
+Three runs of step 1 on `graeae-test`, from this server. Two Linux Chromium 158 members ran `scripts/real-media/member.ts` with fake webcams. The sharer made 14 webcam shares in turn from one page load. After each one, the watcher watched it; after each stop, the sharer watched the watcher's share for 6 s.
+
+**Run 1, version `6a2953aa` (commit `9674570`, every transceiver stopped).**
+- The tab's offer after the first stop rejected mid 0, the first mid of `a=group:BUNDLE`. Chrome then built a new transport (new ICE ufrag), and the media server never connected it.
+- The next pull got `410 Session appears to be disconnected`, and the tab rebuilt its media connection, every second cycle.
+- Log: `.logs/graeae-test-1795455120000-1795455540000.jsonl`.
+
+**Run 2, version `d8269bf1` (the BUNDLE tag's transceiver left inactive).**
+- One transport all run, and shares 1 to 10 went out and were watched.
+- Two new faults:
+  - **A pull in the tag's section.** The media server put the sharer's second watch in mid 0, which the tab held inactive. The tab answered `inactive`. The old `stop` gave every share this, so it is older than this ticket; ticket 58 has it.
+  - **Share 11 refused with `503 Transport is temporarily unavailable`.** Its unanswered transceiver was stopped while the offer was pending. After the rollback, Chrome's next offer gave the new share's transceiver no mid, so shares 12 to 14 failed with `The offer gave the capture no mid`.
+- Both reproduce in a loopback. Stopping a transceiver that never negotiated breaks the next offer, whether it is stopped before or after the rollback; leaving it inactive does not. A pull in an inactive section decodes (60 frames in 2 s) once the tab sets it to `recvonly` before answering.
+- Log: `.logs/graeae-test-1795456290000-1795456900000.jsonl`.
+
+**The fix as it stands.**
+- `stopping` in `src/app/lib/media/stopping.ts` (tested in `test/stopping.test.ts`) stops a transceiver only once it has negotiated, and never the BUNDLE tag's. Other transceivers are left inactive.
+  - The tag's keeps its encoder, one per connection at most.
+  - One that was never answered never had an encoder.
+- `pull` sets an inactive transceiver that the media server's offer names to `recvonly`.
+
+**Run 3, version `b93e34ff`.**
+- All 14 shares went live, and the watcher decoded each one (116 to 133 frames).
+- The sharer kept one transport all run (ufrag `chfl`, connected throughout).
+- Its stats listed 2 outbound video streams from share 2 on (the tag's and the live one), not one per stopped share.
+- There were no failed media server calls, closes or shares.
+- The sharer's watches after the first still decoded nothing. Each pull went in a section the tab had published on, and the media server sent nothing there. The same member re-watching with no shares of its own decoded every time. This is ticket 58.
+- Log: `.logs/graeae-test-1795457588000-1795457956000.jsonl`.
+
+**Tests.** 486 in the Workers runtime (5 new for `stopping`) and the 61 browser journeys pass, with typecheck and lint.
+
+**Review.**
+- **Spec:**
+  - It found that `abandonRestart` stopped its never-negotiated audio spare after the rollback. In a loopback, once an earlier share's transceiver had been stopped, that made Chrome refuse every later offer (`Transceiver type does not match media description type`). Run 3's version still has it.
+  - The spare is now made inactive. With that, the next shares negotiate.
+  - A live share stopped while another offer is pending, then rolled back, was checked in a loopback too, and the next shares negotiate.
+- **Standards:** an impossible test case is dropped, the parameter is renamed `localSdp`, and the header says the rule is pure.
+
+**Not checked.**
+- **A media restart** (the third path in the first comment). The rig cannot cut a tab's media alone. Its offer carries the same rejected and inactive sections as a share's offer, which runs 2 and 3 show the media server takes through the same `tracks/new`.
+- **The inactive sections left by refused shares and abandoned restarts.** Each one stays in every later offer: at most one section each, and none holds an encoder. Ticket 56's bound on the offer's size still covers them.
+
+**Left.** Rerun ticket 55's check 7 on MONSTRAO. Share 13 and every later share should stay on `D3D12VideoEncodeAccelerator`, with at most two `hardware: true` outbound streams in the sharer's stats.
