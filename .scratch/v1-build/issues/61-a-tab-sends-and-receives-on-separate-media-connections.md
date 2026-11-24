@@ -1,6 +1,6 @@
 # 61: A tab sends on one media connection and receives on another
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **Blocked by:** none
 
@@ -62,3 +62,7 @@
 
 - Whether the media server answers a pull on a receiving connection with no tab offer at all as it answers the first watch now: a new section with its own five codecs, sent on 125. Ticket 59 saw it for a first watch. The real-media check above covers later ones.
 - How long a replacement leaves a watched picture blank, on the relay at an 11-hour renewal. Measure it with `pnpm real-media` once; if it is over 2 seconds, record it here.
+
+## Comments
+
+Built in the working tree, with typecheck, lint and `pnpm test` green (496 Vitest tests, 68 Playwright). The loopback passes ticket 60's order with no codec handling in the tab. A watch in an ended watch's reused section is answered `recvonly` with no step from `inactive`, so that step is gone. The review's edge cases in replacing a receiving connection are filed as 62. Ready for a human: the deploy to `graeae-test`, the real-media runs (`repro-59.ts` twice, `repro-58.ts` once), `pnpm perf`, and the replacement's blank time, which still need the owner's go-ahead.

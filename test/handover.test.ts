@@ -43,13 +43,13 @@ async function biaOnTwoDevices({ otherRoom = false, kind = "webcam" as "webcam" 
   else await shareScreen(laptop, { twoQualities });
   await settle(ownerTab); // Bia's share went live
   const share: LiveShare = { member: state.people.you.id, kind };
-  await connectMedia(ownerTab);
+  await connectMedia(ownerTab, "receiving");
   const watchedOn = await watch(ownerTab, share);
   await settle(laptop); // the owner is watching
 
   const { other: phoneBrowser } = await addSecondBrowser(instance, bia);
   const { tab: phone } = await openRoom(phoneBrowser, second);
-  await connectMedia(phone);
+  await connectMedia(phone, "sending");
   await settle(ownerTab);
   await settle(laptop);
   return { instance, owner, bia, phoneBrowser, room, second, ownerTab, laptop, phone, share, ownerId: ownerState.people.you.id, watchedOn };
@@ -178,12 +178,13 @@ describe("a viewer of a share handed over within the room", () => {
     const { instance, bia, room, ownerTab, laptop, share } = await biaOnTwoDevices();
     // A second tab on Bia's laptop watches her webcam, then shares it from there.
     const { tab: second } = await openRoom(bia, room);
-    await connectMedia(second);
+    await connectMedia(second, "receiving");
     await watch(second, share);
     await settle(ownerTab);
     await settle(laptop);
 
-    // The tab pulls on mid 0, so its camera is offered on another.
+    // It shares over a connection of its own, made now.
+    await connectMedia(second, "sending");
     handOver(second, "webcam", { video: "5" });
 
     expect(await until(second, (message) => message.type === "watching")).toEqual({
@@ -192,8 +193,9 @@ describe("a viewer of a share handed over within the room", () => {
     });
     await settle(second);
     await settle(ownerTab);
-    const [laptops, owners, , seconds] = tracks(instance);
+    const [laptops, owners, , secondsReceiving, seconds] = tracks(instance);
     expect(laptops).toEqual([]);
+    expect(secondsReceiving).toEqual([]);
     expect(seconds).toEqual([{ name: expect.any(String), mid: "5" }]);
     expect(owners).toEqual([{ name: seconds![0]!.name, mid: expect.any(String) }]);
   });
@@ -407,7 +409,7 @@ describe("the device a share was handed over from", () => {
     await settle(phone);
     const { tab: back } = await openRoom(bia, room, { tab: laptop.id });
 
-    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: [] }, state: { shares: { live: [share] } } });
+    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: ["sending"], sending: [] }, state: { shares: { live: [share] } } });
   });
 
   it("is told in the full state which shares it sends", async () => {
@@ -416,6 +418,6 @@ describe("the device a share was handed over from", () => {
 
     const { tab: back } = await openRoom(bia, room, { tab: laptop.id });
 
-    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: true, sending: ["webcam"] } });
+    expect(back.received()[0]).toMatchObject({ type: "state", media: { connected: ["sending"], sending: ["webcam"] } });
   });
 });

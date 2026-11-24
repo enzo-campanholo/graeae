@@ -16,8 +16,8 @@ export interface ShareSeen {
 /** A tab's run of shares and watches against the stand-in media server. */
 export interface RunSeen {
   shares: ShareSeen[];
-  /** Every ICE ufrag the tab's descriptions carried, offers and answers, in order, repeats kept. */
-  ufrags: string[];
+  /** Every ICE ufrag the tab's descriptions carried on each connection, offers and answers, in order, repeats kept. */
+  ufrags: { sending: string[]; receiving: string[] };
 }
 
 /** A run that ends in a watch. */

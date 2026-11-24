@@ -1,5 +1,5 @@
 // What a tab does with a fresh relay credential: on a direct path it takes it silently;
-// on the relay it restarts its media connection, or, if the one switch says so, makes a
+// on the relay it restarts its sending connection, or, if the one switch says so, makes a
 // new one the ordinary way.
 
 import { describe, expect, it } from "vitest";

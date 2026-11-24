@@ -72,7 +72,7 @@ describe("a screen share", () => {
 
   it("is refused when its audio and video name the same transceiver", async () => {
     const { instance, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
 
     startScreen(biaTab, { audio: "0", video: "0" });
 
@@ -88,7 +88,7 @@ describe("starting a screen share", () => {
     await ownerTab.next(); // it went live
     const { tab: second } = await openRoom(bia, room);
 
-    await connectMedia(second);
+    await connectMedia(second, "sending");
     startScreen(second);
 
     expect(await second.next()).toEqual({ type: "media", change: { type: "refused", kind: "screen" } });
@@ -112,7 +112,7 @@ describe("starting a screen share", () => {
 
   it("refuses screen audio on a webcam share, which is video only", async () => {
     const { instance, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
 
     biaTab.send({
       type: "shares",
@@ -125,7 +125,7 @@ describe("starting a screen share", () => {
 
   it("writes the record of both tracks before the media server is called", async () => {
     const { instance, bia, room, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     const publish = instance.media.hold("publish");
 
     startScreen(biaTab);
@@ -133,7 +133,7 @@ describe("starting a screen share", () => {
 
     // The share holds its place already, so a second one is refused.
     const { tab: second } = await openRoom(bia, room);
-    await connectMedia(second);
+    await connectMedia(second, "sending");
     startScreen(second);
     expect(await second.next()).toEqual({ type: "media", change: { type: "refused", kind: "screen" } });
     publish.release();
@@ -142,7 +142,7 @@ describe("starting a screen share", () => {
 
   it("leaves no track behind when the media server fails it", async () => {
     const { instance, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     instance.media.fail("publish");
 
     startScreen(biaTab);
@@ -211,7 +211,7 @@ describe("watching a screen share", () => {
     const { instance, biaTab, ownerTab, biaId } = await twoPresent();
     await shareScreen(biaTab);
     await ownerTab.next(); // it went live
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const share = { member: biaId, kind: "screen" } as const;
 
     startWatching(ownerTab, share);
@@ -228,7 +228,7 @@ describe("watching a screen share", () => {
     const { instance, biaTab, ownerTab, biaId } = await twoPresent();
     await shareScreen(biaTab, { audio: false });
     await ownerTab.next(); // it went live
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const share = { member: biaId, kind: "screen" } as const;
 
     startWatching(ownerTab, share);
@@ -244,7 +244,7 @@ describe("watching a screen share", () => {
     const { instance, biaTab, ownerTab, biaId } = await twoPresent();
     await shareScreen(biaTab);
     await ownerTab.next(); // it went live
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const share = { member: biaId, kind: "screen" } as const;
     await watch(ownerTab, share);
     await biaTab.next(); // the owner is watching
@@ -259,7 +259,7 @@ describe("watching a screen share", () => {
     const { instance, biaTab, ownerTab, biaId } = await twoPresent();
     await shareScreen(biaTab);
     await ownerTab.next(); // it went live
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const share = { member: biaId, kind: "screen" } as const;
     await watch(ownerTab, share);
 
@@ -286,7 +286,7 @@ describe("the sweep after a restart", () => {
 
   it("closes both tracks of a screen share the media server made just as the instance stopped", async () => {
     const { instance, bia, room, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     const publish = instance.media.hold("publish", { done: true });
     startScreen(biaTab);
     await publish.reached;

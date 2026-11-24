@@ -21,15 +21,16 @@ async function report(tab: Tab, received: number, { relayed = false, final = fal
   await tab.heartbeat();
 }
 
-/** The ordinary reconnect path: the instance lets the tab's media connection go, and the tab makes a new one. */
+/** A replacement of the tab's receiving connection, which watches nothing: a new connection, whose total starts at zero. */
 async function newConnection(tab: Tab) {
-  tab.send({ type: "media", request: { type: "reconnect" } });
-  expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped" } });
-  await connectMedia(tab);
+  tab.send({ type: "media", request: { type: "replace" } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "connected", connection: "receiving", iceServers: expect.any(Array) } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "replaced" } });
 }
 
-/** A restart of the tab's media connection, which resets its running total. */
-async function restartConnection(tab: Tab) {
+/** A restart of the tab's sending connection, which receives nothing that is counted. */
+async function restartSending(tab: Tab) {
+  await connectMedia(tab, "sending");
   tab.send({ type: "media", request: { type: "restart", offer: FAKE_OFFER, mid: "9" } });
   expect(await tab.next()).toEqual({ type: "media", change: { type: "restarted", answer: expect.any(String) } });
 }
@@ -46,7 +47,7 @@ async function ownerConnected() {
   const owner = instance.browser();
   const room = await setUpOwner(owner);
   const { tab } = await openRoom(owner, room);
-  await connectMedia(tab);
+  await connectMedia(tab, "receiving");
   return { instance, owner, room, tab };
 }
 
@@ -73,7 +74,7 @@ async function ownerWatchingBia({ kind = "webcam" as "webcam" | "chromium screen
   else await shareScreen(biaTab, { browser: kind === "firefox screen" ? "firefox" : "chromium" });
   await tab.next(); // Bia's share started
   const share: LiveShare = { member: biaState.people.you.id, kind: kind === "webcam" ? "webcam" : "screen" };
-  await connectMedia(tab);
+  await connectMedia(tab, "receiving");
   await watch(tab, share);
   return { instance, owner, bia, room, tab, biaTab, share };
 }
@@ -98,7 +99,7 @@ describe("the bytes a tab reports", () => {
     expect((await usage(owner)).used).toBe(5_000_000);
   });
 
-  it("count from zero again on the tab's next media connection, after its final total", async () => {
+  it("count from zero again on the tab's replaced receiving connection, after its final total", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 4_000_000);
@@ -109,18 +110,17 @@ describe("the bytes a tab reports", () => {
     expect((await usage(owner)).used).toBe(7_000_000);
   });
 
-  it("count from zero again after a restart of the media connection, after its final total", async () => {
+  it("carry on through a restart of the sending connection: only the receiving connection is counted", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 4_000_000);
-    await report(tab, 6_000_000, { final: true });
-    await restartConnection(tab);
-    await report(tab, 1_000_000);
+    await restartSending(tab);
+    await report(tab, 6_000_000);
 
-    expect((await usage(owner)).used).toBe(7_000_000);
+    expect((await usage(owner)).used).toBe(6_000_000);
   });
 
-  it("count from zero again on a new media connection when the final total was lost", async () => {
+  it("count from zero again on a replaced receiving connection when the final total was lost", async () => {
     const { owner, tab } = await ownerConnected();
 
     await report(tab, 4_000_000);
@@ -165,7 +165,7 @@ describe("the bytes a tab reports", () => {
   it("are counted from each tab apart", async () => {
     const { owner, room, tab } = await ownerConnected();
     const { tab: second } = await openRoom(owner, room);
-    await connectMedia(second);
+    await connectMedia(second, "receiving");
 
     await report(tab, 1_000_000);
     await report(second, 2_000_000);
@@ -340,7 +340,7 @@ describe("the month", () => {
   /** Opens a new tab for the owner, has it report `bytes` received, and closes it. */
   async function receivedToday(owner: TestBrowser, room: string, bytes: number) {
     const { tab } = await openRoom(owner, room);
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     await report(tab, bytes);
     await tab.close();
   }

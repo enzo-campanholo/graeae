@@ -1,6 +1,10 @@
 // The media client: the browser's one module for media. It captures (a webcam, or a
-// screen with its screen audio) and holds the tab's one media connection, over which the
-// tab sends what it shares and receives what it watches.
+// screen with its screen audio) and holds the tab's two media connections (ADR 0005): the
+// sending connection, made the first time the tab shares, which carries only its shares,
+// and the receiving connection, made the first time it watches, which carries only its
+// watching. The tab makes offers on the sending connection only: every negotiation on the
+// receiving one starts with the media server's offer, so a new path for it is a new
+// connection (`replace`), never a restart.
 //
 // It never talks to the instance itself: the room client carries the offers and answers
 // over the tab's socket, so no media server identifier ever reaches the page (ADR 0003).
@@ -11,7 +15,7 @@
 // it to the browser. What a live share sends on a weak upload, and the notes its sharer
 // sees, are one pure rule too, in `sending.ts`.
 
-import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
+import type { IceServer, MediaPurpose, ShareKind } from "../../../shared/socket/index.ts";
 import type { EncodingPlan, QualityName } from "../../../shared/encoding.ts";
 import type { BrowserFamily } from "./capture.ts";
 import type { TransportTotals } from "./transport.ts";
@@ -36,13 +40,13 @@ export interface Capture {
 }
 
 /**
- * How the media connection is doing, as the browser says: "fine" once it has a path;
+ * How a media connection is doing, as the browser says: "fine" once it has a path;
  * "faltering" when it has lost it and looks for another by itself ("disconnected");
  * "failed" when it has given up, and only a restart brings it back.
  */
 export type MediaHealth = "fine" | "faltering" | "failed";
 
-/** An offer to send a capture over the media connection, for the instance to answer. */
+/** An offer to send a capture over the sending connection, for the instance to answer. */
 export interface Offer {
   /** The browser's SDP offer. */
   sdp: string;
@@ -66,40 +70,52 @@ export interface MediaClient {
    */
   captureScreen(): Promise<Capture | null>;
   /**
-   * Makes the tab's one media connection, offering the relay in `iceServers`. Called
-   * the first time the tab shares or watches, and again after `reset`. `health` hears
-   * each change in how the connection is doing.
+   * Makes the tab's `connection` for one purpose, offering the relay in `iceServers`.
+   * Called the first time the tab shares (the sending connection) or watches (the
+   * receiving one), and again after `reset`. `health` hears each change in how that
+   * connection is doing.
    */
-  connect(iceServers: IceServer[], health: (health: MediaHealth) => void): void;
+  connect(connection: MediaPurpose, iceServers: IceServer[], health: (health: MediaHealth) => void): void;
   /**
-   * Closes the media connection but keeps every capture going, so a new connection can
-   * send them again: the instance has closed everything the old one carried.
+   * Makes a new receiving connection in place of the current one, with the relay
+   * credential `iceServers`: from now on `pull`, `received` and `transport` are about the
+   * new one. The old one keeps showing what it receives until `retire`, so each picture
+   * goes on until it arrives on the new one. `health` hears the new one's health.
    */
-  reset(): void;
+  replace(iceServers: IceServer[], health: (health: MediaHealth) => void): void;
+  /** Closes the receiving connection the last `replace` replaced, the instance having closed its pulls. */
+  retire(): void;
   /**
-   * Hands the media connection a fresh relay credential in `iceServers`, for whenever it
-   * next looks for a path. Nothing else changes: what a tab on a direct path does.
+   * Closes `connection` but keeps every capture going, so a new connection can send them
+   * again: the instance has closed everything the old one carried.
    */
-  renew(iceServers: IceServer[]): void;
+  reset(connection: MediaPurpose): void;
   /**
-   * Restarts the media connection's ICE with the relay credential `iceServers`, keeping
-   * every share and watch, and makes the offer that restarts it, for the instance to
-   * answer: what a tab on the relay does with a fresh credential, and any tab whose
-   * connection the browser gave up on. The offer carries an empty transceiver, on `mid`,
-   * since the media server takes no offer without a track.
+   * Hands `connection` a fresh relay credential in `iceServers`, for whenever it next
+   * looks for a path. Nothing else changes: what a tab on a direct path does.
+   */
+  renew(connection: MediaPurpose, iceServers: IceServer[]): void;
+  /** Whether the path `connection` uses now goes through the relay. False before it is made. */
+  relayed(connection: MediaPurpose): Promise<boolean>;
+  /**
+   * Restarts the sending connection's ICE with the relay credential `iceServers`, keeping
+   * every share, and makes the offer that restarts it, for the instance to answer: what a
+   * tab on the relay does with a fresh credential, and any tab whose sending connection
+   * the browser gave up on. The offer carries an empty transceiver, on `mid`, since the
+   * media server takes no offer without a track.
    */
   restart(iceServers: IceServer[]): Promise<{ sdp: string; mid: string }>;
   /**
-   * Takes back the restart offer the media server did not answer, so the connection is
-   * as it was and ready for its next negotiation.
+   * Takes back the restart offer the media server did not answer, so the sending
+   * connection is as it was and ready for its next negotiation.
    */
   abandonRestart(): Promise<void>;
   /**
-   * Applies the media server's answer to the restart offer, and settles once the
+   * Applies the media server's answer to the restart offer, and settles once the sending
    * connection has its path back. Throws if the restart fails.
    */
   restarted(answer: string): Promise<void>;
-  /** Adds `capture` to the media connection and makes the offer that sends it. */
+  /** Adds `capture` to the sending connection and makes the offer that sends it. */
   offer(capture: Capture): Promise<Offer>;
   /**
    * Applies the media server's answer to the last offer: the capture is now being sent.
@@ -114,9 +130,10 @@ export interface MediaClient {
    */
   notes(capture: Capture, heard: (notes: SharerNotes) => void): () => void;
   /**
-   * Applies the media server's `offer` to receive a watched share on the transceiver
-   * `video`, and its screen audio on `audio` when it has any, and makes the answer to
-   * send back. `stream` is the share's picture and sound; null when there is none.
+   * Applies the media server's `offer` to receive a watched share on the receiving
+   * connection's transceiver `video`, and its screen audio on `audio` when it has any,
+   * and makes the answer to send back. `stream` is the share's picture and sound; null
+   * when there is none.
    */
   pull(offer: string, video: string, audio?: string): Promise<{ answer: string; stream: MediaStream | null }>;
   /**
@@ -126,8 +143,8 @@ export interface MediaClient {
    */
   received(video: string, heard: (quality: QualityName | null) => void): () => void;
   /**
-   * What the media connection's transport has received since it opened, and whether it
-   * is on the relay now, for the usage count. Null before the connection is made.
+   * What the receiving connection's transport has received since it opened, and whether
+   * it is on the relay now, for the usage count. Null before the connection is made.
    */
   transport(): Promise<TransportTotals | null>;
   /**
@@ -141,6 +158,6 @@ export interface MediaClient {
   setAudio(capture: Capture, on: boolean): void;
   /** Stops sending `capture` and stops capturing it. Safe to call more than once. */
   stop(capture: Capture): void;
-  /** Stops every capture and closes the media connection, as the tab leaves the room. */
+  /** Stops every capture and closes both media connections, as the tab leaves the room. */
   close(): void;
 }

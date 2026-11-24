@@ -2,6 +2,13 @@
 // records of what it has asked of the media server, and the calls that keep the two in
 // step (ADR 0003).
 //
+// A tab has up to two media connections, one for each purpose (ADR 0005): a share goes
+// out on its sharer's sending connection, and a watch is pulled from there to the
+// watcher's receiving connection. Each record names the connection it is on. A receiving
+// connection is never restarted: it is replaced (`replace`), with a new connection the
+// tab's watches are pulled onto one by one (`replaceNext`), and the old one's pulls are
+// closed once they all are.
+//
 // Every call follows one order. The record is written first, with every track name
 // picked here, then the media layer is called. A close is always a forced close, and a
 // record is dropped only once its close has returned. So a call that fails, or a crash in
@@ -27,7 +34,7 @@
 // at each cut-off, over the connections the cut-off touched, and after a restart, over
 // every connection on record. There is no timed sweep.
 
-import type { IceServer } from "../shared/socket/media.ts";
+import type { IceServer, MediaPurpose } from "../shared/socket/media.ts";
 import type { EncodingPlan } from "../shared/encoding.ts";
 import type { ListedShare, LiveShare, ShareKind } from "../shared/socket/shares.ts";
 import { sameShare, type ChosenQuality, type QualityChoice } from "../shared/socket/watching.ts";
@@ -44,6 +51,8 @@ interface ShareRecord {
   member: string;
   room: string;
   tab: string;
+  /** The sending connection it goes out on. */
+  connection: string;
   kind: ShareKind;
   video: Track;
   /** A screen share's screen audio; null for a webcam share, or a screen share that is video only. */
@@ -69,8 +78,10 @@ interface PulledTrack {
 /** A watch as the instance recorded it. */
 interface WatchRecord {
   id: string;
-  /** The watcher's tab, whose media connection the share is pulled to. */
+  /** The watcher's tab. */
   tab: string;
+  /** The receiving connection of the watcher's tab the share is pulled to. */
+  connection: string;
   /** The watcher, and the device the tab is on. */
   member: string;
   device: string;
@@ -90,7 +101,7 @@ interface WatchRecord {
   quality: QualityChoice;
 }
 
-/** The tabs whose media connection was made after their socket was lost, so they never heard of it. */
+/** The media connections, by id, made after their tab's socket was lost, so the tab never heard of them. */
 const UNANSWERED_KEY = "shares:unanswered";
 
 /** What a cut-off covers: the shares it ends and the watching it closes. */
@@ -101,8 +112,19 @@ export type Covered =
   | { device: string }
   /** One tab's. */
   | { tabId: string }
+  /** One tab's shares, and its sending connection: the tab is reconnecting it. */
+  | { sendingFrom: string }
   /** Every watch, and no share: the usage budget stop. */
   | { everyWatch: true };
+
+/** A media connection as the instance recorded it. */
+interface ConnectionRow extends Record<string, SqlStorageValue> {
+  id: string;
+  tab_id: string;
+  purpose: MediaPurpose;
+  role: "current" | "replacement" | "replaced";
+  media_id: string | null;
+}
 
 /** A share a cut-off ended, and the room it was live in. */
 export interface Ended {
@@ -136,6 +158,13 @@ interface Where {
 function whereCovered(covered: Covered): Where {
   if ("everyWatch" in covered) return { where: "1 = 1", bindings: [] };
   if ("tabId" in covered) return { where: "tab_id = ?", bindings: [covered.tabId] };
+  if ("sendingFrom" in covered) {
+    // A watch is never on a sending connection, so this takes in shares alone.
+    return {
+      where: "connection_id IN (SELECT id FROM media_connection WHERE tab_id = ? AND purpose = 'sending')",
+      bindings: [covered.sendingFrom],
+    };
+  }
   if ("device" in covered) return { where: "device_id = ?", bindings: [covered.device] };
   if (covered.room === undefined) return { where: "member_id = ?", bindings: [covered.member] };
   return { where: "member_id = ? AND room_address = ?", bindings: [covered.member, covered.room] };
@@ -183,6 +212,7 @@ interface WatchRow extends Record<string, SqlStorageValue> {
   watching_at: number | null;
   left_at: number | null;
   tab_id: string;
+  connection_id: string;
   member_id: string;
   device_id: string;
   room_address: string;
@@ -201,6 +231,7 @@ interface ShareRow extends Record<string, SqlStorageValue> {
   member_id: string;
   room_address: string;
   tab_id: string;
+  connection_id: string;
   kind: string;
   video_track: string;
   video_mid: string;
@@ -219,10 +250,16 @@ export class Shares {
   private readonly closingWatches = new Set<string>();
   /**
    * Records whose first call to the media server (connect, publish, pull) is under way in
-   * this run of the instance, by tab id for a connection and record id otherwise. A sweep
-   * leaves them alone. After a restart there are none: whatever was under way never returns.
+   * this run of the instance, by record id. A sweep leaves them alone. After a restart
+   * there are none: whatever was under way never returns.
    */
   private readonly inFlight = new Set<string>();
+  /**
+   * Watches pulled onto a replacement receiving connection, waiting for the replacement to
+   * be done to go on the stage in place of the old connection's. A sweep leaves them alone
+   * too; after a restart they are half-made, and closed.
+   */
+  private readonly pending = new Set<string>();
   private readonly retries: Retries;
   private readonly falterings: Falterings;
   private readonly handOvers: HandOvers;
@@ -298,51 +335,78 @@ export class Shares {
   recordedTabs(): { id: string; device: string; room: string; member: string | null }[] {
     return this.sql
       .exec<{ tab_id: string; device_id: string; room_address: string; member_id: string | null }>(
-        `SELECT tab_id, device_id, room_address,
+        `SELECT tab_id, MIN(device_id) AS device_id, MIN(room_address) AS room_address,
            COALESCE((SELECT member_id FROM share WHERE share.tab_id = media_connection.tab_id LIMIT 1),
                     (SELECT member_id FROM watch WHERE watch.tab_id = media_connection.tab_id LIMIT 1)) AS member_id
-         FROM media_connection`,
+         FROM media_connection GROUP BY tab_id`,
       )
       .toArray()
       .map((row) => ({ id: row.tab_id, device: row.device_id, room: row.room_address, member: row.member_id }));
   }
 
-  /** Whether the tab `tabId` has a media connection on record, made or being made. */
-  hasConnection(tabId: string): boolean {
-    return this.connectionRow(tabId) !== undefined;
+  /** The media connections the tab `tabId` has on record, made or being made: sending first. */
+  connections(tabId: string): MediaPurpose[] {
+    return (["sending", "receiving"] as const).filter((purpose) => this.connectionOf(tabId, purpose) !== undefined);
+  }
+
+  /** Whether the tab `tabId` has its `purpose` connection on record, made or being made. */
+  hasConnection(tabId: string, purpose: MediaPurpose): boolean {
+    return this.connectionOf(tabId, purpose) !== undefined;
   }
 
   /**
-   * The answer that handed `tabId` its media connection never reached it: its socket was
-   * lost on the way. When it asks again, it gets a new connection (`connect`).
+   * The answer that handed `tabId` its `purpose` connection never reached it: its socket
+   * was lost on the way. When it asks again, it gets a new connection (`connect`).
    */
-  unanswered(tabId: string) {
-    const tabs = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
-    if (!tabs.includes(tabId)) this.kv.put(UNANSWERED_KEY, [...tabs, tabId]);
+  unanswered(tabId: string, purpose: MediaPurpose) {
+    const id = this.connectionOf(tabId, purpose)?.id;
+    const ids = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
+    if (id !== undefined && !ids.includes(id)) this.kv.put(UNANSWERED_KEY, [...ids, id]);
   }
 
   /**
-   * Makes `tab`'s one media connection and, at the same time, has `mint` mint the relay
-   * credential for it. A tab that never heard the answer that handed it its connection
+   * Makes `tab`'s `purpose` connection and, at the same time, has `mint` mint the relay
+   * credential for it. A tab that never heard the answer that handed it that connection
    * (`unanswered`) gets a new one in its place, if the old one carries nothing yet: a
    * connection with no tracks needs no close. "already" when the tab is making one or has
    * one; null when the media server or the relay fails.
    */
-  async connect(tab: Tab, mint: () => Promise<IceServer[]>): Promise<IceServer[] | "already" | null> {
-    if (this.connectionRow(tab.id)) {
+  async connect(tab: Tab, purpose: MediaPurpose, mint: () => Promise<IceServer[]>): Promise<IceServer[] | "already" | null> {
+    const existing = this.connectionOf(tab.id, purpose);
+    if (existing) {
       const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
-      if (this.inFlight.has(tab.id) || !unanswered.includes(tab.id)) return "already";
-      this.forgetConnectionIfEmpty(tab.id);
-      if (this.connectionRow(tab.id)) return "already";
+      if (this.inFlight.has(existing.id) || !unanswered.includes(existing.id)) return "already";
+      if (!this.forgetIfEmpty(existing.id)) return "already";
     }
+    const made = await this.makeConnection(tab, purpose, "current", mint);
+    return made === "stale" ? "already" : made && made.iceServers;
+  }
+
+  /**
+   * Writes a connection for `tab`'s `purpose` in `role`, then makes it on the media server
+   * while `mint` mints its relay credential. Its id and credential; null when the media
+   * server or the relay failed, and "stale" when its record was let go of meanwhile (a
+   * replacement replaced in its turn).
+   */
+  private async makeConnection(
+    tab: Tab,
+    purpose: MediaPurpose,
+    role: ConnectionRow["role"],
+    mint: () => Promise<IceServer[]>,
+  ): Promise<{ id: string; iceServers: IceServer[] } | "stale" | null> {
+    const id = crypto.randomUUID();
     this.sql.exec(
-      "INSERT INTO media_connection (tab_id, device_id, room_address, media_id, created_at) VALUES (?, ?, ?, NULL, ?)",
+      `INSERT INTO media_connection (id, tab_id, purpose, role, device_id, room_address, media_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+      id,
       tab.id,
+      purpose,
+      role,
       tab.device,
       tab.room,
       Date.now(),
     );
-    this.inFlight.add(tab.id);
+    this.inFlight.add(id);
     // Both at once, so the tab's first share or watch waits on one call to the media
     // server, not two. A credential minted for a connection that then fails goes unused
     // until it expires.
@@ -350,14 +414,160 @@ export class Shares {
     minted.catch(() => undefined);
     try {
       const mediaId = await this.media.connect();
-      this.sql.exec("UPDATE media_connection SET media_id = ? WHERE tab_id = ?", mediaId, tab.id);
-      return await minted;
+      // A media connection with no tracks carries nothing, so one let go of needs no close.
+      if (this.sql.exec("UPDATE media_connection SET media_id = ? WHERE id = ?", mediaId, id).rowsWritten === 0) return "stale";
+      return { id, iceServers: await minted };
     } catch {
-      // A media connection with no tracks carries nothing, so it needs no close.
-      this.sql.exec("DELETE FROM media_connection WHERE tab_id = ?", tab.id);
+      this.sql.exec("DELETE FROM media_connection WHERE id = ?", id);
       return null;
     } finally {
-      this.inFlight.delete(tab.id);
+      this.inFlight.delete(id);
+    }
+  }
+
+  /**
+   * Starts replacing `tab`'s receiving connection: a new connection is made beside it,
+   * with a relay credential `mint` mints, and the tab's watches are then pulled onto it one
+   * by one (`replaceNext`). A replacement already under way for the tab is let go of, and
+   * whatever was pulled onto it closed: the tab has let go of that connection to ask again.
+   * Its id and credential; null when the media server or the relay failed, or the tab has
+   * no receiving connection to replace; "stale" when another replacement took its place
+   * meanwhile.
+   */
+  async replace(tab: Tab, mint: () => Promise<IceServer[]>): Promise<{ id: string; iceServers: IceServer[] } | "stale" | null> {
+    if (!this.connectionOf(tab.id, "receiving")) return null;
+    await this.abandonReplacement(tab.id);
+    log.info("media.replacing", { ...tagsOf(tab) });
+    const made = await this.makeConnection(tab, "receiving", "replacement", mint);
+    if (made && made !== "stale" && this.connectionById(made.id)?.role !== "replacement") {
+      this.forgetIfEmpty(made.id);
+      return "stale";
+    }
+    return made;
+  }
+
+  /** Lets go of `tabId`'s replacement receiving connection, if it has one, closing what was pulled onto it. */
+  private async abandonReplacement(tabId: string) {
+    const replacement = this.replacementOf(tabId);
+    if (!replacement) return;
+    log.warn("media.replacement-abandoned", { tab: tabId, connection: replacement.id });
+    const watches = this.watches("WHERE connection_id = ?", replacement.id);
+    // Off the record first, so nothing more goes onto it while its pulls close.
+    this.sql.exec("UPDATE media_connection SET role = 'replaced' WHERE id = ?", replacement.id);
+    for (const watch of watches) {
+      this.pending.delete(watch.id);
+      await this.closeWatch(watch);
+    }
+    this.forgetIfEmpty(replacement.id);
+  }
+
+  /**
+   * The next step of replacing `tab`'s receiving connection with `replacementId`: pulls the
+   * next share on the tab's stage that is not on the replacement yet, from its sharer's
+   * sending connection, and returns the pull for the tab, which answers it before the next
+   * step. A share that cannot be pulled again leaves the stage, and the step goes on to the
+   * next. Once every share on the stage is on the replacement, the replacement is done: it
+   * becomes the tab's receiving connection, each pull on it goes on the stage in place of
+   * the old one's, and the old connection's pulls are closed, which tells nobody; "done".
+   * "stale" when the replacement was let go of meanwhile, or the tab left. `stillOpen`
+   * says whether the tab is still there once the media server has answered.
+   */
+  async replaceNext(
+    tab: Tab,
+    replacementId: string,
+    stillOpen: () => boolean,
+  ): Promise<{ share: LiveShare; offer: string; video: string; audio: string | null } | "done" | "stale"> {
+    for (;;) {
+      const replacement = this.replacementOf(tab.id);
+      if (replacement?.id !== replacementId || typeof replacement.media_id !== "string" || !stillOpen()) return "stale";
+      const current = this.connectionOf(tab.id, "receiving");
+      const carried = new Set(this.watches("WHERE connection_id = ?", replacementId).map((watch) => watch.shareId));
+      const next = current
+        ? this.watches(
+            "WHERE connection_id = ? AND watching_at IS NOT NULL AND left_at IS NULL ORDER BY watching_at, rowid",
+            current.id,
+          ).find((watch) => !carried.has(watch.shareId) && !this.closingWatches.has(watch.id))
+        : undefined;
+      if (!next) {
+        await this.finishReplacement(tab, replacementId);
+        return "done";
+      }
+
+      const watched = this.records("WHERE id = ? AND live_at IS NOT NULL AND ending_at IS NULL", next.shareId)[0];
+      const sharerMediaId = watched && this.connectionById(watched.connection)?.media_id;
+      if (!watched || typeof sharerMediaId !== "string" || this.gone(watched)) {
+        this.leave(next);
+        continue;
+      }
+      const record = newWatch({ ...next, connection: replacementId }, watched, next.quality);
+      this.inFlight.add(record.id);
+      let pulled: Pulled | null;
+      try {
+        pulled = await this.pull(record, replacement.media_id, sharerMediaId, watched);
+        if (pulled) this.pending.add(record.id);
+      } finally {
+        this.inFlight.delete(record.id);
+      }
+      if (!pulled) {
+        log.warn("watch.refused", { ...tagsOf(tab), share: next.share, why: "the media server failed the pull again" });
+        this.leave(next);
+        continue;
+      }
+      if (!stillOpen() || this.gone(watched) || this.replacementOf(tab.id)?.id !== replacementId) {
+        this.pending.delete(record.id);
+        await this.closeWatch(record);
+        this.forgetIfEmpty(replacementId);
+        if (!stillOpen()) return "stale";
+        continue;
+      }
+      log.info("watch.pulled-again", { ...tagsOf(tab), share: next.share, watch: record.id, from: next.id, tracks: pulledTracksOf(record) });
+      return { share: record.share, offer: pulled.offer, video: record.video.mid!, audio: record.audio?.mid ?? null };
+    }
+  }
+
+  /**
+   * `watch` could not be carried onto a replacement: its share leaves the stage, the tab and
+   * the sharer told, and its pull is closed in turn, which tells nobody again.
+   */
+  private leave(watch: WatchRecord) {
+    this.changeWatchers(watch, () => this.sql.exec("UPDATE watch SET left_at = ? WHERE id = ?", Date.now(), watch.id));
+    this.listener.unwatched(watch.tab, watch.share);
+  }
+
+  /** The end of a replacement: see `replaceNext`. */
+  private async finishReplacement(tab: Tab, replacementId: string) {
+    const old = this.connectionOf(tab.id, "receiving");
+    const stage = old
+      ? this.watches("WHERE connection_id = ? AND watching_at IS NOT NULL AND left_at IS NULL", old.id)
+      : [];
+    const carried = this.watches("WHERE connection_id = ? AND watching_at IS NULL", replacementId).filter((watch) =>
+      this.pending.has(watch.id),
+    );
+    const stray: WatchRecord[] = [];
+    const now = Date.now();
+    // In one go, so the stage never shows a share twice, or loses one in between.
+    for (const watch of carried) {
+      this.pending.delete(watch.id);
+      const before = stage.find((other) => other.shareId === watch.shareId);
+      if (!before) {
+        stray.push(watch);
+        continue;
+      }
+      const watchingAt = this.sql.exec<{ watching_at: number }>("SELECT watching_at FROM watch WHERE id = ?", before.id).one().watching_at;
+      this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", watchingAt, watch.id);
+      this.sql.exec("UPDATE watch SET left_at = ? WHERE id = ?", now, before.id);
+      const share = this.records("WHERE id = ?", watch.shareId)[0];
+      this.listener.began(watch.id, tab.id, share?.maxBitrate ?? 0);
+    }
+    if (old) this.sql.exec("UPDATE media_connection SET role = 'replaced' WHERE id = ?", old.id);
+    this.sql.exec("UPDATE media_connection SET role = 'current' WHERE id = ?", replacementId);
+    log.info("media.replaced", { ...tagsOf(tab), connection: replacementId, watches: carried.length - stray.length });
+
+    for (const watch of stray) await this.closeWatch(watch);
+    if (old) {
+      // A watch still being pulled there finds its connection replaced when the pull returns, and closes itself.
+      for (const watch of this.watches("WHERE connection_id = ?", old.id)) if (!this.inFlight.has(watch.id)) await this.closeWatch(watch);
+      this.forgetIfEmpty(old.id);
     }
   }
 
@@ -365,7 +575,7 @@ export class Shares {
    * Starts a share of `kind` by `member` from `tab`, which the browser's `offer` sends:
    * its video on the transceiver `mids.video` and, for a screen share with screen audio,
    * its audio on `mids.audio`. The two are one unit: recorded, published and closed
-   * together. Refused unless the tab's media connection is made and the member has no
+   * together. Refused unless the tab's sending connection is made and the member has no
    * other share of that kind anywhere in the instance, live or starting. A webcam share
    * is video only. `plan` is how the browser sends it, which says how many qualities a
    * watcher can choose between and its maximum bitrate for the usage count. `stillOpen`
@@ -391,8 +601,9 @@ export class Shares {
       log.warn("share.refused", { ...tagsOf(tab), kind, why });
       return { live: false };
     };
-    const mediaId = this.connectionRow(tab.id)?.media_id;
-    if (typeof mediaId !== "string") return refused("no media connection");
+    const connection = this.connectionOf(tab.id, "sending");
+    const mediaId = connection?.media_id;
+    if (!connection || typeof mediaId !== "string") return refused("no sending connection");
     if (mids.audio !== undefined && (kind === "webcam" || mids.audio === mids.video)) return refused("audio on a webcam, or on the video's mid");
     // A share whose end has begun, or a replaced one, no longer counts, though its close is still under way or tried again.
     const existing = this.current("WHERE member_id = ? AND kind = ?", member, kind);
@@ -407,6 +618,7 @@ export class Shares {
       member,
       room: tab.room,
       tab: tab.id,
+      connection: connection.id,
       kind,
       video: { name: `${kind}-${crypto.randomUUID()}`, mid: mids.video },
       audio: mids.audio === undefined ? null : { name: `${kind}-audio-${crypto.randomUUID()}`, mid: mids.audio },
@@ -417,14 +629,15 @@ export class Shares {
       ending: false,
     };
     this.sql.exec(
-      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid,
-         qualities, max_bitrate, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO share (id, member_id, device_id, room_address, tab_id, connection_id, kind, video_track, video_mid, audio_track,
+         audio_mid, qualities, max_bitrate, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       share.id,
       member,
       tab.device,
       tab.room,
       tab.id,
+      connection.id,
       share.kind,
       share.video.name,
       share.video.mid,
@@ -454,7 +667,7 @@ export class Shares {
         // The tab left while the media server was answering, and its leaving could not
         // close a track that did not exist yet.
         await this.closeTracks(share);
-        this.forgetConnectionIfEmpty(tab.id);
+        this.forgetIfEmpty(connection.id);
         return refused("the tab left meanwhile");
       }
       this.sql.exec("UPDATE share SET live_at = ? WHERE id = ?", Date.now(), share.id);
@@ -466,8 +679,8 @@ export class Shares {
   }
 
   /**
-   * Watches `share` from `tab`, pulling its tracks to the tab's media connection. Refused
-   * unless the tab's media connection is made, the share is live in the tab's room and not
+   * Watches `share` from `tab`, pulling its tracks to the tab's receiving connection. Refused
+   * unless the tab's receiving connection is made, the share is live in the tab's room and not
    * ending, and the tab is not the one sending it. Null when the tab already watches it,
    * or is starting to. `stillOpen` says whether the tab is still there once the media
    * server has answered.
@@ -477,8 +690,9 @@ export class Shares {
       log.warn("watch.refused", { ...tagsOf(tab), share, why });
       return { watching: false };
     };
-    const watcherMediaId = this.connectionRow(tab.id)?.media_id;
-    if (typeof watcherMediaId !== "string") return refused("no media connection");
+    const connection = this.receivingTarget(tab.id);
+    const watcherMediaId = connection?.media_id;
+    if (!connection || typeof watcherMediaId !== "string") return refused("no receiving connection");
     // During a hand-over within the room, the share by this name is the new one.
     const watched = this.current(
       "WHERE member_id = ? AND kind = ? AND room_address = ? AND live_at IS NOT NULL",
@@ -489,22 +703,26 @@ export class Shares {
     if (!watched) return refused("no such share live in the room");
     if (this.closingShares.has(watched.id)) return refused("the share is ending");
     if (watched.tab === tab.id) return refused("the tab sends it");
-    const sharerMediaId = this.connectionRow(watched.tab)?.media_id;
-    if (typeof sharerMediaId !== "string") return refused("the sharer has no media connection");
-    if (this.watches("WHERE tab_id = ? AND share_id = ?", tab.id, watched.id).length > 0) return null;
+    const sharerMediaId = this.connectionById(watched.connection)?.media_id;
+    if (typeof sharerMediaId !== "string") return refused("the sharer has no sending connection");
+    if (this.watches("WHERE tab_id = ? AND share_id = ? AND left_at IS NULL", tab.id, watched.id).length > 0) return null;
 
-    const record = newWatch({ tab: tab.id, member: tab.member, device: tab.device, room: tab.room }, watched, "auto");
+    const record = newWatch(
+      { tab: tab.id, connection: connection.id, member: tab.member, device: tab.device, room: tab.room },
+      watched,
+      "auto",
+    );
     this.inFlight.add(record.id);
     try {
       const pulled = await this.pull(record, watcherMediaId, sharerMediaId, watched);
       if (!pulled) return refused("the media server failed");
 
-      if (!stillOpen() || this.gone(watched)) {
-        // The tab left, or the share ended, while the media server was answering, and
-        // neither could close a pull that had no mid yet.
+      if (!stillOpen() || this.gone(watched) || this.receivingTarget(tab.id)?.id !== connection.id) {
+        // The tab left, the share ended, or the connection was replaced, while the media
+        // server was answering, and none of them could close a pull that had no mid yet.
         await this.closeWatch(record);
-        this.forgetConnectionIfEmpty(tab.id);
-        return refused(stillOpen() ? "the share ended meanwhile" : "the tab left meanwhile, or the budget ran out");
+        this.forgetIfEmpty(connection.id);
+        return refused(stillOpen() ? "the share ended or the connection was replaced meanwhile" : "the tab left meanwhile, or the budget ran out");
       }
       this.changeWatchers(record, () =>
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
@@ -532,11 +750,12 @@ export class Shares {
    */
   private async pull(record: WatchRecord, watcherMediaId: string, sharerMediaId: string, watched: ShareRecord) {
     this.sql.exec(
-      `INSERT INTO watch (id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, audio_track,
-         quality, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO watch (id, tab_id, connection_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track,
+         audio_track, quality, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       record.id,
       record.tab,
+      record.connection,
       record.member,
       record.device,
       record.room,
@@ -594,7 +813,8 @@ export class Shares {
     if (!closed) return [];
 
     const sameRoom = from.room === to.room;
-    const pulls = this.watches("WHERE share_id = ? AND watching_at IS NOT NULL", from.id);
+    // Not a pull left behind on a replaced connection: its share is on the stage by the replacement's.
+    const pulls = this.watches("WHERE share_id = ? AND watching_at IS NOT NULL AND left_at IS NULL", from.id);
     for (const watch of pulls) {
       if (sameRoom && watch.tab !== to.tab && connected(watch.tab)) await this.move(watch, to, connected);
       else await this.closeWatch(watch);
@@ -615,9 +835,11 @@ export class Shares {
    */
   private async move(watch: WatchRecord, to: ShareRecord, connected: (tabId: string) => boolean) {
     if (!(await this.closeWatch(watch, { moving: true }))) return;
-    const record = newWatch(watch, to, to.qualities === 2 ? watch.quality : "auto");
-    const watcherMediaId = this.connectionRow(watch.tab)?.media_id;
-    const sharerMediaId = this.connectionRow(to.tab)?.media_id;
+    // Onto a replacement, when the watcher's tab is replacing its receiving connection.
+    const connection = this.receivingTarget(watch.tab);
+    const record = newWatch({ ...watch, connection: connection?.id ?? watch.connection }, to, to.qualities === 2 ? watch.quality : "auto");
+    const watcherMediaId = connection?.media_id;
+    const sharerMediaId = this.connectionById(to.connection)?.media_id;
     if (typeof watcherMediaId !== "string" || typeof sharerMediaId !== "string") {
       this.listener.unwatched(watch.tab, watch.share);
       return;
@@ -631,7 +853,7 @@ export class Shares {
       }
       if (!connected(watch.tab) || this.gone(to)) {
         await this.closeWatch(record);
-        this.forgetConnectionIfEmpty(watch.tab);
+        this.forgetIfEmpty(record.connection);
         this.listener.unwatched(watch.tab, watch.share);
         return;
       }
@@ -683,8 +905,11 @@ export class Shares {
     if (!watch?.video.mid || this.closingWatches.has(watch.id)) return watch?.quality ?? null;
     const watched = this.records("WHERE id = ?", watch.shareId)[0];
     if (!watched || watched.qualities !== 2 || this.closingShares.has(watched.id) || quality === watch.quality) return watch.quality;
-    const watcherMediaId = this.connectionRow(tab.id)?.media_id;
-    const sharerMediaId = this.connectionRow(watched.tab)?.media_id;
+    // A replacement pulls the share again at the quality it had: a choice made meanwhile is
+    // refused, and the tab hears the quality it has, from which it can choose again.
+    if (this.replacementOf(tab.id)) return watch.quality;
+    const watcherMediaId = this.connectionById(watch.connection)?.media_id;
+    const sharerMediaId = this.connectionById(watched.connection)?.media_id;
     if (typeof watcherMediaId !== "string" || typeof sharerMediaId !== "string") return watch.quality;
     try {
       await this.media.setQuality(watcherMediaId, sharerMediaId, { name: watch.video.name, mid: watch.video.mid }, quality);
@@ -715,9 +940,12 @@ export class Shares {
     if (record) await this.closeWatch(record);
   }
 
-  /** Hands the media server `tab`'s answer to the offer of its last pull. False if that failed. */
+  /**
+   * Hands the media server `tab`'s answer to the offer of its last pull, on its receiving
+   * connection, or on the replacement while one is under way. False if that failed.
+   */
   async renegotiate(tab: Tab, answer: string): Promise<boolean> {
-    const mediaId = this.connectionRow(tab.id)?.media_id;
+    const mediaId = this.receivingTarget(tab.id)?.media_id;
     if (typeof mediaId !== "string") return false;
     try {
       await this.media.renegotiate(mediaId, answer);
@@ -728,12 +956,12 @@ export class Shares {
   }
 
   /**
-   * Hands the media server `tab`'s offer restarting its media connection's ICE, and
-   * returns the media server's answer. Null when the tab has no media connection, or the
-   * media server failed it. Every share and watch on the connection stays as it is.
+   * Hands the media server `tab`'s offer restarting its sending connection's ICE, and
+   * returns the media server's answer. Null when the tab has no sending connection, or the
+   * media server failed it. Every share on the connection stays as it is.
    */
   async restart(tab: Tab, offer: string, mid: string): Promise<string | null> {
-    const mediaId = this.connectionRow(tab.id)?.media_id;
+    const mediaId = this.connectionOf(tab.id, "sending")?.media_id;
     if (typeof mediaId !== "string") return null;
     try {
       return await this.media.restart(mediaId, offer, mid);
@@ -773,19 +1001,23 @@ export class Shares {
   async cutOff(covered: Covered, tabIds: readonly string[] = [], subject?: Subject): Promise<Ended[]> {
     const where = whereCovered(covered);
     if ("tabId" in covered) this.recovered(covered.tabId);
+    if ("sendingFrom" in covered) this.recovered(covered.sendingFrom);
     // The usage budget stop ends no share, and its watchers' tabs carry on with their media
     // connections, ready to watch again once the budget allows it.
     const stop = "everyWatch" in covered;
     const shares = stop ? [] : this.records(`WHERE ${where.where} AND live_at IS NOT NULL`, ...where.bindings);
+    const ofTabs = (tabs: readonly string[]) => tabs.flatMap((tab) => this.connectionsOf(tab).map((row) => row.id));
     const touched = new Set([
-      ...tabIds,
-      ...("tabId" in covered ? [covered.tabId] : []),
-      ...shares.map((share) => share.tab),
-      ...this.watches(`WHERE ${where.where}`, ...where.bindings).map((watch) => watch.tab),
+      ...ofTabs(tabIds),
+      ...ofTabs("tabId" in covered ? [covered.tabId] : []),
+      ...("sendingFrom" in covered ? [this.connectionOf(covered.sendingFrom, "sending")?.id ?? ""] : []),
+      ...shares.map((share) => share.connection),
+      ...this.watches(`WHERE ${where.where}`, ...where.bindings).map((watch) => watch.connection),
     ]);
+    touched.delete("");
     const ended = await this.end(shares, where, subject);
     ended.push(...(await this.sweep([...touched])));
-    if (!stop) for (const tab of touched) this.forgetConnectionIfEmpty(tab);
+    if (!stop) for (const connection of touched) this.forgetIfEmpty(connection);
     return ended;
   }
 
@@ -839,7 +1071,12 @@ export class Shares {
     }
 
     if (covered) {
-      for (const watch of this.watches(`WHERE (${covered.where}) AND watching_at IS NOT NULL`, ...covered.bindings)) {
+      // With what a replacement under way has pulled again, which is not on the stage yet.
+      const pulls = this.watches(`WHERE ${covered.where}`, ...covered.bindings).filter(
+        (watch) => watch.watching || this.pending.has(watch.id),
+      );
+      for (const watch of pulls) {
+        this.pending.delete(watch.id);
         await this.closeWatch(watch, { subject });
       }
     }
@@ -873,7 +1110,7 @@ export class Shares {
    * record stays, so nothing is lost track of, and the close is tried again later.
    */
   private async closeTracks(share: ShareRecord, { subject, gone = false }: { subject?: Subject; gone?: boolean } = {}) {
-    const mediaId = this.connectionRow(share.tab)?.media_id;
+    const mediaId = this.connectionById(share.connection)?.media_id;
     try {
       // A screen share's video and audio close together, in one call.
       if (typeof mediaId === "string" && !gone) await this.media.close(mediaId, tracksOf(share));
@@ -905,7 +1142,7 @@ export class Shares {
   ): Promise<boolean> {
     // Already closed by another way out while this one waited its turn.
     if (this.closingWatches.has(watch.id) || this.watches("WHERE id = ?", watch.id).length === 0) return false;
-    const mediaId = this.connectionRow(watch.tab)?.media_id;
+    const mediaId = this.connectionById(watch.connection)?.media_id;
     this.closingWatches.add(watch.id);
     try {
       const pulled = pulledTracksOf(watch).flatMap((track) => (track.mid === null ? [] : [{ name: track.name, mid: track.mid }]));
@@ -919,7 +1156,11 @@ export class Shares {
     }
     log.info("watch.ended", { ...watchFields(watch), wasWatching: watch.watching, gone, moving });
     this.retries.confirmed(watch.id);
-    const drop = () => this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
+    const drop = () => {
+      this.sql.exec("DELETE FROM watch WHERE id = ?", watch.id);
+      // A replaced connection goes once its last pull is closed.
+      if (this.connectionById(watch.connection)?.role === "replaced") this.forgetIfEmpty(watch.connection);
+    };
     if (!watch.watching) {
       drop();
       return true;
@@ -942,25 +1183,25 @@ export class Shares {
    * connection the media server cannot be asked about now is left as it is. Returns the
    * shares that ended.
    */
-  async sweep(tabIds?: readonly string[]): Promise<Ended[]> {
+  async sweep(connectionIds?: readonly string[]): Promise<Ended[]> {
     const rows = this.sql
-      .exec<{ tab_id: string; media_id: string | null }>("SELECT tab_id, media_id FROM media_connection")
+      .exec<ConnectionRow>("SELECT id, tab_id, purpose, role, media_id FROM media_connection")
       .toArray()
-      .filter((row) => tabIds === undefined || tabIds.includes(row.tab_id));
+      .filter((row) => connectionIds === undefined || connectionIds.includes(row.id));
     const ended: Ended[] = [];
     for (const row of rows) {
-      if (typeof row.media_id === "string") ended.push(...(await this.sweepConnection(row.tab_id, row.media_id)));
-      else if (!this.inFlight.has(row.tab_id)) this.forgetConnectionIfEmpty(row.tab_id);
+      if (typeof row.media_id === "string") ended.push(...(await this.sweepConnection(row.tab_id, row.id, row.media_id)));
+      else this.forgetIfEmpty(row.id);
     }
     return ended;
   }
 
-  private async sweepConnection(tabId: string, mediaId: string): Promise<Ended[]> {
+  private async sweepConnection(tabId: string, connectionId: string, mediaId: string): Promise<Ended[]> {
     // What the records held before the question: a record made while it was being
     // answered cannot be judged by the answer.
     const before = new Set([
-      ...this.records("WHERE tab_id = ?", tabId).map((share) => share.id),
-      ...this.watches("WHERE tab_id = ?", tabId).map((watch) => watch.id),
+      ...this.records("WHERE connection_id = ?", connectionId).map((share) => share.id),
+      ...this.watches("WHERE connection_id = ?", connectionId).map((watch) => watch.id),
     ]);
     let open: Track[];
     try {
@@ -969,9 +1210,10 @@ export class Shares {
       log.warn("sweep.skipped", { tab: tabId, connection: mediaId });
       return [];
     }
-    const busy = (id: string) => this.inFlight.has(id) || this.closingShares.has(id) || this.closingWatches.has(id);
-    const shares = this.records("WHERE tab_id = ?", tabId);
-    const watches = this.watches("WHERE tab_id = ?", tabId);
+    const busy = (id: string) =>
+      this.inFlight.has(id) || this.pending.has(id) || this.closingShares.has(id) || this.closingWatches.has(id);
+    const shares = this.records("WHERE connection_id = ?", connectionId);
+    const watches = this.watches("WHERE connection_id = ?", connectionId);
     const openTrack = (name: string) => open.find((track) => track.name === name);
 
     // Every track a record whose call is done, or still under way, accounts for.
@@ -1026,7 +1268,8 @@ export class Shares {
    * connection of one that is not is forgotten once nothing is left on it.
    */
   async retry(present: (tabId: string) => boolean): Promise<void> {
-    const touched = new Set<string>();
+    // The connections, and their tabs, a try closed something on.
+    const touched = new Map<string, string>();
     for (const due of this.retries.due()) {
       if (due.kind === "track") {
         try {
@@ -1043,7 +1286,7 @@ export class Shares {
           this.retries.confirmed(due.id);
           continue;
         }
-        touched.add(share.tab);
+        touched.set(share.connection, share.tab);
         if (share.live) await this.end([share], null, due.subject);
         else await this.closeTracks(share, { subject: due.subject });
         continue;
@@ -1053,10 +1296,10 @@ export class Shares {
         this.retries.confirmed(due.id);
         continue;
       }
-      touched.add(watch.tab);
+      touched.set(watch.connection, watch.tab);
       await this.closeWatch(watch, { subject: due.subject });
     }
-    for (const tab of touched) if (!present(tab)) this.forgetConnectionIfEmpty(tab);
+    for (const [connection, tab] of touched) if (!present(tab)) this.forgetIfEmpty(connection);
   }
 
   /** When the next failed close is due to be tried again, or null when none is. */
@@ -1065,37 +1308,38 @@ export class Shares {
   }
 
   /**
-   * The tab `tabId` says its media connection falters while its socket is fine. The shares
-   * it sends stay live for 30 seconds from the first time it says so, while the browser
-   * tries to recover, and end then (`faltered`) unless it recovers first.
+   * The tab `tabId` says its sending connection falters while its socket is fine. The
+   * shares it sends stay live for 30 seconds from the first time it says so, while the
+   * browser tries to recover, and end then (`faltered`) unless it recovers first.
    */
   faltering(tabId: string) {
     this.falterings.falters(tabId);
   }
 
-  /** The tab `tabId`'s media connection has recovered, or the tab is gone: its shares no longer wait to end. */
+  /** The tab `tabId`'s sending connection has recovered, or the tab is gone: its shares no longer wait to end. */
   recovered(tabId: string) {
     this.falterings.recovered(tabId);
   }
 
   /**
-   * Ends the shares of every tab whose media connection has faltered for 30 seconds, by
-   * the same forced close as an ordinary stop. What the tab watches is left as it is. A
-   * connection left carrying nothing is forgotten, since it failed: the tab makes a new
-   * one the next time it shares or watches. Returns the tabs whose connection was
-   * forgotten.
+   * Ends the shares of every tab whose sending connection has faltered for 30 seconds, by
+   * the same forced close as an ordinary stop. What the tab watches is left as it is, on
+   * its own connection. A sending connection left carrying nothing is forgotten, since it
+   * failed: the tab makes a new one the next time it shares. Returns the tabs whose sending
+   * connection was forgotten.
    */
   async faltered(): Promise<string[]> {
     const dropped: string[] = [];
     for (const tab of this.falterings.takeDue()) {
       log.warn("falter.due", { tab });
       await this.end(this.records("WHERE tab_id = ? AND live_at IS NOT NULL", tab), null);
-      if (this.forgetConnectionIfEmpty(tab)) dropped.push(tab);
+      const sending = this.connectionOf(tab, "sending");
+      if (sending && this.forgetIfEmpty(sending.id)) dropped.push(tab);
     }
     return dropped;
   }
 
-  /** When the shares of a tab whose media connection falters are next due to end, or null when none are. */
+  /** When the shares of a tab whose sending connection falters are next due to end, or null when none are. */
   nextFaltered(): number | null {
     return this.falterings.next();
   }
@@ -1130,18 +1374,20 @@ export class Shares {
   }
 
   /**
-   * A start or watch of `tabId`'s did not go live: its media connection is forgotten if it
-   * now carries no share or watch and is not being made. A connection that never carried
-   * anything never gets a browser on it, and the media server drops it within seconds, so
-   * the tab makes a new one on its next try. It is forgotten at once, so no start or watch
-   * goes into it meanwhile; then any track the media server made on it although it
-   * reported the call failed is force-closed, as the sweep at a cut-off would. True when
-   * it was forgotten.
+   * A start (on the `sending` connection) or watch (on the `receiving` one) of `tabId`'s
+   * did not go live: that connection is forgotten if it now carries nothing and is not
+   * being made. A connection that never carried anything never gets a browser on it, and
+   * the media server drops it within seconds, so the tab makes a new one on its next try.
+   * It is forgotten at once, so nothing goes into it meanwhile; then any track the media
+   * server made on it although it reported the call failed is force-closed, as the sweep at
+   * a cut-off would. A receiving connection being replaced is kept: the replacement
+   * carries its watches over. True when it was forgotten.
    */
-  letGo(tabId: string): boolean {
-    const mediaId = this.connectionRow(tabId)?.media_id;
-    if (this.inFlight.has(tabId) || !this.forgetConnectionIfEmpty(tabId)) return false;
-    if (typeof mediaId === "string") void this.closeLeftOver(tabId, mediaId);
+  letGo(tabId: string, purpose: MediaPurpose): boolean {
+    const connection = this.connectionOf(tabId, purpose);
+    if (!connection || this.replacementOf(tabId) && purpose === "receiving") return false;
+    if (!this.forgetIfEmpty(connection.id)) return false;
+    if (typeof connection.media_id === "string") void this.closeLeftOver(tabId, connection.media_id);
     return true;
   }
 
@@ -1157,29 +1403,56 @@ export class Shares {
     for (const track of open) await this.closeStray(tabId, mediaId, track);
   }
 
-  /** Forgets `tabId`'s media connection if it carries no share or watch. True when it was forgotten. */
-  private forgetConnectionIfEmpty(tabId: string): boolean {
+  /**
+   * Forgets the connection `id` if it carries no share or watch and is not being made.
+   * True when it was forgotten.
+   */
+  private forgetIfEmpty(id: string): boolean {
+    if (this.inFlight.has(id)) return false;
     const forgotten =
       this.sql.exec(
-        `DELETE FROM media_connection WHERE tab_id = ?
-         AND NOT EXISTS (SELECT 1 FROM share WHERE tab_id = ?)
-         AND NOT EXISTS (SELECT 1 FROM watch WHERE tab_id = ?)`,
-        tabId,
-        tabId,
-        tabId,
+        `DELETE FROM media_connection WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM share WHERE connection_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM watch WHERE connection_id = ?)`,
+        id,
+        id,
+        id,
       ).rowsWritten > 0;
     const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
-    if (forgotten && unanswered.includes(tabId)) {
-      const left = unanswered.filter((tab) => tab !== tabId);
+    if (forgotten && unanswered.includes(id)) {
+      const left = unanswered.filter((other) => other !== id);
       if (left.length > 0) this.kv.put(UNANSWERED_KEY, left);
       else this.kv.delete(UNANSWERED_KEY);
     }
     return forgotten;
   }
 
-  private connectionRow(tabId: string) {
+  /** `tabId`'s current connection for `purpose`. */
+  private connectionOf(tabId: string, purpose: MediaPurpose): ConnectionRow | undefined {
+    return this.connectionsOf(tabId).find((row) => row.purpose === purpose && row.role === "current");
+  }
+
+  /** `tabId`'s replacement receiving connection, while one is being made or carried over to. */
+  private replacementOf(tabId: string): ConnectionRow | undefined {
+    return this.connectionsOf(tabId).find((row) => row.role === "replacement");
+  }
+
+  /** The receiving connection a new pull of `tabId`'s goes to: the replacement while one is under way. */
+  private receivingTarget(tabId: string): ConnectionRow | undefined {
+    const replacement = this.replacementOf(tabId);
+    return replacement && typeof replacement.media_id === "string" ? replacement : this.connectionOf(tabId, "receiving");
+  }
+
+  /** Every connection `tabId` has on record, in any role. */
+  private connectionsOf(tabId: string): ConnectionRow[] {
     return this.sql
-      .exec<{ media_id: string | null }>("SELECT media_id FROM media_connection WHERE tab_id = ?", tabId)
+      .exec<ConnectionRow>("SELECT id, tab_id, purpose, role, media_id FROM media_connection WHERE tab_id = ?", tabId)
+      .toArray();
+  }
+
+  private connectionById(id: string): ConnectionRow | undefined {
+    return this.sql
+      .exec<ConnectionRow>("SELECT id, tab_id, purpose, role, media_id FROM media_connection WHERE id = ?", id)
       .toArray()[0];
   }
 
@@ -1198,7 +1471,7 @@ export class Shares {
     const handOvers = this.handOvers.all();
     return this.sql
       .exec<ShareRow>(
-        `SELECT id, member_id, room_address, tab_id, kind, video_track, video_mid, audio_track, audio_mid, live_at,
+        `SELECT id, member_id, room_address, tab_id, connection_id, kind, video_track, video_mid, audio_track, audio_mid, live_at,
            qualities, max_bitrate, ending_at
          FROM share ${where}`,
         ...bindings,
@@ -1209,6 +1482,7 @@ export class Shares {
         member: row.member_id,
         room: row.room_address,
         tab: row.tab_id,
+        connection: row.connection_id,
         kind: row.kind as ShareKind,
         video: { name: row.video_track, mid: row.video_mid },
         audio: row.audio_track !== null && row.audio_mid !== null ? { name: row.audio_track, mid: row.audio_mid } : null,
@@ -1223,7 +1497,7 @@ export class Shares {
   private watches(where: string, ...bindings: SqlStorageValue[]): WatchRecord[] {
     return this.sql
       .exec<WatchRow>(
-        `SELECT id, tab_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track,
+        `SELECT id, tab_id, connection_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track, video_mid, audio_track,
            audio_mid,
            watching_at, left_at, quality
          FROM watch ${where}`,
@@ -1233,6 +1507,7 @@ export class Shares {
       .map((row) => ({
         id: row.id,
         tab: row.tab_id,
+        connection: row.connection_id,
         member: row.member_id,
         device: row.device_id,
         room: row.room_address,
@@ -1275,13 +1550,14 @@ function pulledTracksOf(watch: WatchRecord): PulledTrack[] {
 
 /** A new watch of the share `watched` by the watcher's tab `watcher.tab`, at `quality`, before anything is pulled. */
 function newWatch(
-  watcher: Pick<WatchRecord, "tab" | "member" | "device" | "room">,
+  watcher: Pick<WatchRecord, "tab" | "connection" | "member" | "device" | "room">,
   watched: ShareRecord,
   quality: QualityChoice,
 ): WatchRecord {
   return {
     id: crypto.randomUUID(),
     tab: watcher.tab,
+    connection: watcher.connection,
     member: watcher.member,
     device: watcher.device,
     room: watcher.room,

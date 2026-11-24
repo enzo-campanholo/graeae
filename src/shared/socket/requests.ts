@@ -7,6 +7,7 @@
 // the tab hears `refused` for that kind, as for any start the instance turns down.
 
 import type { BrowserFamily } from "../encoding.ts";
+import { isMediaPurpose, type MediaPurpose } from "./media.ts";
 import { isShareKind, type LiveShare, type ShareKind } from "./shares.ts";
 import { isQualityChoice, type QualityChoice } from "./watching.ts";
 
@@ -30,7 +31,8 @@ export interface StartDetails {
 /** A request the instance understands, named `<area>.<type>`, with its fields checked. */
 export type CheckedRequest =
   | { name: "usage.received"; bytes: number; relayed: boolean }
-  | { name: "media.connect" }
+  | { name: "media.connect"; connection: MediaPurpose }
+  | { name: "media.replace" }
   | { name: "media.answer"; answer: string }
   | { name: "media.restart"; offer: string; mid: string }
   | { name: "media.reconnect" }
@@ -53,7 +55,8 @@ type Fields = Record<string, unknown>;
 const CHECKS: { [Name in RequestName]: (request: Fields) => Checked<Name> | null } = {
   "usage.received": ({ bytes, relayed }) =>
     isByteCount(bytes) && typeof relayed === "boolean" ? { name: "usage.received", bytes, relayed } : null,
-  "media.connect": () => ({ name: "media.connect" }),
+  "media.connect": ({ connection }) => (isMediaPurpose(connection) ? { name: "media.connect", connection } : null),
+  "media.replace": () => ({ name: "media.replace" }),
   "media.answer": ({ answer }) => (isSdp(answer) ? { name: "media.answer", answer } : null),
   "media.restart": ({ offer, mid }) => (isSdp(offer) && isMid(mid) ? { name: "media.restart", offer, mid } : null),
   "media.reconnect": () => ({ name: "media.reconnect" }),

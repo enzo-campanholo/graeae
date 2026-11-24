@@ -35,7 +35,7 @@ async function ownerWatchingBia() {
   await shareWebcam(biaTab);
   await ownerTab.next(); // her webcam went live
   const biasWebcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
-  await connectMedia(ownerTab);
+  await connectMedia(ownerTab, "receiving");
   await watch(ownerTab, biasWebcam);
   await biaTab.next(); // the owner is watching
   return { instance, owner, bia, room, ownerTab, biaTab, biasWebcam, biaId: biasWebcam.member };

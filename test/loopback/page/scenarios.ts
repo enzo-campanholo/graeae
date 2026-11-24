@@ -1,10 +1,11 @@
 // The loopback's scenarios: the real media client (`src/app/lib/media/browser.ts`) on one
-// tab's media connection, against the stand-in media server in the same page, driven the
-// way the room client drives it (`src/app/lib/room-client.svelte.ts`). Each reports what
-// it saw for `loopback.spec.ts` to check.
+// tab's two media connections, against the stand-in media server in the same page, driven
+// the way the room client drives it (`src/app/lib/room-client.svelte.ts`). Each reports
+// what it saw for `loopback.spec.ts` to check.
 
 import { BrowserMediaClient } from "../../../src/app/lib/media/browser.ts";
 import type { Capture } from "../../../src/app/lib/media/client.ts";
+import type { MediaPurpose } from "../../../src/shared/socket/index.ts";
 import type { RunSeen, ShareSeen, WatchSeen } from "../observations.ts";
 import { directionOf, liveSections, StandInMediaServer, ufragOf } from "./media-server.ts";
 
@@ -26,20 +27,21 @@ function capture(): Capture {
   return { kind: "webcam", stream, audio: false, ended: new Promise(() => undefined) };
 }
 
-/** A tab with its media connection made, the stand-in, and what the run has seen. */
+/** A tab with both its media connections made, the stand-in, and what the run has seen. */
 class Run {
   readonly client = new BrowserMediaClient();
   readonly server = new StandInMediaServer();
-  readonly seen: RunSeen = { shares: [], ufrags: [] };
+  readonly seen: RunSeen = { shares: [], ufrags: { sending: [], receiving: [] } };
 
   constructor() {
-    this.client.connect([], () => undefined);
+    this.client.connect("sending", [], () => undefined);
+    this.client.connect("receiving", [], () => undefined);
   }
 
-  /** The tab's description `sdp`, its ufrag noted. */
-  private note(sdp: string): string {
+  /** The tab's description `sdp` on `connection`, its ufrag noted. */
+  private note(sdp: string, connection: MediaPurpose = "sending"): string {
     const ufrag = ufragOf(sdp);
-    if (ufrag) this.seen.ufrags.push(ufrag);
+    if (ufrag) this.seen.ufrags[connection].push(ufrag);
     return sdp;
   }
 
@@ -84,7 +86,7 @@ class Run {
   async watch(): Promise<Omit<WatchSeen, keyof RunSeen>> {
     const { offer, mid } = await this.server.pull(capture().stream!.getVideoTracks()[0]!);
     const { answer } = await this.client.pull(offer, mid);
-    await this.server.pulled(this.note(answer));
+    await this.server.pulled(this.note(answer, "receiving"));
     const quality = await new Promise<string | null>((resolve) => {
       const stop = this.client.received(mid, (heard) => {
         if (heard === null) return;
@@ -145,42 +147,34 @@ export async function afterAnAbandonedRestart(): Promise<RunSeen> {
 }
 
 /**
- * A share stopped, which leaves its section inactive (the first is the BUNDLE tag's),
- * a second share whose offer says so, then a watch the stand-in puts on that section,
- * then a third share.
+ * Two shares stopped, a watch ended, which leaves its section inactive, a third share
+ * and a restart, then a watch the stand-in puts on the ended watch's section. The watch
+ * is on the receiving connection, which the shares and the restart never touch, and its
+ * section is answered `recvonly` with no step from `inactive` in the tab.
  */
-export async function watchOnAStoppedSharesSection(): Promise<WatchSeen> {
+export async function watchOnAnEndedWatchsSection(): Promise<WatchSeen> {
   const run = new Run();
   await run.share();
   await run.share();
-  const watch = await run.watch();
+  const first = await run.watch();
+  await run.unwatch(first.mid);
   await run.share();
+  await run.answeredRestart();
+  const watch = await run.watch();
   run.close();
   return { ...run.seen, ...watch };
 }
 
 /**
- * A share, a watch ended, a second share, whose offer still names the ended watch's
- * section, then a watch the stand-in puts on the first share's section (ticket 58).
+ * Ticket 60's order: a watch, a share stopped, another stopped, then a second watch, all
+ * on one page. On one connection the second watch landed in a stopped share's section,
+ * which the tab's offers had narrowed, and nothing decoded.
  */
-export async function watchAfterAShareThatFollowedAWatch(): Promise<WatchSeen> {
+export async function ticket60sOrder(): Promise<WatchSeen> {
   const run = new Run();
+  await run.watch();
   await run.share();
-  const first = await run.watch();
-  await run.unwatch(first.mid);
   await run.share();
-  const watch = await run.watch();
-  run.close();
-  return { ...run.seen, ...watch };
-}
-
-/** The same with a restart, the tab's other offer, in place of the second share (ticket 58). */
-export async function watchAfterARestartThatFollowedAWatch(): Promise<WatchSeen> {
-  const run = new Run();
-  await run.share();
-  const first = await run.watch();
-  await run.unwatch(first.mid);
-  await run.answeredRestart();
   const watch = await run.watch();
   run.close();
   return { ...run.seen, ...watch };

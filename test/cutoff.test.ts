@@ -123,9 +123,11 @@ async function busyEvening() {
     caiosWebcam: await quietly(() => published(instance, () => shareWebcam(caioTab))),
     biasWebcam: await quietly(() => published(instance, () => shareWebcam(biaInSecond))),
   };
-  await quietly(() => connectMedia(biaInFirst));
+  await quietly(() => connectMedia(biaInFirst, "receiving"));
   await quietly(() => watch(biaInFirst, ownersWebcam));
+  await quietly(() => connectMedia(biaInSecond, "receiving"));
   await quietly(() => watch(biaInSecond, caiosWebcam));
+  await quietly(() => connectMedia(caioTab, "receiving"));
   await quietly(() => watch(caioTab, biasWebcam));
 
   return {
@@ -258,11 +260,13 @@ describe("each case of the cut-off", () => {
     await quiet();
     const biasTrack = await published(instance, () => shareWebcam(onLaptop));
     await quiet();
-    await connectMedia(onPhone);
+    await connectMedia(onPhone, "receiving");
     await watch(onPhone, ownersWebcam);
     await watch(onPhone, biasWebcam);
+    await connectMedia(onLaptop, "receiving");
     await watch(onLaptop, ownersWebcam);
     await quiet();
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await quiet();
     const laptopId = (await people(owner)).find((person) => person.name === "Bia")!.devices[0]!.id;
@@ -303,10 +307,12 @@ describe("each case of the cut-off", () => {
     await quiet();
     await published(instance, () => shareWebcam(lost));
     await quiet();
+    await connectMedia(lost, "receiving");
     await watch(lost, ownersWebcam);
-    await connectMedia(kept);
+    await connectMedia(kept, "receiving");
     await watch(kept, ownersWebcam);
     await quiet();
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await quiet();
 
@@ -349,8 +355,10 @@ describe("each case of the cut-off", () => {
     await quiet();
     await published(instance, () => shareWebcam(biaTab));
     await quiet();
+    await connectMedia(biaTab, "receiving");
     await watch(biaTab, ownersWebcam);
     await quiet();
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await quiet();
     await biaTab.drop();
@@ -389,7 +397,7 @@ describe("a request arriving after the storage change", () => {
     await quiet();
     const caiosTrack = await published(instance, () => shareWebcam(caioTab));
     await quiet();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const close = instance.media.hold("close");
 
     const removing = removeFromRoom(owner, biasWebcam.member, addressOf(room));
@@ -436,8 +444,10 @@ describe("ordinary ends", () => {
     await quiet();
     const biasTrack = await published(instance, () => shareWebcam(biaTab));
     await quiet();
+    await connectMedia(biaTab, "receiving");
     await watch(biaTab, ownersWebcam);
     await quiet();
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await quiet();
     return { instance, ownerTab, biaTab, ownersWebcam, biasWebcam, ownersTrack, biasTrack };
@@ -481,8 +491,9 @@ describe("ordinary ends", () => {
     close.release();
 
     await expect.poll(() => openNames(instance)).toEqual([ownersTrack, ownersTrack]);
-    // Its close returning tells the owner nothing more.
-    expect(await settle(ownerTab)).toEqual([]);
+    // The owner's receiving connection carries nothing now, so the refusal let it go; its
+    // close returning tells the owner nothing more.
+    expect(await settle(ownerTab)).toEqual([{ type: "media", change: { type: "dropped", connection: "receiving" } }]);
   });
 });
 

@@ -2,7 +2,7 @@
 // `window.graeaeFakeMedia`. Types only, so the journeys can import them too.
 
 import type { Degradation, QualityName } from "../../../shared/encoding.ts";
-import type { IceServer, ShareKind } from "../../../shared/socket/index.ts";
+import type { IceServer, MediaPurpose, ShareKind } from "../../../shared/socket/index.ts";
 import type { BrowserFamily, ScreenCaptureRequest } from "./capture.ts";
 import type { StatsEntry, StepEncoding } from "./sending.ts";
 
@@ -33,18 +33,23 @@ export interface FakeMediaControl {
   screenAudio: boolean | null;
   /** The browser ends the screen capture by itself: its "stop sharing" bar, or the shared tab closing. */
   endScreen(): void;
-  /** The media connection falters, as when the browser loses its path to the media server. */
-  falter(): void;
-  /** The browser gives the media connection up ("failed"): only a restart brings it back. */
-  fail(): void;
-  /** The media connection recovers from faltering. */
-  recover(): void;
-  /** How many media connections the page has made, the current one included. */
-  connections: number;
-  /** The relay credential the media connection holds now: the one it was made with, or a fresh one since. */
-  iceServers: IceServer[] | null;
-  /** How many times the page has restarted its media connection: with a fresh credential, or after "failed". */
+  /** `connection` falters, as when the browser loses its path to the media server. */
+  falter(connection: MediaPurpose): void;
+  /**
+   * The browser gives `connection` up ("failed"): only a restart brings the sending
+   * connection back, and only a new one, `replace`, the receiving connection.
+   */
+  fail(connection: MediaPurpose): void;
+  /** `connection` recovers from faltering. */
+  recover(connection: MediaPurpose): void;
+  /** How many media connections of each purpose the page has made, the current ones and replacements included. */
+  connections: Record<MediaPurpose, number>;
+  /** The relay credential each connection holds now: the one it was made with, or a fresh one since. Null while there is none. */
+  iceServers: Record<MediaPurpose, IceServer[] | null>;
+  /** How many times the page has restarted its sending connection: with a fresh credential, or after "failed". */
   restarts: number;
+  /** How many times the page has replaced its receiving connection with a new one. */
+  replacements: number;
   /** Whether the next restarts fail, as when the browser finds no path. A restart that succeeds makes the connection fine. */
   restartFails: boolean;
   /**
@@ -54,9 +59,12 @@ export interface FakeMediaControl {
   received: QualityName;
   /** Every watched share arrives at `quality` from now on, as when the media server steps a weak link down. */
   receive(quality: QualityName): void;
-  /** What the media connection's transport has received since it opened, as the tab reports it: 0 unless a journey says. */
+  /**
+   * What the receiving connection's transport has received since it opened, as the tab
+   * reports it: 0 unless a journey says. A new receiving connection starts again from 0.
+   */
   bytes: number;
-  /** Whether the media connection is on the relay. */
+  /** Whether the tab's media connections are on the relay. */
   relayed: boolean;
   /**
    * How often the tab reports `bytes`, in milliseconds: once a minute, as

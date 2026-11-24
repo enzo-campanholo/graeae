@@ -125,7 +125,7 @@ describe("the instance's own lines", () => {
     await ownerTab.next(); // Bia arrived
     await shareWebcam(ownerTab);
     await biaTab.next(); // the owner's webcam started
-    const iceServers = await connectMedia(biaTab);
+    const iceServers = await connectMedia(biaTab, "receiving");
     await watch(biaTab, { member: state.people.you.id, kind: "webcam" });
     await ownerTab.close();
 

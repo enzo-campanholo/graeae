@@ -82,8 +82,10 @@ async function eveningOnABudget() {
   await biaTab.next(); // the owner's screen share started
   const biasWebcam: LiveShare = { member: biaState.people.you.id, kind: "webcam" };
   const ownersScreen: LiveShare = { member: ownerState.people.you.id, kind: "screen" };
+  await connectMedia(tab, "receiving");
   await watch(tab, biasWebcam);
   await biaTab.next(); // Bia hears who watches her webcam
+  await connectMedia(biaTab, "receiving");
   await watch(biaTab, ownersScreen);
   await tab.next(); // the owner hears who watches the screen
   return { instance, owner, bia, room, tab, biaTab, biasWebcam, ownersScreen };
@@ -159,7 +161,7 @@ describe("the warnings", () => {
     const { tab } = await openRoom(owner, room);
     const { tab: biaTab } = await openRoom(bia, room);
     await tab.next(); // Bia arrived
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     return { instance, owner, bia, room, tab, biaTab };
   }
 
@@ -234,7 +236,7 @@ describe("the warnings", () => {
     const room = await setUpOwner(owner);
     await setBudget(owner, 1);
     const { tab } = await openRoom(owner, room);
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     await report(tab, reportedFor(0.9 * GIGABYTE));
     expect(await budgetChanges(tab)).toEqual([budget("80%")]);
 
@@ -340,7 +342,7 @@ describe("changing the budget", () => {
     await shareWebcam(biaTab);
     await tab.next();
     const biasWebcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     await watch(tab, biasWebcam);
     await report(tab, reportedFor(3 * GIGABYTE));
     expect(await budgetChanges(tab)).toEqual([]);
@@ -364,7 +366,7 @@ describe("changing the budget", () => {
     await shareWebcam(biaTab);
     await tab.next();
     const biasWebcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     await report(tab, reportedFor(1 * GIGABYTE));
     await until(tab, (message) => message.type === "usage" && message.change.budget === "used up");
 

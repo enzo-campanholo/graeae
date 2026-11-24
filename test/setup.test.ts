@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LiveShare, ServerMessage } from "../src/shared/socket/index.ts";
 import { SETUP_SECRET, startInstance } from "./harness.ts";
 import { openRoom, type Tab } from "./sockets.ts";
-import { addMember, answer, setUpOwner, shareWebcam, useSetupSecret, watch } from "./steps.ts";
+import { addMember, answer, connectMedia, setUpOwner, shareWebcam, useSetupSecret, watch } from "./steps.ts";
 
 /** Reads `tab`'s messages until `wanted` arrives, and returns every message read on the way, `wanted` last. */
 async function until(tab: Tab, wanted: (message: ServerMessage) => boolean): Promise<ServerMessage[]> {
@@ -71,8 +71,10 @@ describe("the setup secret", () => {
     await until(biaTab, (message) => message.type === "shares");
     await shareWebcam(biaTab);
     await until(onStolen, (message) => message.type === "shares");
+    await connectMedia(biaTab, "receiving");
     await watch(biaTab, ownersWebcam);
     await until(onStolen, (message) => message.type === "watching" && message.change.type === "watchers");
+    await connectMedia(onStolen, "receiving");
     await watch(onStolen, biasWebcam);
     await until(biaTab, (message) => message.type === "watching" && message.change.type === "watchers");
 

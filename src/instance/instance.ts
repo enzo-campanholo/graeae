@@ -20,7 +20,7 @@ import type {
   UsageAnswer,
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
-import type { BudgetLevel, ClientMessage, LiveShare, RoomView, UsageState } from "../shared/socket/index.ts";
+import type { BudgetLevel, ClientMessage, LiveShare, MediaPurpose, RoomView, UsageState } from "../shared/socket/index.ts";
 import { checkRequest, requestNameOf, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { LOG_PATH } from "../shared/socket/log.ts";
@@ -60,6 +60,8 @@ export class Instance extends DurableObject<Env> {
   private readonly shares: Shares;
   private readonly usage: Usage;
   private readonly relay: Relay;
+  /** The tabs replacing their receiving connection whose answer to the replacement's last pull is awaited, with the replacement's id. */
+  private readonly replacing = new Map<string, string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -69,7 +71,7 @@ export class Instance extends DurableObject<Env> {
     const media = mediaLayer(env);
     // Made first, since the signaling may set the alarm as it starts; it reads the tabs only when asked.
     this.relay = new Relay(ctx.storage.kv, media, {
-      connected: (tab) => this.shares.hasConnection(tab),
+      connected: (tab, connection) => this.shares.hasConnection(tab, connection),
       reachable: (tab) => this.signaling.isOpen(tab),
     }, Instance.relayLives);
     this.signaling = new Signaling(
@@ -311,7 +313,7 @@ export class Instance extends DurableObject<Env> {
         room.address,
         (tab) => ({
           state: this.roomView(member, room, tab),
-          media: { connected: this.shares.hasConnection(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
+          media: { connected: this.shares.connections(tab), sending: this.shares.liveFrom(tab).map((share) => share.kind) },
         }),
         searchParams.get("tab") ?? undefined,
         member.name,
@@ -440,7 +442,7 @@ export class Instance extends DurableObject<Env> {
   } = {
     "usage.received": (tab, { bytes, relayed }, allowed) => {
       // Checked like any request that adds something: here, to the count. A tab's `final`
-      // total needs nothing of its own, since only a new or restarted media connection,
+      // total needs nothing of its own, since only a new or replaced receiving connection,
       // which the instance makes itself, counts from zero again.
       if (!allowed) return;
       this.usage.received(tab.id, bytes, relayed);
@@ -452,12 +454,38 @@ export class Instance extends DurableObject<Env> {
       const answered = await this.shares.renegotiate(tab, answer);
       (answered ? log.info : log.warn)("media.answered", { ...tagsOf(tab), ok: answered });
       this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
+      // The answer to a replacement's pull: on to the next.
+      const replacement = this.replacing.get(tab.id);
+      if (replacement !== undefined) {
+        this.replacing.delete(tab.id);
+        await this.replaceStep(tab, replacement);
+      }
+    },
+    // A replacement needs a check, as a connection does: it pulls the tab's watches again.
+    "media.replace": async (tab, _, allowed) => {
+      if (!allowed) {
+        log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "not allowed" });
+        return;
+      }
+      this.replacing.delete(tab.id);
+      const made = await this.shares.replace(tab, () => this.relay.mint());
+      if (made === "stale") return;
+      if (!made) {
+        log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "the media server or the relay failed, or nothing to replace" });
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "unavailable", connection: "receiving" } });
+        return;
+      }
+      log.info("media.connected", { ...tagsOf(tab), connection: "receiving", replacement: true });
+      this.usage.newTotal(tab.id);
+      this.relay.minted(tab.id, "receiving");
+      this.schedule();
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "connected", connection: "receiving", iceServers: made.iceServers } });
+      await this.replaceStep(tab, made.id);
     },
     // A restart needs no check: like an answer, it only renews the tab's own path to the media server.
     "media.restart": async (tab, { offer, mid }) => {
       const answer = await this.shares.restart(tab, offer, mid);
       (answer !== null ? log.info : log.warn)("media.restarted", { ...tagsOf(tab), ok: answer !== null, mid });
-      if (answer !== null) this.usage.newTotal(tab.id);
       this.signaling.toTab(
         tab.id,
         answer === null ? { type: "media", change: { type: "restart-refused" } } : { type: "media", change: { type: "restarted", answer } },
@@ -468,27 +496,30 @@ export class Instance extends DurableObject<Env> {
     // Media that falters needs no check: it can only end the tab's own shares.
     "media.faltering": (tab) => this.shares.faltering(tab.id),
     "media.recovered": (tab) => this.shares.recovered(tab.id),
-    "media.connect": async (tab, _, allowed) => {
+    "media.connect": async (tab, { connection }, allowed) => {
       if (!allowed) {
-        log.warn("media.unavailable", { ...tagsOf(tab), why: "not allowed" });
+        log.warn("media.unavailable", { ...tagsOf(tab), connection, why: "not allowed" });
         return;
       }
-      const iceServers = await this.shares.connect(tab, () => this.relay.mint());
+      const iceServers = await this.shares.connect(tab, connection, () => this.relay.mint());
       if (iceServers === "already") {
-        log.info("media.connected", { ...tagsOf(tab), already: true });
+        log.info("media.connected", { ...tagsOf(tab), connection, already: true });
         return;
       }
       if (iceServers) {
-        log.info("media.connected", tagsOf(tab));
-        this.usage.newTotal(tab.id);
-        this.relay.minted(tab.id);
+        log.info("media.connected", { ...tagsOf(tab), connection });
+        // Usage counts what the receiving connection receives, and nothing the sending one does.
+        if (connection === "receiving") this.usage.newTotal(tab.id);
+        this.relay.minted(tab.id, connection);
         this.schedule();
-      } else log.warn("media.unavailable", { ...tagsOf(tab), why: "the media server or the relay failed" });
+      } else log.warn("media.unavailable", { ...tagsOf(tab), connection, why: "the media server or the relay failed" });
       // The socket was lost while the connection was being made: the tab may ask again.
-      if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id);
+      if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id, connection);
       this.signaling.toTab(
         tab.id,
-        iceServers ? { type: "media", change: { type: "connected", iceServers } } : { type: "media", change: { type: "unavailable" } },
+        iceServers
+          ? { type: "media", change: { type: "connected", connection, iceServers } }
+          : { type: "media", change: { type: "unavailable", connection } },
       );
     },
     "watching.watch": async (tab, { share }, allowed) => {
@@ -504,7 +535,7 @@ export class Instance extends DurableObject<Env> {
       if (watched === null) return;
       if (!watched.watching) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
-        this.letGoOfMedia(tab, "a watch did not go live");
+        this.letGoOfMedia(tab, "receiving", "a watch did not go live");
         return;
       }
       this.signaling.toTab(tab.id, {
@@ -542,7 +573,7 @@ export class Instance extends DurableObject<Env> {
       }
       if (!started.live) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "refused", kind } });
-        this.letGoOfMedia(tab, "a share did not go live");
+        this.letGoOfMedia(tab, "sending", "a share did not go live");
         return;
       }
       this.signaling.toTab(tab.id, { type: "media", change: { type: "published", kind, answer: started.answer } });
@@ -559,15 +590,33 @@ export class Instance extends DurableObject<Env> {
   };
 
   /**
-   * A share or watch of `tab`'s did not go live, and the tab has heard it refused. A media
-   * connection left carrying nothing is let go of, and the tab hears `dropped`, so its
-   * next share or watch makes a new one: the media server soon drops a connection no
-   * browser ever joined, and refuses every offer into it after.
+   * A share (on the `sending` connection) or watch (on the `receiving` one) of `tab`'s did
+   * not go live, and the tab has heard it refused. That connection, left carrying nothing,
+   * is let go of, and the tab hears `dropped` for it, so its next share or watch makes a
+   * new one: the media server soon drops a connection no browser ever joined, and refuses
+   * every offer into it after.
    */
-  private letGoOfMedia(tab: Tab, why: string) {
-    if (!this.shares.letGo(tab.id)) return;
-    log.info("media.dropped", { ...tagsOf(tab), why });
-    this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped" } });
+  private letGoOfMedia(tab: Tab, connection: MediaPurpose, why: string) {
+    if (!this.shares.letGo(tab.id, connection)) return;
+    log.info("media.dropped", { ...tagsOf(tab), connection, why });
+    this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped", connection } });
+  }
+
+  /**
+   * The next step of replacing `tab`'s receiving connection with `replacement`: the next
+   * pull onto it, which the tab answers before the step after, or, once every watch is on
+   * it, `replaced`.
+   */
+  private async replaceStep(tab: Tab, replacement: string) {
+    const step = await this.shares.replaceNext(tab, replacement, () => this.signaling.isOpen(tab.id));
+    if (step === "stale") return;
+    if (step === "done") {
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "replaced" } });
+      return;
+    }
+    this.replacing.set(tab.id, replacement);
+    const { share, offer, video, audio } = step;
+    this.signaling.toTab(tab.id, { type: "media", change: { type: "pulled", share, offer, video, ...withAudio(audio) } });
   }
 
   /**
@@ -589,25 +638,26 @@ export class Instance extends DurableObject<Env> {
    * nothing it asks is granted any more: whatever it was sending and watching is cut off.
    */
   private async left(tab: Tab) {
+    this.replacing.delete(tab.id);
     await this.cutOff({ tabId: tab.id });
   }
 
   /**
-   * The ordinary reconnect path for a tab still present, after its media connection's
-   * restart failed: everything its media connection carries is cut off and the connection
-   * let go of, then the tab hears `dropped` and makes a new one. Unlike a leave, the tab
-   * still reports what it receives, so its usage is left to its own totals.
+   * The ordinary reconnect path for a tab still present, after its sending connection's
+   * restart failed: the shares it sends are cut off and the connection let go of, then the
+   * tab hears `dropped` for it and makes a new one. What it watches carries on, on its own
+   * connection.
    */
   private async reconnectMedia(tab: Tab) {
     log.info("media.reconnect", tagsOf(tab));
     try {
-      await this.shares.cutOff({ tabId: tab.id });
+      await this.shares.cutOff({ sendingFrom: tab.id });
     } finally {
       this.checkBudget();
       // A close that failed keeps the connection on record, and is tried again. Until the
       // tab leaves, its next `connect` then gets no answer, as for any tab that has one.
-      log.info("media.dropped", { ...tagsOf(tab), why: "asked" });
-      this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped" } });
+      log.info("media.dropped", { ...tagsOf(tab), connection: "sending", why: "asked" });
+      this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped", connection: "sending" } });
     }
   }
 
@@ -724,11 +774,11 @@ export class Instance extends DurableObject<Env> {
     for (const tab of this.signaling.alarm()) await this.left(tab);
     await this.shares.retry((tab) => this.signaling.holds(tab));
     for (const tab of await this.shares.faltered()) {
-      log.info("media.dropped", { tab, why: "faltered" });
-      this.signaling.toTab(tab, { type: "media", change: { type: "dropped" } });
+      log.info("media.dropped", { tab, connection: "sending", why: "faltered" });
+      this.signaling.toTab(tab, { type: "media", change: { type: "dropped", connection: "sending" } });
     }
-    await this.relay.renew((tab, iceServers) =>
-      this.signaling.toTab(tab, { type: "media", change: { type: "renewed", iceServers } }),
+    await this.relay.renew((tab, connection, iceServers) =>
+      this.signaling.toTab(tab, { type: "media", change: { type: "renewed", connection, iceServers } }),
     );
     // The month may have reset.
     this.checkBudget();

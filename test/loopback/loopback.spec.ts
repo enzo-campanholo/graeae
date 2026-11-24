@@ -1,7 +1,8 @@
 // The real media client's negotiations, in a real Chromium, against a stand-in for the
 // media server in the same page (`page/media-server.ts`): what Chrome does with each
-// share, stop, watch and restart, which the fake media client never exercises and which
-// only a deployed instance showed before (ticket 57). Nothing here calls Cloudflare; what
+// share, stop and restart on the sending connection, and each watch on the receiving
+// one, which the fake media client never exercises and which only a deployed instance
+// showed before (tickets 57 and 60). Nothing here calls Cloudflare; what
 // the stand-in cannot show is in `docs/media-server.md`. Run by `pnpm test`, in the
 // "media client" project of `playwright.config.ts`.
 
@@ -49,7 +50,7 @@ test("fourteen shares in turn each go out, on one transport, and leave no more t
   // A stopped share's transceiver is let go of, and its encoder with it (ticket 57).
   expect(seen.shares.at(-1)!.liveSections).toBeLessThanOrEqual(2);
   // A new ufrag is a new transport, which the media server never connects (410).
-  expect(new Set(seen.ufrags).size).toBe(1);
+  expect(new Set(seen.ufrags.sending).size).toBe(1);
 });
 
 test("a share after a refused one gets a mid and goes out", async ({ page }) => {
@@ -58,7 +59,7 @@ test("a share after a refused one gets a mid and goes out", async ({ page }) => 
   expect(seen.shares.map(({ mid, error, arrived }) => ({ mid: mid !== null, error, arrived }))).toEqual(
     Array(4).fill({ mid: true, error: null, arrived: true }),
   );
-  expect(new Set(seen.ufrags).size).toBe(1);
+  expect(new Set(seen.ufrags.sending).size).toBe(1);
 });
 
 test("a share after an abandoned restart gets a mid and goes out", async ({ page }) => {
@@ -69,32 +70,29 @@ test("a share after an abandoned restart gets a mid and goes out", async ({ page
   );
 });
 
-test("a watch the media server puts on a stopped share's section arrives, on the same transport", async ({ page }) => {
-  const seen = await scenario<WatchSeen>(page, "watchOnAStoppedSharesSection()");
+test("a watch the media server puts on an ended watch's section arrives, each connection on one transport", async ({ page }) => {
+  const seen = await scenario<WatchSeen>(page, "watchOnAnEndedWatchsSection()");
 
   expect(seen.mid).toBe("0");
+  // With no step from inactive in the tab: the section was the media server's from the start.
   expect(seen.answered).toBe("recvonly");
   expect(seen.quality).toBe("720p");
   expect(seen.shares.map((share) => share.error)).toEqual([null, null, null]);
-  expect(new Set(seen.ufrags).size).toBe(1);
+  // The sending connection's restart is an ICE restart, with a ufrag of its own; the
+  // receiving connection, which it does not touch, keeps its one.
+  expect(new Set(seen.ufrags.sending).size).toBe(2);
+  expect(new Set(seen.ufrags.receiving).size).toBe(1);
+  // The two connections are two transports.
+  expect(seen.ufrags.receiving[0]).not.toBe(seen.ufrags.sending[0]);
 });
 
-test("a watch on a stopped share's section arrives after a share whose offer named an ended watch's section", async ({ page }) => {
-  const seen = await scenario<WatchSeen>(page, "watchAfterAShareThatFollowedAWatch()");
+test("ticket 60's order, a watch, two shares stopped and a second watch, arrives with no codec handling in the tab", async ({ page }) => {
+  const seen = await scenario<WatchSeen>(page, "ticket60sOrder()");
 
-  // As on graeae-test: the first share's section, its offer listing only the codecs it negotiated.
-  expect(seen.mid).toBe("0");
+  // A section of its own on the receiving connection, which no share's offer narrowed.
+  expect(seen.mid).toBe("1");
   expect(seen.answered).toBe("recvonly");
   expect(seen.quality).toBe("720p");
-  expect(seen.shares.map((share) => share.error)).toEqual([null, null]);
-  expect(new Set(seen.ufrags).size).toBe(1);
-});
-
-test("a watch on a stopped share's section arrives after a restart whose offer named an ended watch's section", async ({ page }) => {
-  const seen = await scenario<WatchSeen>(page, "watchAfterARestartThatFollowedAWatch()");
-
-  expect(seen.mid).toBe("0");
-  expect(seen.answered).toBe("recvonly");
-  expect(seen.quality).toBe("720p");
-  expect(seen.shares.map((share) => share.error)).toEqual([null]);
+  expect(seen.shares.map(({ error, arrived }) => ({ error, arrived }))).toEqual(Array(2).fill({ error: null, arrived: true }));
+  expect(new Set(seen.ufrags.receiving).size).toBe(1);
 });

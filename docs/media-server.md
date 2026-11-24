@@ -1,13 +1,18 @@
 # The media server, as it behaves
 
-What Cloudflare's Realtime SFU does with a tab's media connection beyond what its docs say,
-seen on `graeae-test` with `pnpm real-media` and read back with `pnpm logs`. The calls
-themselves are listed in `src/instance/media/cloudflare.ts`. What Chrome does with the
-same connection is in `src/app/lib/media/stopping.ts` (stopping a transceiver),
-`receiving.ts` (the codecs a transceiver it does not send on offers) and `browser.ts`
-(the rest). ADR 0005 moves watching to a connection of its own, on which the tab makes
-no offer (ticket 61, not yet built); the section behaviours below then bear only on the
-sending connection, where nothing is watched.
+What Cloudflare's Realtime SFU does with a tab's media connections beyond what its docs
+say, seen on `graeae-test` with `pnpm real-media` and read back with `pnpm logs`. The
+calls themselves are listed in `src/instance/media/cloudflare.ts`. What Chrome does with
+the same connections is in `src/app/lib/media/stopping.ts` (stopping a transceiver) and
+`browser.ts` (the rest).
+
+A tab sends on one connection and receives on another (ADR 0005, ticket 61). The tab
+offers only on its sending connection, where nothing is watched; on the receiving
+connection every section is the media server's own, and the tab only answers. So the
+section behaviours below, how sections are reused and which codecs they list, matter
+now only on the sending connection, where the tab's own offers narrow them and no watch
+lands in them. They are kept as they were seen, since they are why the connections were
+split. The rebuilt transport (57) and the failed close still matter on both.
 
 Each behaviour names where it was seen and whether the loopback's stand-in media server
 (`test/loopback/page/media-server.ts`, run by `pnpm test`) plays it. A change to how
@@ -16,19 +21,27 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
 
 ## Sections
 
+Seen on the one connection a tab had before ticket 61, where shares and watches shared
+sections.
+
 - **A watch goes in a closed section.** A pull's offer puts the track in a section the
   tab's own last offer marked inactive or rejected, the lowest mid first, and adds a new
   section only when there is none. Such a section belonged to a stopped share or an
-  ended watch. *Ticket 57, run 3: the pulls went in mids 0, 2, 3 … 13 in turn.* The
-  stand-in plays it for inactive sections.
-- **Chrome answers inactive for that section** unless its transceiver is set to receive
-  first, and then nothing arrives. `pull` sets it to `recvonly`. *Ticket 57, run 2.*
-  The stand-in plays it: a plain Chrome peer.
+  ended watch. *Ticket 57, run 3: the pulls went in mids 0, 2, 3 … 13 in turn.* On the
+  receiving connection that leaves an ended watch's section, which nothing renegotiates
+  before the next pull; the stand-in reuses it there, and whether the media server does
+  is checked by the real-media runs of ticket 61.
+- **Chrome answered inactive for that section** unless its transceiver was set to
+  receive first, and then nothing arrived. *Ticket 57, run 2.* That was a section the
+  tab had made for a share. On the receiving connection every transceiver is made by
+  the media server's offer and stays `recvonly`, so `pull` no longer sets it: the
+  loopback's reused section is answered `recvonly` and decodes.
 - **A watch's offer lists the codecs the tab last gave its section.** A new section
   lists only the codec the watch goes out in, with its retransmissions. A reused one
   lists what the tab's own last offer listed there, whatever the watch goes out in.
   *Ticket 58: a new section offered 102 and 103 alone, and a reused one the tab's own
-  ten (`repro-58.ts`, the red runs).* The stand-in plays it.
+  ten (`repro-58.ts`, the red runs).* With no tab offer on the receiving connection,
+  this no longer reaches a watch. The stand-in no longer plays it.
 - **A watch goes out on a payload type the tab offered for its codec**, in any section,
   and so maybe one its own section never listed. For H.264 baseline it takes 42e01f's
   over 42001f's. Chrome counts those packets, then drops them all, so the watch shows
@@ -37,10 +50,8 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
   listed 108 (42e01f) in an ended watch's section, and then on 108 in a section that
   knew only 102 (`repro-58.ts`, run 1, in Chrome's RTC event log).* Seen from the tab's
   last offer; whether the session remembers what an earlier offer listed is not known.
-  So `browser.ts` sets each transceiver it does not send on to the codecs its section
-  negotiated (`receiving.ts`) before each offer it makes, as its section stands when
-  the tab makes no offer. The stand-in plays it for H.264 baseline, the codec of every
-  watch there.
+  The tab's offers are now on another connection than its watches, so it rests on
+  nothing; `receiving.ts`, which narrowed each section before an offer, is gone.
 - **H.264's profile does not count.** A share published as H.264 high goes out on the
   same payload type as baseline would, by the rule above, and Chrome decodes it there.
   *Ticket 59: a share offered as 64001f, sending an x264 high clip, was watched in a
@@ -51,10 +62,11 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
 - **A session's first section lists the media server's own codecs.** A watch made
   before the tab has made any offer of its own gets a new section with H.264 42e01f at
   125, VP9, VP8, H.265 and AV1, each with its retransmissions, and goes out on 125.
-  *Ticket 59: every first watch after a reload (`repro-59.ts`).* So once `receiving.ts`
-  keeps that section's codecs, the tab's later offers list 42e01f, and by the rule above
-  a later watch in a section that knows only 42001f decodes nothing (ticket 60). The
-  stand-in does not play it: with no offer of the tab's, it offers Chrome's own list.
+  *Ticket 59: every first watch after a reload (`repro-59.ts`).* With the tab's codec
+  handling, its later offers then listed 42e01f, and by the rule above a later watch in
+  a section that knew only 42001f decoded nothing (ticket 60). On the receiving
+  connection every watch is such a section; whether the later ones go out as the first
+  does is checked by ticket 61's real-media runs. The stand-in offers Chrome's own list.
 
 ## The transport
 
@@ -62,7 +74,8 @@ stand-in does not play, a real-media run on `graeae-test` checks it.
   tag's section, Chrome moves the connection to a new transport with a new ICE ufrag.
   The media server never connects it, and the next `tracks/new` answers `410 Session
   appears to be disconnected`. *Ticket 57, run 1.* In the stand-in the new transport
-  connects. The loopback checks for it as one ufrag through every description instead.
+  connects. The loopback checks for it instead as one ufrag on each connection, through
+  every description but those of a restart, which is an ICE restart.
 - **410 means the session is gone.** Once a session is disconnected, every call on it
   answers 410. `cloudflare.ts` treats a 410 on close and on listing tracks as nothing
   left open.

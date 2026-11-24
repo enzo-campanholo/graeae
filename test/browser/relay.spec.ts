@@ -7,8 +7,10 @@ import { inBar, SETUP_SECRET } from "./app.ts";
 // Relay credential renewal, as the page takes it. The instance hands a tab a fresh
 // credential 11 hours after its last, which Seam 1 proves; here the test hands it to the
 // page itself, over the room's socket routed through the test, since this instance runs
-// on the real clock. The media is fake: a journey says whether the tab's connection is on
-// the relay, and whether its restart works. Members Otto, Pia and Teo are this file's alone.
+// on the real clock. Each of a tab's two media connections has its own credential, and
+// its own renewal. The media is fake: a journey says whether the tab's connections are on
+// the relay, and whether a restart of its sending connection works. Members Otto, Pia,
+// Ria and Teo are this file's alone.
 
 const opened: BrowserContext[] = [];
 
@@ -69,7 +71,12 @@ function fake(page: Page, set: Partial<Pick<FakeMediaControl, "relayed" | "bytes
   return page.evaluate((set) => {
     const control = (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia;
     Object.assign(control, set);
-    return { connections: control.connections, restarts: control.restarts, iceServers: control.iceServers };
+    return {
+      connections: control.connections,
+      restarts: control.restarts,
+      replacements: control.replacements,
+      iceServers: control.iceServers,
+    };
   }, set);
 }
 
@@ -109,21 +116,25 @@ function requests(route: Awaited<ReturnType<typeof routed>>, area: string, type:
   return route.sent.filter((message) => message.type === area && message.request.type === type).map((message) => message.request);
 }
 
-test("a tab on a direct path takes a fresh credential silently", async ({ browser, baseURL }) => {
+const BOTH = { sending: 1, receiving: 1 };
+
+test("a tab on a direct path takes a fresh credential silently on each connection", async ({ browser, baseURL }) => {
   const { owner, member: otto, route, ownersPicture, membersPicture } = await watchingAndSharing(browser, baseURL, "Otto");
-  expect(await fake(otto, { bytes: 4000 })).toMatchObject({ connections: 1, restarts: 0 });
+  expect(await fake(otto, { bytes: 4000 })).toMatchObject({ connections: BOTH, restarts: 0, replacements: 0 });
 
-  route.hand({ type: "media", change: { type: "renewed", iceServers: FRESH } });
+  route.hand({ type: "media", change: { type: "renewed", connection: "sending", iceServers: FRESH } });
+  route.hand({ type: "media", change: { type: "renewed", connection: "receiving", iceServers: FRESH } });
 
-  await expect.poll(async () => (await fake(otto)).iceServers).toEqual(FRESH);
-  expect(await fake(otto)).toMatchObject({ connections: 1, restarts: 0 });
-  // Nothing is restarted or reconnected, and the usage total carries on.
+  await expect.poll(async () => (await fake(otto)).iceServers).toEqual({ sending: FRESH, receiving: FRESH });
+  expect(await fake(otto)).toMatchObject({ connections: BOTH, restarts: 0, replacements: 0 });
+  // Nothing is restarted, replaced or reconnected, and the usage total carries on.
   await expect.poll(() => requests(route, "usage", "received").at(-1), { timeout: 10_000 }).toEqual({
     type: "received",
     bytes: 4000,
     relayed: false,
   });
   expect(requests(route, "media", "restart")).toEqual([]);
+  expect(requests(route, "media", "replace")).toEqual([]);
   expect(requests(route, "media", "reconnect")).toEqual([]);
   expect(requests(route, "usage", "received").filter((report) => report.final)).toEqual([]);
   await expect(otto.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
@@ -135,40 +146,72 @@ test("a tab on a direct path takes a fresh credential silently", async ({ browse
   await owner.close();
 });
 
-test("a tab on the relay sends its final total, then restarts its connection with the fresh credential", async ({
+test("a tab on the relay restarts its sending connection with the fresh credential, and its usage total carries on", async ({
   browser,
   baseURL,
 }) => {
   const { owner, member: pia, route, ownersPicture, membersPicture } = await watchingAndSharing(browser, baseURL, "Pia");
   await fake(pia, { relayed: true, bytes: 5000 });
 
-  route.hand({ type: "media", change: { type: "renewed", iceServers: FRESH } });
+  route.hand({ type: "media", change: { type: "renewed", connection: "sending", iceServers: FRESH } });
 
   await expect
     .poll(() => requests(route, "media", "restart"))
     .toEqual([{ type: "restart", offer: expect.any(String), mid: expect.any(String) }]);
   await expect.poll(async () => (await fake(pia)).restarts).toBe(1);
-  expect(await fake(pia)).toMatchObject({ connections: 1, iceServers: FRESH });
-  // The final total went out just before the restart.
-  const finals = route.sent.findIndex((message) => message.type === "usage" && message.request.final === true);
-  const restart = route.sent.findIndex((message) => message.type === "media" && message.request.type === "restart");
-  expect(route.sent[finals]?.request).toEqual({ type: "received", bytes: 5000, relayed: true, final: true });
-  expect(finals).toBeLessThan(restart);
-  // Every share and watch carries on, on the same connection.
+  expect(await fake(pia)).toMatchObject({ connections: BOTH, replacements: 0, iceServers: { sending: FRESH } });
+  // Every share and watch carries on, on the same connections.
   await expect(ownersPicture).toBeVisible();
   await expect(membersPicture).toBeVisible();
   await expect(inBar(pia).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(pia.getByText("Owner watching")).toBeVisible();
+  // The sending connection's upload is not counted, so its restart sends no final total.
+  await expect.poll(() => requests(route, "usage", "received").at(-1), { timeout: 10_000 }).toEqual({
+    type: "received",
+    bytes: 5000,
+    relayed: true,
+  });
+  expect(requests(route, "usage", "received").filter((report) => report.final)).toEqual([]);
 
-  // The instance counts from zero after the restart; so do the tab's next totals.
-  await fake(pia, { bytes: 8000 });
+  await pia.close();
+  await owner.close();
+});
+
+test("a tab on the relay sends its final total, then replaces its receiving connection, its watches moving over", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner, member: ria, route, ownersPicture, membersPicture } = await watchingAndSharing(browser, baseURL, "Ria");
+  await fake(ria, { relayed: true, bytes: 5000 });
+
+  route.hand({ type: "media", change: { type: "renewed", connection: "receiving", iceServers: FRESH } });
+
+  await expect.poll(() => requests(route, "media", "replace")).toEqual([{ type: "replace" }]);
+  await expect.poll(async () => (await fake(ria)).replacements).toBe(1);
+  expect(await fake(ria)).toMatchObject({ connections: { sending: 1, receiving: 2 }, restarts: 0 });
+  // The final total went out just before the replacement.
+  const finals = route.sent.findIndex((message) => message.type === "usage" && message.request.final === true);
+  const replace = route.sent.findIndex((message) => message.type === "media" && message.request.type === "replace");
+  expect(route.sent[finals]?.request).toEqual({ type: "received", bytes: 5000, relayed: true, final: true });
+  expect(finals).toBeLessThan(replace);
+  // The owner's webcam is pulled again onto the new connection, and answered.
+  await expect.poll(() => requests(route, "media", "answer").length).toBe(2);
+  await expect(ownersPicture).toBeVisible();
+  // Her own share is on the sending connection, which the replacement leaves alone.
+  await expect(membersPicture).toBeVisible();
+  await expect(inBar(ria).getByRole("button", { name: "Webcam live" })).toBeDisabled();
+  await expect(ria.getByText("Owner watching")).toBeVisible();
+  await expect(ria.getByRole("main", { name: "Stage" }).getByText("Reconnecting…")).toHaveCount(0);
+
+  // The new connection counts from zero, as the instance does.
+  await fake(ria, { bytes: 3000 });
   await expect.poll(() => requests(route, "usage", "received").at(-1), { timeout: 10_000 }).toEqual({
     type: "received",
     bytes: 3000,
     relayed: true,
   });
 
-  await pia.close();
+  await ria.close();
   await owner.close();
 });
 
@@ -180,25 +223,24 @@ test("a tab whose restart fails reconnects the ordinary way, with its shares and
   await fake(teo, { relayed: true, bytes: 6000, restartFails: true });
   route.holding = "reconnect";
 
-  route.hand({ type: "media", change: { type: "renewed", iceServers: FRESH } });
+  route.hand({ type: "media", change: { type: "renewed", connection: "sending", iceServers: FRESH } });
 
-  // The restart fails: the tab sends its final total and asks to reconnect, and its stage says so.
+  // The restart fails: the tab asks to reconnect the sending connection, and its stage says so.
   await expect.poll(() => requests(route, "media", "reconnect")).toHaveLength(1);
-  expect(requests(route, "usage", "received").filter((report) => report.final)).toEqual([
-    { type: "received", bytes: 6000, relayed: true, final: true },
-    { type: "received", bytes: 0, relayed: true, final: true },
-  ]);
+  expect(requests(route, "usage", "received").filter((report) => report.final)).toEqual([]);
   const reconnecting = teo.getByRole("main", { name: "Stage" }).getByText("Reconnecting…");
   await expect(reconnecting).toBeVisible();
   await expect(ownersPicture).toBeVisible();
 
   route.release();
 
-  // A new media connection: Teo's webcam is live again with no picker, and he watches the owner's again.
+  // A new sending connection: Teo's webcam is live again with no picker. His watch of the
+  // owner's is on the receiving connection, which the reconnect left alone.
   await expect(reconnecting).toHaveCount(0);
-  await expect.poll(async () => (await fake(teo)).connections).toBe(2);
+  await expect.poll(async () => (await fake(teo)).connections).toEqual({ sending: 2, receiving: 1 });
   await expect(inBar(teo).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await expect(ownersPicture).toBeVisible();
+  expect(requests(route, "media", "answer")).toHaveLength(1);
   await expect(ownerHere.getByRole("button", { name: "Watch Teo's webcam" })).toBeVisible();
   // As after any reconnect, the owner's watching of it is not carried over.
   await expect(membersPicture).toHaveCount(0);

@@ -71,7 +71,7 @@ export type SharesChange =
 
 export type SharesRequest =
   /**
-   * Start a webcam share from this tab, over the tab's media connection (see the media
+   * Start a webcam share from this tab, over the tab's sending connection (see the media
    * area: the tab connects first). `offer` is the browser's SDP offer, and `video` the
    * mid of the transceiver that sends the camera.
    */

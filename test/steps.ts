@@ -11,7 +11,7 @@ import type {
 import { SETUP_SECRET, type TestBrowser, type TestInstance } from "./harness.ts";
 import type { Tab } from "./sockets.ts";
 import type { BrowserFamily } from "../src/shared/encoding.ts";
-import type { IceServer, LiveShare } from "../src/shared/socket/index.ts";
+import type { IceServer, LiveShare, MediaPurpose } from "../src/shared/socket/index.ts";
 
 /** What the setup page sends: the part of `/setup#<secret>` after the `#`. */
 export function useSetupSecret(browser: TestBrowser, secret = SETUP_SECRET, headers: HeadersInit = {}) {
@@ -113,11 +113,11 @@ export const FAKE_OFFER = "v=0 a stand-in offer";
 /** The mid the fake media client gives its camera's transceiver. */
 export const FAKE_VIDEO_MID = "0";
 
-/** Has `tab` make its media connection, and returns the relay it was handed. */
-export async function connectMedia(tab: Tab): Promise<IceServer[]> {
-  tab.send({ type: "media", request: { type: "connect" } });
+/** Has `tab` make its `connection`, sending or receiving, and returns the relay it was handed. */
+export async function connectMedia(tab: Tab, connection: MediaPurpose): Promise<IceServer[]> {
+  tab.send({ type: "media", request: { type: "connect", connection } });
   const connected = await tab.next();
-  if (connected.type !== "media" || connected.change.type !== "connected") {
+  if (connected.type !== "media" || connected.change.type !== "connected" || connected.change.connection !== connection) {
     throw new Error(`expected the media connection, got ${JSON.stringify(connected)}`);
   }
   return connected.change.iceServers;
@@ -141,7 +141,7 @@ export function stopWebcam(tab: Tab) {
  * connection, offer, and read the instance's answer, then the share going live.
  */
 export async function shareWebcam(tab: Tab) {
-  await connectMedia(tab);
+  await connectMedia(tab, "sending");
   startWebcam(tab);
   expect(await tab.next()).toEqual({
     type: "media",
@@ -229,7 +229,7 @@ export async function shareScreen(
   tab: Tab,
   { audio = true, browser = "chromium" as BrowserFamily, twoQualities = false } = {},
 ) {
-  await connectMedia(tab);
+  await connectMedia(tab, "sending");
   startScreen(tab, { audio: audio ? FAKE_AUDIO_MID : null, browser, twoQualities });
   expect(await tab.next()).toEqual({
     type: "media",

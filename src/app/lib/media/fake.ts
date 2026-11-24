@@ -1,20 +1,22 @@
 // The fake media client, for Seam 2: it captures nothing and connects nothing, so a
 // share has no picture and the browser asks for no camera and opens no picker. It still
-// makes a stand-in offer, with a new mid for each track as a real connection would, and
-// answers the media server's offers for the shares it watches, so the page goes through
-// every step the real client does. Its offers and answers are the size a real tab's are,
-// and grow with each share it watches as theirs do.
+// holds a sending and a receiving connection as the real one does (ADR 0005), makes a
+// stand-in offer on the sending one, with a new mid for each track as a real connection
+// would, and answers the media server's offers for the shares it watches on the
+// receiving one, so the page goes through every step the real client does. Its offers
+// and answers are the size a real tab's are, and grow with each share it sends or
+// watches as theirs do.
 //
 // A Seam 2 journey steers it through `window.graeaeFakeMedia` (`FakeMediaControl`): the
 // browser family, whether a Chromium screen share goes out at two qualities, what the
 // browser's picker returns, the browser ending a screen share by itself, the quality the
 // shares it watches arrive at, the statistics of the shares it
-// sends, which go through the same rule as the real client's, and the bytes its media
-// connection has received for the usage count, and how often the tab reports them. It is
-// in a build for Seam 2 only.
+// sends, which go through the same rule as the real client's, each connection's health,
+// and the bytes its receiving connection has received for the usage count, and how often
+// the tab reports them. It is in a build for Seam 2 only.
 
 import { encodingPlan, TWO_QUALITIES, type EncodingPlan, type QualityName } from "../../../shared/encoding.ts";
-import type { IceServer } from "../../../shared/socket/index.ts";
+import type { IceServer, MediaPurpose } from "../../../shared/socket/index.ts";
 import { USAGE_REPORT_EVERY_MS } from "../../../shared/socket/usage.ts";
 import { screenCapture, type BrowserFamily } from "./capture.ts";
 import type { Capture, MediaClient, MediaHealth, Offer } from "./client.ts";
@@ -36,6 +38,9 @@ const listeners = new Set<(quality: QualityName) => void>();
 /** Where a journey's statistics of each live share go. */
 const reading = new Map<Capture["kind"], ReturnType<typeof follow>>();
 
+/** Who hears how each connection is doing: nobody while it is not made. */
+const health: Record<MediaPurpose, (health: MediaHealth) => void> = { sending: () => undefined, receiving: () => undefined };
+
 /** The control, made on first use from whatever a journey set before the page loaded. */
 function control(): FakeMediaControl {
   const preset = window.graeaeFakeMedia ?? {};
@@ -48,12 +53,13 @@ function control(): FakeMediaControl {
       asked: [],
       screenAudio: null,
       endScreen: () => undefined,
-      falter: () => undefined,
-      fail: () => undefined,
-      recover: () => undefined,
-      connections: 0,
-      iceServers: null,
+      falter: (connection) => health[connection]("faltering"),
+      fail: (connection) => health[connection]("failed"),
+      recover: (connection) => health[connection]("fine"),
+      connections: { sending: 0, receiving: 0 },
+      iceServers: { sending: null, receiving: null },
       restarts: 0,
+      replacements: 0,
       restartFails: false,
       received: "1080p",
       bytes: 0,
@@ -79,15 +85,14 @@ interface FakeCapture extends Capture {
 }
 
 export class FakeMediaClient implements MediaClient {
+  /** The next mid an offer on the sending connection takes. */
   private nextMid = 0;
-  private connected = false;
-  /** Hears how the media connection is doing, while there is one. */
-  private health: (health: MediaHealth) => void = () => undefined;
+  private readonly connected: Record<MediaPurpose, boolean> = { sending: false, receiving: false };
   /** The capture of the last offer, followed once it is accepted. */
   private offered: Capture | null = null;
   /** The notes on each live share, for its sharer. */
   private readonly board = new NotesBoard<Capture>();
-  /** Mids the media server gave the shares this tab watches, which an offer of ours never takes. */
+  /** Mids the media server gave the shares this tab watches, on the receiving connection. */
   private readonly pulled = new Set<string>();
 
   constructor() {
@@ -119,42 +124,55 @@ export class FakeMediaClient implements MediaClient {
     return screen;
   }
 
-  connect(iceServers: IceServer[], health: (health: MediaHealth) => void) {
-    this.connected = true;
-    this.health = health;
+  connect(connection: MediaPurpose, iceServers: IceServer[], heard: (health: MediaHealth) => void) {
+    this.reset(connection);
+    this.connected[connection] = true;
+    health[connection] = heard;
     const fake = control();
-    fake.connections += 1;
-    fake.iceServers = iceServers;
-    fake.falter = () => health("faltering");
-    fake.fail = () => health("failed");
-    fake.recover = () => health("fine");
+    fake.connections = { ...fake.connections, [connection]: fake.connections[connection] + 1 };
+    fake.iceServers = { ...fake.iceServers, [connection]: iceServers };
   }
 
-  reset() {
-    this.connected = false;
+  replace(iceServers: IceServer[], heard: (health: MediaHealth) => void) {
+    this.connect("receiving", iceServers, heard);
     const fake = control();
-    fake.iceServers = null;
-    this.health = () => undefined;
-    fake.falter = () => undefined;
-    fake.fail = () => undefined;
-    fake.recover = () => undefined;
+    fake.replacements += 1;
+    // A new connection's transport counts from zero.
+    fake.bytes = 0;
+  }
+
+  retire() {}
+
+  reset(connection: MediaPurpose) {
+    this.connected[connection] = false;
+    const fake = control();
+    fake.iceServers = { ...fake.iceServers, [connection]: null };
+    health[connection] = () => undefined;
+    if (connection === "receiving") {
+      this.pulled.clear();
+      return;
+    }
     this.nextMid = 0;
-    this.pulled.clear();
     for (const kind of [...reading.keys()]) this.unfollow(kind);
     this.offered = null;
   }
 
-  renew(iceServers: IceServer[]) {
-    if (this.connected) control().iceServers = iceServers;
+  renew(connection: MediaPurpose, iceServers: IceServer[]) {
+    const fake = control();
+    if (this.connected[connection]) fake.iceServers = { ...fake.iceServers, [connection]: iceServers };
+  }
+
+  async relayed(connection: MediaPurpose): Promise<boolean> {
+    return this.connected[connection] && control().relayed;
   }
 
   async restart(iceServers: IceServer[]): Promise<{ sdp: string; mid: string }> {
-    if (!this.connected) throw new Error("The media connection is not made yet");
+    if (!this.connected.sending) throw new Error("The sending connection is not made yet");
     const fake = control();
-    fake.iceServers = iceServers;
+    fake.iceServers = { ...fake.iceServers, sending: iceServers };
     fake.restarts += 1;
     const mid = this.mid();
-    return { sdp: this.standIn("a stand-in offer restarting ICE"), mid };
+    return { sdp: this.standIn("a stand-in offer restarting ICE", this.nextMid), mid };
   }
 
   async abandonRestart() {}
@@ -163,7 +181,7 @@ export class FakeMediaClient implements MediaClient {
     void answer;
     if (control().restartFails) throw new Error("The fake was told the restart fails");
     // As a real connection's state goes back to "connected"; one already fine hears nothing new.
-    this.health("fine");
+    health.sending("fine");
   }
 
   async offer(capture: Capture): Promise<Offer> {
@@ -171,7 +189,7 @@ export class FakeMediaClient implements MediaClient {
     this.offered = capture;
     const video = this.mid();
     const audio = capture.audio ? this.mid() : undefined;
-    return { sdp: this.standIn(`a stand-in offer for a ${capture.kind}`), video, ...(audio === undefined ? {} : { audio }) };
+    return { sdp: this.standIn(`a stand-in offer for a ${capture.kind}`, this.nextMid), video, ...(audio === undefined ? {} : { audio }) };
   }
 
   async accept(answer: string) {
@@ -211,7 +229,8 @@ export class FakeMediaClient implements MediaClient {
     void offer;
     this.pulled.add(video);
     if (audio !== undefined) this.pulled.add(audio);
-    return { answer: this.standIn("a stand-in answer"), stream: null };
+    const sections = Math.max(...[...this.pulled].map(Number)) + 1;
+    return { answer: this.standIn("a stand-in answer", sections), stream: null };
   }
 
   received(video: string, heard: (quality: QualityName | null) => void): () => void {
@@ -222,7 +241,7 @@ export class FakeMediaClient implements MediaClient {
   }
 
   async transport(): Promise<TransportTotals | null> {
-    return this.connected ? { received: control().bytes, relayed: control().relayed } : null;
+    return this.connected.receiving ? { received: control().bytes, relayed: control().relayed } : null;
   }
 
   get reportEvery(): number {
@@ -244,25 +263,23 @@ export class FakeMediaClient implements MediaClient {
   }
 
   close() {
-    this.connected = false;
-    for (const kind of [...reading.keys()]) this.unfollow(kind);
+    this.reset("sending");
+    this.reset("receiving");
   }
 
-  /** The lowest mid this tab's offers have not used, and not given to a pull. */
+  /** The lowest mid the sending connection's offers have not used. */
   private mid(): string {
-    while (this.pulled.has(String(this.nextMid))) this.nextMid++;
     return String(this.nextMid++);
   }
 
   /**
-   * A stand-in SDP the size a real one is: a media section for every mid the connection
-   * has used, since a pull's sections stay on it once the pull ends. So it grows as a
+   * A stand-in SDP the size a real one is: a media section for each of the connection's
+   * `sections`, since a section stays on it once its share or pull ends. So it grows as a
    * real tab's does, some 2,340 bytes a screen share with sound watched (ticket 56).
    */
-  private standIn(what: string): string {
-    const mids = this.nextMid + [...this.pulled].filter((mid) => Number(mid) >= this.nextMid).length;
+  private standIn(what: string, sections: number): string {
     let sdp = `v=0\r\ns=${what}\r\n`;
-    for (let mid = 0; mid < mids; mid++) sdp += standInSection(mid);
+    for (let mid = 0; mid < sections; mid++) sdp += standInSection(mid);
     return sdp;
   }
 }

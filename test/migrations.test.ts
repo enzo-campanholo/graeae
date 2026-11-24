@@ -151,7 +151,7 @@ describe("the watches migration", () => {
     const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
     const { tab: ownerTab, state } = await openRoom(owner, room);
     expect(state.watching).toEqual({ stage: [], watchers: [], qualities: [] });
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     expect(instance.media.connections()[1]).toHaveLength(1);
   });
@@ -176,7 +176,7 @@ describe("the two-qualities migration", () => {
     const { tab: ownerTab, state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([{ ...biasScreen, audio: true, twoQualities: true }]);
     expect(state.watching).toEqual({ stage: [], watchers: [], qualities: [] });
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasScreen);
     ownerTab.send({ type: "watching", request: { type: "quality", share: biasScreen, quality: "720p" } });
     expect(await ownerTab.next()).toEqual({
@@ -207,7 +207,7 @@ describe("the usage migration", () => {
     const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
     const { tab: ownerTab, state } = await openRoom(owner, room);
     expect(state.shares.live).toEqual([biasWebcam]);
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     ownerTab.send({ type: "usage", request: { type: "received", bytes: 1_000_000, relayed: false } });
     await ownerTab.heartbeat();
@@ -237,7 +237,7 @@ describe("the a-share-ending migration", () => {
     await shareWebcam(biaTab);
     const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
     expect(await ownerTab.next()).toEqual({ type: "shares", change: { type: "started", share: biasWebcam } });
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await biaTab.next(); // the owner is watching
 
@@ -248,5 +248,49 @@ describe("the a-share-ending migration", () => {
     expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
     expect((await openRoom(owner, room)).state.shares.live).toEqual([]);
     close.release();
+  });
+});
+
+describe("the a-connection-for-each-purpose migration", () => {
+  const added = migrations.find((migration) => migration.name === "a-connection-for-each-purpose")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  // Nothing of media can be made on the older schema with today's code, which names each
+  // connection's purpose: the shares and watches come after the restart.
+  it("starts an instance that already has members, rooms and a budget, who can then share and watch on two connections", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const set = await owner.fetch("/api/owner/usage/budget", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gigabytes: 50 }),
+    });
+    expect(set.status).toBe(200);
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 0, budget: 50_000_000_000 });
+    const { tab: ownerTab, state: ownerState } = await openRoom(owner, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    const ownersWebcam = { member: ownerState.people.you.id, kind: "webcam" as const };
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
+    await shareWebcam(ownerTab);
+    await biaTab.next(); // the owner's webcam went live
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // Bia's went live
+    await connectMedia(ownerTab, "receiving");
+    await watch(ownerTab, biasWebcam);
+    await biaTab.next(); // the owner is watching
+    await connectMedia(biaTab, "receiving");
+    await watch(biaTab, ownersWebcam);
+
+    expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 1, 1, 1]);
+    ownerTab.send({ type: "usage", request: { type: "received", bytes: 1_000_000, relayed: false } });
+    await ownerTab.heartbeat();
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_000_000 });
   });
 });

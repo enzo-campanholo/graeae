@@ -60,7 +60,7 @@ async function secondDevice(
 ) {
   const { other } = await addSecondBrowser(instance, browser);
   const { tab } = await openRoom(other, room);
-  await connectMedia(tab);
+  await connectMedia(tab, "receiving");
   for (const already of open) await settle(already);
   return { browser: other, tab };
 }
@@ -82,7 +82,7 @@ async function settle(tab: Tab) {
 describe("watching a share", () => {
   it("pulls the share's track to the viewer's media connection and puts it on their stage", async () => {
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
 
     const video = await watch(ownerTab, biasWebcam);
 
@@ -96,7 +96,7 @@ describe("watching a share", () => {
     // grows some 2,340 bytes a share. One a tab sent after 28 shares (ticket 56) was
     // 67,091 bytes; this is one after some 200.
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     startWatching(ownerTab, biasWebcam);
     expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled" } });
     expect(await ownerTab.next()).toMatchObject({ type: "watching", change: { type: "watched" } });
@@ -122,7 +122,7 @@ describe("watching a share", () => {
     await shareWebcam(caioTab);
     await settle(ownerTab); // Caio's webcam went live
     await settle(biaTab);
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     const caios = await watch(ownerTab, caiosWebcam);
 
@@ -135,7 +135,7 @@ describe("watching a share", () => {
 
   it("can watch the same share again once it stopped watching it", async () => {
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     stopWatching(ownerTab, biasWebcam);
     await ownerTab.next(); // unwatched
@@ -147,7 +147,7 @@ describe("watching a share", () => {
 
   it("belongs to the device: two devices of one member have separate stages", async () => {
     const { instance, owner, room, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const laptop = await secondDevice(instance, owner, room, [ownerTab, biaTab]);
 
     await watch(ownerTab, biasWebcam);
@@ -166,7 +166,7 @@ describe("watching a share", () => {
 
   it("never hands a browser a media server identifier", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     stopWatching(ownerTab, biasWebcam);
     await ownerTab.next(); // unwatched
@@ -183,7 +183,7 @@ describe("watching a share", () => {
 describe("who is watching", () => {
   it("is told to the sharer, and to nobody else", async () => {
     const { ownerTab, biaTab, caioTab, ownerId, biasWebcam } = await caioToo();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
 
     await watch(ownerTab, biasWebcam);
 
@@ -198,7 +198,7 @@ describe("who is watching", () => {
 
   it("is in the room's state for the sharer's tab that opens later, and for nobody else's", async () => {
     const { owner, bia, room, ownerTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
 
     const { state: biasLater } = await openRoom(bia, room);
@@ -210,8 +210,8 @@ describe("who is watching", () => {
 
   it("names the members in the order they began watching", async () => {
     const { ownerTab, biaTab, caioTab, ownerId, caioId, biasWebcam } = await caioToo();
-    await connectMedia(caioTab);
-    await connectMedia(ownerTab);
+    await connectMedia(caioTab, "receiving");
+    await connectMedia(ownerTab, "receiving");
 
     await watch(caioTab, biasWebcam);
     await watch(ownerTab, biasWebcam);
@@ -225,7 +225,7 @@ describe("who is watching", () => {
 
   it("names a member once however many devices they watch on", async () => {
     const { instance, owner, room, ownerTab, biaTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const laptop = await secondDevice(instance, owner, room, [ownerTab, biaTab]);
 
     await watch(ownerTab, biasWebcam);
@@ -269,7 +269,7 @@ describe("a watch request", () => {
 
   it("cannot be asked from a device the instance has forgotten: its open tab is cut off", async () => {
     const { instance, ownerTab } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     // Using the setup secret again forgets every other device of the owner's.
     await setUpOwner(instance.browser());
 
@@ -283,7 +283,7 @@ describe("a watch request", () => {
     const elsewhere = await createRoom(owner, "Late shift");
     await ownerTab.next(); // the owner has a second room
     const { tab: elsewhereTab } = await openRoom(owner, `/r/${elsewhere}`);
-    await connectMedia(elsewhereTab);
+    await connectMedia(elsewhereTab, "receiving");
 
     startWatching(elsewhereTab, biasWebcam);
 
@@ -293,7 +293,7 @@ describe("a watch request", () => {
 
   it("is refused for a share that is not live", async () => {
     const { instance, ownerTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const nobodys: LiveShare = { member: ownerId, kind: "screen" };
 
     startWatching(ownerTab, nobodys);
@@ -303,15 +303,15 @@ describe("a watch request", () => {
     const heard = [await ownerTab.next(), await ownerTab.next(), await ownerTab.next()];
     expect(heard).toContainEqual({ type: "media", change: { type: "pull-refused", share: nobodys } });
     expect(heard).toContainEqual({ type: "media", change: { type: "pull-refused", share: { ...biasWebcam, kind: "screen" } } });
-    expect(heard).toContainEqual({ type: "media", change: { type: "dropped" } });
+    expect(heard).toContainEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
     expect(instance.media.connections()[1]).toEqual([]);
   });
 
   it("is refused for a share that is still starting", async () => {
     const { instance, owner, room, ownerTab, ownerId } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "sending");
     const { tab: second } = await openRoom(owner, room);
-    await connectMedia(second);
+    await connectMedia(second, "sending");
     const publish = instance.media.hold("publish");
     startWebcam(ownerTab);
     await publish.reached;
@@ -334,21 +334,21 @@ describe("a watch request", () => {
 
   it("is refused when the media server fails the pull, and can be made again", async () => {
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     instance.media.fail("pull");
 
     startWatching(ownerTab, biasWebcam);
 
     expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
     // Its connection then carries nothing, so the tab makes a new one before it tries again.
-    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
-    await connectMedia(ownerTab);
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
   });
 
   it("writes its record before the media server is called, so asking twice pulls once", async () => {
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const pull = instance.media.hold("pull");
 
     startWatching(ownerTab, biasWebcam);
@@ -365,7 +365,7 @@ describe("a watch request", () => {
 
   it("leaves no pull behind when the tab leaves while the media server is answering", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const pull = instance.media.hold("pull", { done: true });
     startWatching(ownerTab, biasWebcam);
     await pull.reached;
@@ -382,7 +382,7 @@ describe("a watch request", () => {
 
   it("leaves no pull behind when the share ends while the media server is answering", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     const pull = instance.media.hold("pull", { done: true });
     startWatching(ownerTab, biasWebcam);
     await pull.reached;
@@ -400,7 +400,7 @@ describe("a watch request", () => {
 describe("stopping watching", () => {
   it("force-closes the pull, and keeps the record until the close returns", async () => {
     const { instance, bia, room, ownerTab, biaTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await biaTab.next(); // the owner is watching
     const close = instance.media.hold("close");
@@ -418,7 +418,7 @@ describe("stopping watching", () => {
 
   it("keeps the share on the stage when the forced close fails, so no pull is lost track of", async () => {
     const { instance, ownerTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     instance.media.fail("close");
 
@@ -431,7 +431,7 @@ describe("stopping watching", () => {
 
   it("force-closes the watching of a viewer's tab that leaves cleanly", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await biaTab.next(); // the owner is watching
 
@@ -446,8 +446,8 @@ describe("stopping watching", () => {
 describe("a share's end", () => {
   it("force-closes every watch of it, and takes it off each viewer's stage", async () => {
     const { instance, ownerTab, biaTab, caioTab, biasWebcam } = await caioToo();
-    await connectMedia(ownerTab);
-    await connectMedia(caioTab);
+    await connectMedia(ownerTab, "receiving");
+    await connectMedia(caioTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await watch(caioTab, biasWebcam);
 
@@ -462,7 +462,7 @@ describe("a share's end", () => {
 
   it("closes the share's own tracks before the pulls of it", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     const close = instance.media.hold("close");
 
@@ -479,7 +479,7 @@ describe("a share's end", () => {
 
   it("comes with the sharer's clean leave, closing every watch of what they shared", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
 
     await biaTab.close();
@@ -494,7 +494,7 @@ describe("a share's end", () => {
 describe("watching", () => {
   it("survives a restart of the instance, with its pull still open", async () => {
     const { instance, bia, room, ownerTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
 
     await instance.restart();
@@ -516,7 +516,7 @@ describe("a viewer's lost connection", () => {
 
   it("keeps the watching through the grace period, and a reconnect finds the stage as it was", async () => {
     const { instance, owner, room, ownerTab, biaTab, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await ownerTab.drop();
     await pass(instance, 25_000, [biaTab]);
@@ -529,7 +529,7 @@ describe("a viewer's lost connection", () => {
 
   it("force-closes the watching when the grace period runs out", async () => {
     const { instance, ownerTab, biaTab, ownerId, biasWebcam } = await biaSharing();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, biasWebcam);
     await ownerTab.drop();
 

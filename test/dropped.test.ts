@@ -42,7 +42,7 @@ async function biaSharing() {
   await shareWebcam(biaTab);
   await ownerTab.next(); // her webcam started
   const webcam = { member: biaId, kind: "webcam" as const };
-  await connectMedia(ownerTab);
+  await connectMedia(ownerTab, "receiving");
   await watch(ownerTab, webcam);
   await biaTab.next(); // the owner is watching
   return { instance, owner, room, bia, biaId, webcam, ownerTab, biaTab };
@@ -64,7 +64,7 @@ describe("a sharer whose connection drops", () => {
     expect(ownerTab.queued().filter((message) => message.type === "watching")).toEqual([]);
     expect(caioTab.queued()).toEqual(marks);
     caioTab.queued().forEach(() => void caioTab.next());
-    await connectMedia(caioTab);
+    await connectMedia(caioTab, "receiving");
     await watch(caioTab, webcam);
     expect(instance.media.connections()).toEqual([
       [expect.objectContaining({ mid: "0" })],
@@ -122,7 +122,7 @@ describe("the mark on a share's icon", () => {
 
     const { tab: again, state } = await openRoom(bia, room, { tab });
 
-    expect(again.received()[0]).toMatchObject({ type: "state", tab, media: { connected: true, sending: ["webcam"] } });
+    expect(again.received()[0]).toMatchObject({ type: "state", tab, media: { connected: ["sending"], sending: ["webcam"] } });
     expect(state.shares.live).toEqual([webcam]);
     expect(state.watching.watchers).toEqual([{ share: webcam, members: [expect.any(String)] }]);
     await biaTab.closed();
@@ -140,7 +140,7 @@ describe("the mark on a share's icon", () => {
 
     const { tab: other } = await openRoom(owner, room, { tab });
 
-    expect(other.received()[0]).toMatchObject({ type: "state", media: { connected: false, sending: [] } });
+    expect(other.received()[0]).toMatchObject({ type: "state", media: { connected: [], sending: [] } });
     expect(other.received()[0]).not.toMatchObject({ tab });
     await biaTab.heartbeat();
     await ownerTab.heartbeat();
@@ -163,7 +163,7 @@ describe("a tab's media connection across a reconnect", () => {
   it("is not there for a tab that opens the room afresh", async () => {
     const { owner, room } = await biaSharing();
     const { tab } = await openRoom(owner, room);
-    expect(tab.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+    expect(tab.received()[0]).toMatchObject({ type: "state", media: { connected: [] } });
   });
 
   it("is still there for a tab that reconnects in time, which keeps its stage", async () => {
@@ -173,7 +173,7 @@ describe("a tab's media connection across a reconnect", () => {
 
     const { tab: again, state } = await openRoom(owner, room, { tab: ownerTab.id });
 
-    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: ["receiving"] } });
     expect(state.watching.stage).toEqual([webcam]);
   });
 
@@ -186,9 +186,9 @@ describe("a tab's media connection across a reconnect", () => {
     const { tab: fresh, state } = await openRoom(owner, room);
 
     expect(fresh.id).not.toEqual(ownerTab.id);
-    expect(fresh.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+    expect(fresh.received()[0]).toMatchObject({ type: "state", media: { connected: [] } });
     expect(state.watching.stage).toEqual([]);
-    await connectMedia(fresh);
+    await connectMedia(fresh, "receiving");
     await watch(fresh, webcam);
   });
 
@@ -199,9 +199,9 @@ describe("a tab's media connection across a reconnect", () => {
 
     const { tab: again, state } = await openRoom(owner, room);
 
-    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: false } });
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: [] } });
     expect(state.watching.stage).toEqual([]);
-    await connectMedia(again);
+    await connectMedia(again, "receiving");
     await watch(again, webcam);
   });
 
@@ -210,17 +210,17 @@ describe("a tab's media connection across a reconnect", () => {
     const { other: laptop } = await addSecondBrowser(instance, bia);
     const { tab: laptopTab } = await openRoom(laptop, room);
     const made = instance.media.hold("connect", { done: true });
-    laptopTab.send({ type: "media", request: { type: "connect" } });
+    laptopTab.send({ type: "media", request: { type: "connect", connection: "receiving" } });
     await made.reached;
     await laptopTab.drop();
     made.release();
     await biaTab.heartbeat();
 
     const { tab: again } = await openRoom(laptop, room, { tab: laptopTab.id });
-    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: true } });
+    expect(again.received()[0]).toMatchObject({ type: "state", media: { connected: ["receiving"] } });
 
     // It never heard the answer, so it asks again, and this time it hears one.
-    const iceServers = await connectMedia(again);
+    const iceServers = await connectMedia(again, "receiving");
     expect(iceServers.length).toBeGreaterThan(0);
   });
 });
@@ -249,7 +249,7 @@ describe("media that falters while the signaling connection is fine", () => {
     await vi.waitFor(() => expect(instance.media.connections().flat()).toEqual([]));
 
     // Its media connection failed and now carries nothing: the instance lets go of it, and the tab makes a new one.
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
     await shareWebcam(biaTab);
     expect(instance.media.credentials()).toHaveLength(3);
   });
@@ -262,7 +262,7 @@ describe("media that falters while the signaling connection is fine", () => {
     // The owner shares nothing, so nothing ends, and the owner still watches Bia's webcam.
     expect(ownerTab.queued()).toEqual([]);
     expect(biaTab.queued()).toEqual([]);
-    ownerTab.send({ type: "media", request: { type: "connect" } });
+    ownerTab.send({ type: "media", request: { type: "connect", connection: "receiving" } });
     stopWatching(ownerTab, webcam);
     expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: webcam } });
   });
@@ -301,7 +301,7 @@ describe("a sharer who returns after the grace period ran out", () => {
     expect(ownerTab.queued()).toContainEqual({ type: "watching", change: { type: "unwatched", share: webcam } });
 
     const { tab: again, state } = await openRoom(bia, room);
-    expect(again.received()[0]).toMatchObject({ media: { connected: false } });
+    expect(again.received()[0]).toMatchObject({ media: { connected: [] } });
     expect(state.shares.live).toEqual([]);
     await shareWebcam(again);
 
@@ -322,7 +322,7 @@ describe("a sharer who returns after the grace period ran out", () => {
 
     const { tab: again, state } = await openRoom(bia, room);
     expect(state.shares.live).toEqual([{ member: biaId, kind: "webcam" }]);
-    await connectMedia(again);
+    await connectMedia(again, "sending");
     startWebcam(again);
     expect(await again.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
   });

@@ -4,7 +4,7 @@ import type { FakeMediaControl } from "../../src/app/lib/media/fake-control.ts";
 import { inBar, SETUP_SECRET } from "./app.ts";
 
 // Usage: what a watching tab reports, and the owner's meter. The media is fake: a journey
-// says what the tab's media connection has received. Journeys share one instance, so the
+// says what the tab's receiving connection has received. Journeys share one instance, so the
 // meter is read for how much it rises, not for what it shows. Members Lia and Nell are
 // this file's alone.
 
@@ -43,7 +43,7 @@ async function ownerAndSharer(browser: Browser, baseURL: string | undefined, nam
   return { owner, ownerContext, member };
 }
 
-/** Says what `page`'s media connection has received since it opened, and whether it is on the relay. */
+/** Says what `page`'s receiving connection has received since it opened, and whether it is on the relay. */
 async function received(page: Page, bytes: number, relayed = false) {
   await page.evaluate(
     ([bytes, relayed]) => {
@@ -75,7 +75,7 @@ async function meterReading(page: Page): Promise<number> {
   return Number(await meter.getAttribute("aria-valuenow"));
 }
 
-test("a tab reports what its media connection has received, and its final total when the connection is dropped", async ({
+test("a tab reports what its receiving connection has received, and a tab that only shares reports nothing", async ({
   browser,
   baseURL,
 }) => {
@@ -92,22 +92,19 @@ test("a tab reports what its media connection has received, and its final total 
   await received(owner, 5_000, true);
   await expect.poll(() => sent, { timeout: 10_000 }).toContainEqual({ type: "received", bytes: 5_000, relayed: true });
 
-  // Lia's media connection, which only sends, falters until the instance drops it with
-  // her share: her tab sends its final total first, and nothing more of that connection.
+  // Lia only shares, so her tab has no receiving connection and reports nothing: a
+  // sharer's upload is not counted. Nor when her sending connection falters until the
+  // instance drops it with her share.
   const fromLia = reports(lia);
   await lia.reload();
   await inBar(lia).getByRole("button", { name: "Share webcam" }).click();
   await expect(inBar(lia).getByRole("button", { name: "Webcam live" })).toBeDisabled();
   await received(lia, 700);
-  await expect.poll(() => fromLia, { timeout: 10_000 }).toContainEqual({ type: "received", bytes: 700, relayed: false });
-  await lia.evaluate(() => (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.falter());
-  await expect(inBar(lia).getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
-  await expect
-    .poll(() => fromLia.at(-1), { timeout: 5_000 })
-    .toEqual({ type: "received", bytes: 700, relayed: false, final: true });
-  const count = fromLia.length;
   await lia.waitForTimeout(6_000);
-  expect(fromLia).toHaveLength(count);
+  await lia.evaluate(() => (globalThis as unknown as { graeaeFakeMedia: FakeMediaControl }).graeaeFakeMedia.falter("sending"));
+  await expect(inBar(lia).getByRole("button", { name: "Share webcam" })).toBeEnabled({ timeout: 45_000 });
+  await lia.waitForTimeout(6_000);
+  expect(fromLia).toEqual([]);
 
   await lia.close();
   await owner.close();

@@ -42,7 +42,7 @@ async function ownerConnected(relayLives = SHORT) {
   const owner = instance.browser();
   const room = await setUpOwner(owner);
   const { tab } = await openRoom(owner, room);
-  const first = await connectMedia(tab);
+  const first = await connectMedia(tab, "receiving");
   return { instance, owner, room, tab, first };
 }
 
@@ -51,14 +51,14 @@ describe("the fresh credential", () => {
     const instance = await startInstance();
     const owner = instance.browser();
     const { tab } = await openRoom(owner, await setUpOwner(owner));
-    const first = await connectMedia(tab);
+    const first = await connectMedia(tab, "receiving");
 
     await pass(instance, 11 * HOUR - 10 * SECOND, [tab]);
     expect(mediaChanges(tab)).toEqual([]);
     await pass(instance, 10 * SECOND, [tab]);
 
     const changes = mediaChanges(tab);
-    expect(changes).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(changes).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
     const fresh = changes[0]!.type === "renewed" ? changes[0]!.iceServers : [];
     expect(fresh).not.toEqual(first);
     expect(instance.media.credentials()).toEqual([
@@ -71,11 +71,11 @@ describe("the fresh credential", () => {
     const { instance, tab } = await ownerConnected();
 
     await pass(instance, 11 * MINUTE, [tab]);
-    expect(mediaChanges(tab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(tab)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
     await pass(instance, 11 * MINUTE - 10 * SECOND, [tab]);
     expect(mediaChanges(tab)).toEqual([]);
     await pass(instance, 10 * SECOND, [tab]);
-    expect(mediaChanges(tab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(tab)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
     expect(instance.media.credentials().map((credential) => credential.ttlSeconds)).toEqual([720, 720, 720]);
   });
 
@@ -84,14 +84,14 @@ describe("the fresh credential", () => {
     const { browser: bia } = await addMember(instance, owner, "Bia");
     await pass(instance, 3 * MINUTE, [ownerTab]);
     const { tab: biaTab } = await openRoom(bia, room);
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "receiving");
 
     await pass(instance, 8 * MINUTE, [ownerTab, biaTab]);
-    expect(mediaChanges(ownerTab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(ownerTab)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
     expect(mediaChanges(biaTab)).toEqual([]);
     await pass(instance, 3 * MINUTE, [ownerTab, biaTab]);
     expect(mediaChanges(ownerTab)).toEqual([]);
-    expect(mediaChanges(biaTab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(biaTab)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
   });
 
   it("goes to a tab that was lost when it came due once it is back within its grace period", async () => {
@@ -104,7 +104,7 @@ describe("the fresh credential", () => {
     expect(state.people.you.owner).toBe(true);
     await instance.clock.advance(0);
     await back.heartbeat();
-    expect(mediaChanges(back)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(back)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
   });
 
   it("is tried again a minute later when the relay refuses it", async () => {
@@ -114,7 +114,7 @@ describe("the fresh credential", () => {
     await pass(instance, 11 * MINUTE + 50 * SECOND, [tab]);
     expect(mediaChanges(tab)).toEqual([]);
     await pass(instance, 10 * SECOND, [tab]);
-    expect(mediaChanges(tab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(tab)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
   });
 
   it("is not owed to a tab whose grace period ran out: its new connection has a new credential, renewed 11 minutes on", async () => {
@@ -125,7 +125,7 @@ describe("the fresh credential", () => {
 
     const { tab: again, state } = await openRoom(owner, room);
     expect(state).toBeDefined();
-    const fresh = await connectMedia(again);
+    const fresh = await connectMedia(again, "receiving");
     expect(instance.media.credentials()).toEqual([
       expect.anything(),
       { iceServers: fresh, ttlSeconds: 12 * 60 },
@@ -136,7 +136,7 @@ describe("the fresh credential", () => {
     expect(mediaChanges(again)).toEqual([]);
     // 11 minutes after the new one.
     await pass(instance, 5 * MINUTE + 25 * SECOND, [again]);
-    expect(mediaChanges(again)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(again)).toEqual([{ type: "renewed", connection: "receiving", iceServers: expect.any(Array) }]);
     expect(instance.media.credentials()).toHaveLength(3);
   });
 });
@@ -156,8 +156,10 @@ async function bothSharingAndWatching(relayLives = SHORT) {
   await biaTab.next(); // the owner's webcam started
   await shareWebcam(biaTab);
   await ownerTab.next(); // Bia's webcam started
+  await connectMedia(ownerTab, "receiving");
   await watch(ownerTab, biaWebcam);
   await biaTab.next(); // the owner watches
+  await connectMedia(biaTab, "receiving");
   await watch(biaTab, ownerWebcam);
   await ownerTab.next(); // Bia watches
   return { instance, owner, room, bia, ownerTab, biaTab, ownerWebcam, biaWebcam };
@@ -202,7 +204,7 @@ describe("a restart on the relay", () => {
 });
 
 describe("the reconnect after a failed restart", () => {
-  it("ends what the tab's media connection carried and lets it go, so the tab can make a new one", async () => {
+  it("ends what the tab's sending connection carried and lets it go, so the tab can make a new one", async () => {
     const { instance, ownerTab, biaTab, ownerWebcam, biaWebcam } = await bothSharingAndWatching();
 
     biaTab.send({ type: "media", request: { type: "reconnect" } });
@@ -210,45 +212,42 @@ describe("the reconnect after a failed restart", () => {
     // Last, once everything on it is closed, the tab hears its connection is let go of.
     await biaTab.heartbeat();
     const heard = biaTab.queued();
-    expect(heard.at(-1)).toEqual({ type: "media", change: { type: "dropped" } });
-    expect(heard).toEqual(
-      expect.arrayContaining([
-        { type: "watching", change: { type: "unwatched", share: ownerWebcam } },
-        { type: "shares", change: { type: "ended", share: biaWebcam } },
-      ]),
-    );
+    expect(heard.at(-1)).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
+    expect(heard).toEqual(expect.arrayContaining([{ type: "shares", change: { type: "ended", share: biaWebcam } }]));
+    // Her watch is on her receiving connection, which is left alone.
+    expect(heard).not.toContainEqual({ type: "watching", change: { type: "unwatched", share: ownerWebcam } });
     heard.forEach(() => void biaTab.next());
     expect(ownerTab.queued()).toEqual(
       expect.arrayContaining([
         { type: "watching", change: { type: "unwatched", share: biaWebcam } },
         { type: "shares", change: { type: "ended", share: biaWebcam } },
-        { type: "watching", change: { type: "watchers", share: ownerWebcam, members: [] } },
       ]),
     );
-    // Only the owner's webcam is left open, on the owner's connection.
-    expect(instance.media.connections().flat()).toEqual([expect.objectContaining({ mid: "0" })]);
+    // Left open: the owner's webcam, and Bia's pull of it.
+    expect(instance.media.connections().flat()).toHaveLength(2);
 
-    // The tab makes a new connection, with a new credential, and shares and watches again.
-    const fresh = await connectMedia(biaTab);
+    // The tab makes a new sending connection, with a new credential, and shares again.
+    const fresh = await connectMedia(biaTab, "sending");
     expect(instance.media.credentials().at(-1)).toEqual({ iceServers: fresh, ttlSeconds: 12 * 60 });
     startWebcam(biaTab);
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published", kind: "webcam" } });
     expect(await biaTab.next()).toEqual({ type: "shares", change: { type: "started", share: biaWebcam } });
-    await watch(biaTab, ownerWebcam);
+    expect(instance.media.connections().flat()).toHaveLength(3);
   });
 
-  it("starts a new 11 minutes from the new connection", async () => {
+  it("starts a new 11 minutes from the new sending connection, and keeps the receiving one's", async () => {
     const { instance, ownerTab, biaTab } = await bothSharingAndWatching();
     await pass(instance, 5 * MINUTE, [ownerTab, biaTab]);
     biaTab.send({ type: "media", request: { type: "reconnect" } });
     await pass(instance, 9 * SECOND, [ownerTab, biaTab]);
     mediaChanges(biaTab);
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
 
     await pass(instance, 6 * MINUTE + 9 * SECOND, [ownerTab, biaTab]);
-    expect(mediaChanges(ownerTab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
-    expect(mediaChanges(biaTab)).toEqual([]);
+    const renewed = (connection: string) => ({ type: "renewed", connection, iceServers: expect.any(Array) });
+    expect(mediaChanges(ownerTab)).toEqual(expect.arrayContaining([renewed("sending"), renewed("receiving")]));
+    expect(mediaChanges(biaTab)).toEqual([renewed("receiving")]);
     await pass(instance, 5 * MINUTE, [ownerTab, biaTab]);
-    expect(mediaChanges(biaTab)).toEqual([{ type: "renewed", iceServers: expect.any(Array) }]);
+    expect(mediaChanges(biaTab)).toEqual([renewed("sending")]);
   });
 });

@@ -64,7 +64,7 @@ async function biaSharing() {
   await shareWebcam(biaTab);
   const [oldTrack] = openNames(instance);
   await settle(ownerTab); // her webcam started
-  await connectMedia(ownerTab);
+  await connectMedia(ownerTab, "receiving");
   await watch(ownerTab, webcam);
   await settle(biaTab); // the owner is watching
   return { instance, owner, room, bia, webcam, ownerTab, biaTab, oldTrack: oldTrack! };
@@ -170,7 +170,7 @@ describe("a share whose end has begun", () => {
     const { browser: caio } = await addMember(instance, owner, "Caio");
     const { tab: caioTab } = await openRoom(caio, room);
     await settle(ownerTab); // Caio arrived
-    await connectMedia(caioTab);
+    await connectMedia(caioTab, "receiving");
     const close = instance.media.hold("close");
 
     stopWebcam(biaTab);
@@ -220,7 +220,7 @@ describe("a start or watch that does not go live", () => {
   it("lets go of the media connection after a plain first start refused for the member's share live from another tab", async () => {
     const { instance, room, bia, webcam, biaTab } = await biaSharing();
     const { tab } = await openRoom(bia, room);
-    await connectMedia(tab);
+    await connectMedia(tab, "sending");
     const before = instance.media.connections().length;
 
     startWebcam(tab);
@@ -228,7 +228,7 @@ describe("a start or watch that does not go live", () => {
       type: "media",
       change: { type: "refused", kind: "webcam" },
     });
-    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
 
     // Once the other tab's share has ended, this one shares on a new connection.
     stopWebcam(biaTab);
@@ -242,13 +242,13 @@ describe("a start or watch that does not go live", () => {
   it("lets go of the media connection after a refused first start, so the next connect makes a new one", async () => {
     const { instance, owner, room } = await biaSharing();
     const { tab } = await openRoom(owner, room);
-    await connectMedia(tab);
+    await connectMedia(tab, "sending");
     const before = instance.media.connections().length;
     instance.media.fail("publish");
 
     startWebcam(tab);
     expect(await tab.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
-    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
 
     await shareWebcam(tab);
     expect(instance.media.connections()).toHaveLength(before + 1);
@@ -257,15 +257,15 @@ describe("a start or watch that does not go live", () => {
   it("lets go of the media connection after a refused first watch, so the next connect makes a new one", async () => {
     const { instance, owner, room, webcam } = await biaSharing();
     const { tab } = await openRoom(owner, room);
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     const before = instance.media.connections().length;
     instance.media.fail("pull");
 
     startWatching(tab, webcam);
     expect(await tab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: webcam } });
-    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
 
-    await connectMedia(tab);
+    await connectMedia(tab, "receiving");
     await watch(tab, webcam);
     expect(instance.media.connections()).toHaveLength(before + 1);
   });

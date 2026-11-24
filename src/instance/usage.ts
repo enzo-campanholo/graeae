@@ -4,11 +4,11 @@
 // own figure is not read.
 //
 // The rules, each applied as a charge is made:
-// - Each tab with a media connection reports the running total its transport has received
-//   since it opened. The difference from the tab's last report is charged, so the first
-//   report is charged in full and a lost report is made up by the next. The next total
-//   counts from zero only once the instance itself has made the tab a new media
-//   connection or restarted its old one (the tab sends its final total before either). A
+// - Each tab with a receiving connection reports the running total its transport has
+//   received since it opened. The difference from the tab's last report is charged, so the
+//   first report is charged in full and a lost report is made up by the next. The next
+//   total counts from zero only once the instance itself has made the tab a new receiving
+//   connection, or replaced its old one (the tab sends its final total before either). A
 //   total lower than the last on the same connection is ignored, so a tab cannot have
 //   what it already reported charged again.
 // - Every reported byte has a fixed margin added (`SAFETY_MARGIN_PERCENT`), so the count
@@ -17,7 +17,7 @@
 //   overhead that Cloudflare leaves out, and 5% on top took the count past the 0 to 10%
 //   above it that the spec allows.
 // - Relayed watching is counted twice (`RELAYED_COUNTS_TWICE`): what a tab reports while
-//   its connection is on the relay, and any charge for a gap after such a report.
+//   its receiving connection is on the relay, and any charge for a gap after such a report.
 //   Cloudflare bills traffic between its relay and its media server once, but on a TCP
 //   relay the media server's egress read 16% above what the browser received, so counting
 //   it once could read below the bill.
@@ -25,7 +25,8 @@
 //   bitrate from the tab's last report (or the watch's start, if later) until the instance
 //   recorded the watch as ended. A watch that ends while its tab can still report waits:
 //   the tab's next report covers it, and only if the tab goes without one is it charged.
-// - A sharer's upload is never reported, so never counted: a tab reports what it received.
+// - A sharer's upload is never reported, so never counted: a tab reports what its
+//   receiving connection received, and its sending connection reports nothing (ADR 0005).
 //
 // Each charge goes to the UTC day it is made on. The month runs from the owner's reset
 // day, at midnight UTC, to the same day of the next month, and sums the days between.
@@ -75,8 +76,8 @@ export class Usage {
   constructor(private readonly sql: SqlStorage) {}
 
   /**
-   * A report from `tab`: its media connection's transport has received `bytes` since it
-   * opened, or since it was restarted, and goes through the relay now if `relayed`. A
+   * A report from `tab`: its receiving connection's transport has received `bytes` since it
+   * opened, and goes through the relay now if `relayed`. A
    * total lower than the last, on the same connection, is ignored.
    */
   received(tab: string, bytes: number, relayed: boolean) {
@@ -106,7 +107,7 @@ export class Usage {
   }
 
   /**
-   * The instance made `tab` a new media connection, or restarted its old one: the tab's
+   * The instance made `tab` a new receiving connection, or replaced its old one: the tab's
    * next total counts from zero. (The `restarted` column holds this; the name is older.)
    */
   newTotal(tab: string) {

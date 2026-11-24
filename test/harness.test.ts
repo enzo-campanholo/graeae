@@ -74,8 +74,10 @@ describe("the rows a steady room writes", () => {
     await drain();
     await shareWebcam(caio.tab);
     await drain();
-    await connectMedia(first.tab);
-    await connectMedia(dani.tab);
+    await connectMedia(first.tab, "receiving");
+    await connectMedia(dani.tab, "receiving");
+    await connectMedia(caio.tab, "receiving");
+    await connectMedia(bia.tab, "receiving");
     const shares: LiveShare[] = [bia, caio].map(({ id }) => ({ member: id, kind: "webcam" }));
     for (const { id, tab } of people) {
       for (const share of shares) {

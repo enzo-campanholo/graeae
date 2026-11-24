@@ -46,7 +46,7 @@ describe("a tab's media connection", () => {
     const { instance, biaTab } = await twoPresent();
     expect(instance.media.connections()).toEqual([]);
 
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
 
     expect(instance.media.connections()).toEqual([[]]);
   });
@@ -54,8 +54,8 @@ describe("a tab's media connection", () => {
   it("comes with a relay credential lasting 12 hours, minted for that connection alone", async () => {
     const { instance, biaTab, ownerTab } = await twoPresent();
 
-    const bias = await connectMedia(biaTab);
-    const owners = await connectMedia(ownerTab);
+    const bias = await connectMedia(biaTab, "sending");
+    const owners = await connectMedia(ownerTab, "sending");
 
     expect(instance.media.credentials()).toEqual([
       { iceServers: bias, ttlSeconds: 12 * 60 * 60 },
@@ -66,9 +66,9 @@ describe("a tab's media connection", () => {
 
   it("is made once per tab: asking again makes no second one", async () => {
     const { instance, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
 
-    biaTab.send({ type: "media", request: { type: "connect" } });
+    biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
     startWebcam(biaTab);
 
     expect((await biaTab.next()).type, "an answer to the second connect").toBe("media");
@@ -82,7 +82,7 @@ describe("a tab's media connection", () => {
     const made = instance.media.hold("connect");
     const minted = instance.media.hold("relayCredential");
 
-    biaTab.send({ type: "media", request: { type: "connect" } });
+    biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
     await made.reached;
     // The credential is asked for while the connection is still being made.
     await minted.reached;
@@ -99,9 +99,9 @@ describe("a tab's media connection", () => {
     const { instance, biaTab } = await twoPresent();
     instance.media.fail("relayCredential");
 
-    biaTab.send({ type: "media", request: { type: "connect" } });
+    biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
 
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable" } });
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending" } });
     await shareWebcam(biaTab);
   });
 
@@ -109,9 +109,9 @@ describe("a tab's media connection", () => {
     const { instance, biaTab } = await twoPresent();
     instance.media.fail("connect");
 
-    biaTab.send({ type: "media", request: { type: "connect" } });
+    biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
 
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable" } });
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending" } });
     await shareWebcam(biaTab);
   });
 });
@@ -155,7 +155,7 @@ describe("starting a webcam share", () => {
     await shareWebcam(ownerTab);
     await biaTab.next(); // the owner's webcam went live
 
-    await connectMedia(secondTab);
+    await connectMedia(secondTab, "sending");
     startWebcam(secondTab);
 
     expect(await secondTab.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
@@ -164,7 +164,7 @@ describe("starting a webcam share", () => {
 
   it("cannot be started from a device the instance has forgotten: its open tab is cut off", async () => {
     const { instance, ownerTab } = await twoPresent();
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "sending");
     // Using the setup secret again forgets every other device of the owner's.
     await setUpOwner(instance.browser());
 
@@ -175,7 +175,7 @@ describe("starting a webcam share", () => {
 
   it("goes live only once the media server has registered it, with its record already written", async () => {
     const { instance, bia, room, biaTab, ownerTab, biaId } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     const publish = instance.media.hold("publish");
 
     startWebcam(biaTab);
@@ -185,10 +185,10 @@ describe("starting a webcam share", () => {
     const { tab: second, state } = await openRoom(bia, room);
     expect(state.shares.live).toEqual([]);
     // ...and the share already holds its place, so a second one is refused.
-    await connectMedia(second);
+    await connectMedia(second, "sending");
     startWebcam(second);
     expect(await second.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
-    expect(await second.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await second.next()).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
 
     publish.release();
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published" } });
@@ -199,7 +199,7 @@ describe("starting a webcam share", () => {
 
   it("is refused when the media server fails it, and leaves no track behind", async () => {
     const { instance, biaTab } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     instance.media.fail("publish");
 
     startWebcam(biaTab);
@@ -207,8 +207,8 @@ describe("starting a webcam share", () => {
     expect(await biaTab.next()).toEqual({ type: "media", change: { type: "refused", kind: "webcam" } });
     expect(instance.media.connections()).toEqual([[]]);
     // The connection carries nothing, so it is let go of, and the next try makes a new one.
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
-    await connectMedia(biaTab);
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "sending" } });
+    await connectMedia(biaTab, "sending");
     startWebcam(biaTab);
     expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published" } });
   });
@@ -333,7 +333,7 @@ describe("a live webcam share", () => {
 
   it("is never left behind by a tab that leaves while the media server is still answering", async () => {
     const { instance, owner, room, biaTab, ownerTab, biaId } = await twoPresent();
-    await connectMedia(biaTab);
+    await connectMedia(biaTab, "sending");
     const publish = instance.media.hold("publish");
     startWebcam(biaTab);
     await publish.reached;

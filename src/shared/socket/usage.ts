@@ -1,12 +1,13 @@
 // The usage area: the month's usage against the usage budget.
 //
-// Every tab with a media connection reports, once a minute, the running total of
-// bytes its media connection's transport has received since it opened, and whether that
-// connection is on the relay. The instance counts usage from these reports alone (spec,
-// Usage and the usage budget). A tab about to restart its media connection sends the total
-// so far as final, and its next connection's totals start again from zero. The instance
-// counts from zero only once it has made or restarted that connection itself: a lower
-// total on the same connection is ignored.
+// Every tab with a receiving connection reports, once a minute, the running total of
+// bytes that connection's transport has received since it opened, and whether it is on
+// the relay; the sending connection reports nothing (ADR 0005). The instance counts usage
+// from these reports alone (spec, Usage and the usage budget). A tab about to replace or
+// let go of its receiving connection sends the total so far as final, and its next
+// connection's totals start again from zero. The instance counts from zero only once it
+// has made or replaced that connection itself: a lower total on the same connection is
+// ignored.
 //
 // The room hears how far the month has gone into the usage budget, and only once it
 // matters to the member: the owner's tabs from 80%, everyone's from 95%. At the limit

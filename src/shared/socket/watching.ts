@@ -3,7 +3,7 @@
 // Watching is chosen per share, and belongs to the tab's device: each tab has its own
 // stage, and nothing is on it when the tab opens. A tab asks to watch a share by its
 // sharer and kind, never by anything of the media server's (ADR 0003). The instance
-// pulls the share to the tab's media connection, and its half of that negotiation comes
+// pulls the share to the tab's receiving connection, and its half of that negotiation comes
 // in the media area as `pulled`, before `watched` puts the share on the stage. A refusal
 // comes in the media area too, as `pull-refused`.
 //
@@ -60,7 +60,7 @@ export type WatchingChange =
 
 export type WatchingRequest =
   /**
-   * Watch `share` on this tab, over the tab's media connection (the tab connects
+   * Watch `share` on this tab, over the tab's receiving connection (the tab connects
    * first). The share must be live in the room this tab is showing.
    */
   | { type: "watch"; share: LiveShare }

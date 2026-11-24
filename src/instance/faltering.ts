@@ -1,6 +1,7 @@
-// The tabs whose media connection has faltered while their socket is fine, each with when
+// The tabs whose sending connection has faltered while their socket is fine, each with when
 // it said so. Their shares stay live for 30 seconds from then, while the browser tries to
-// recover, and end once that time is up unless it recovers first. Kept in the instance's
+// recover, and end once that time is up unless it recovers first. A receiving connection
+// is never reported faltering: the tab replaces one the browser gives up on (ADR 0005). Kept in the instance's
 // key-value storage under one key, like retries: few, and briefly.
 
 import { log } from "./log.ts";
@@ -8,7 +9,7 @@ import { log } from "./log.ts";
 /** Where the faltering tabs are kept. */
 const FALTERING_KEY = "shares:faltering";
 
-/** How long a tab's shares stay live while its media connection falters, before they end. */
+/** How long a tab's shares stay live while its sending connection falters, before they end. */
 export const FALTERING_MS = 30_000;
 
 export class Falterings {
@@ -18,7 +19,7 @@ export class Falterings {
     private readonly schedule: () => void,
   ) {}
 
-  /** The tab `tabId` says its media connection falters. Only the first time it says so counts. */
+  /** The tab `tabId` says its sending connection falters. Only the first time it says so counts. */
   falters(tabId: string) {
     const faltering = this.all();
     if (faltering[tabId] !== undefined) return;
@@ -27,7 +28,7 @@ export class Falterings {
     this.schedule();
   }
 
-  /** The tab `tabId`'s media connection has recovered, or the tab is gone. */
+  /** The tab `tabId`'s sending connection has recovered, or the tab is gone. */
   recovered(tabId: string) {
     const faltering = this.all();
     if (faltering[tabId] === undefined) return;

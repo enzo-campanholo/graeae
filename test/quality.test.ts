@@ -32,7 +32,7 @@ async function watchingBiasScreen({ browser = "chromium" as "chromium" | "firefo
   const started = await present.ownerTab.next();
   if (started.type !== "shares" || started.change.type !== "started") throw new Error("expected Bia's screen share");
   const screen: LiveShare = { member: present.biaId, kind: "screen" };
-  await connectMedia(present.ownerTab);
+  await connectMedia(present.ownerTab, "receiving");
   const mid = await watch(present.ownerTab, screen);
   return { ...present, screen, listed: started.change.share, mid };
 }
@@ -52,7 +52,7 @@ describe("a Chromium screen share sent at two qualities", () => {
   it("can be received at 720p by one viewer while the others keep Auto", async () => {
     const { instance, owner, room, ownerTab, screen, mid } = await watchingBiasScreen();
     const { tab: second } = await openRoom(owner, room);
-    await connectMedia(second);
+    await connectMedia(second, "receiving");
     const secondMid = await watch(second, screen);
 
     choose(ownerTab, screen, "720p");
@@ -177,7 +177,7 @@ describe("a share with one quality", () => {
       change: { type: "started", share: { member: biaId, kind: "webcam" } },
     });
     const webcam: LiveShare = { member: biaId, kind: "webcam" };
-    await connectMedia(ownerTab);
+    await connectMedia(ownerTab, "receiving");
     await watch(ownerTab, webcam);
 
     choose(ownerTab, webcam, "720p");

@@ -236,7 +236,7 @@ describe("removing a member from a room", () => {
     await shareWebcam(ownerTab);
     const ownersWebcam = { member: await idOf(owner, "Owner"), kind: "webcam" } as const;
     expect(await inSecond.next()).toEqual({ type: "shares", change: { type: "started", share: ownersWebcam } });
-    await connectMedia(inSecond);
+    await connectMedia(inSecond, "receiving");
     await watch(inSecond, ownersWebcam);
     expect(await ownerTab.next()).toEqual({
       type: "watching",
@@ -260,7 +260,7 @@ describe("removing a member from a room", () => {
     await shareWebcam(ownerTab);
     const ownersWebcam = { member: await idOf(owner, "Owner"), kind: "webcam" } as const;
     await inSecond.next(); // it went live
-    await connectMedia(inSecond);
+    await connectMedia(inSecond, "receiving");
     const pull = instance.media.hold("pull", { done: true });
     startWatching(inSecond, ownersWebcam);
     await pull.reached;
@@ -293,7 +293,7 @@ describe("removing a member from a room", () => {
 
   it("stops a share that was starting as it happened from ever going live", async () => {
     const { instance, owner, biaId, second, ownerTab, inSecond } = await biaInTwoRooms();
-    await connectMedia(inSecond);
+    await connectMedia(inSecond, "sending");
     const publish = instance.media.hold("publish");
     startWebcam(inSecond);
     await publish.reached;

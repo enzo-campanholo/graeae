@@ -169,8 +169,8 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 - **One Cloudflare Worker on one hostname.** It serves the front end as static files, the HTTP API and the WebSocket, all on one origin, so the device cookie is first-party. Everything runs on Cloudflare's free plan in the same account as the media server. (ADR 0001, ADR 0002.)
 - **One repository, one package, TypeScript on both sides.** One build produces the static front end and the Worker. One command runs the whole thing locally. Socket message types are shared between front end and backend by plain imports.
 - **Front end.** A plain Svelte single-page app built with Vite, with its own small client-side router. Components come from shadcn-svelte, dropping down to Bits UI where shadcn-svelte lacks something. Not SvelteKit.
-- **State.** One Durable Object per instance holds everything. Members, devices, rooms, access, invites, usage and the owner's settings are in its built-in SQLite. Who is present lives in its hibernating WebSocket connections. Live shares, watching and media connection records are written to its storage, so they survive a restart. No D1 and no KV.
-- **Media.** Every share goes through Cloudflare Realtime SFU in the owner's account. There is no direct browser-to-browser mode. Cloudflare's TURN relay is offered to every media connection.
+- **State.** One Durable Object per instance holds everything. Members, devices, rooms, access, invites, usage and the owner's settings are in its built-in SQLite. Who is present lives in its hibernating WebSocket connections. Live shares, watching and the records of each tab's two media connections are written to its storage, so they survive a restart. No D1 and no KV.
+- **Media.** Every share goes through Cloudflare Realtime SFU in the owner's account. There is no direct browser-to-browser mode. Each tab sends on one media connection and receives on another (ADR 0005). Cloudflare's TURN relay is offered to every media connection.
 - **Design.** Every page is built with the impeccable skill, working from a `PRODUCT.md` and a `DESIGN.md` at the repo root. The owner sets the visual direction; shadcn-svelte is themed from it.
 - **License.** 0BSD. Nothing is hardcoded to the owner's instance.
 
@@ -179,9 +179,9 @@ Every share travels through Cloudflare's media server in the owner's account. A 
 Four deep modules carry the design. Each is described by what it does, not where it lives.
 
 - **Instance.** The Durable Object. It owns the people-and-rooms rules (members, devices, invites, access), the room state (presence, live shares, who watches what), the cut-off routine and usage counting. Its interface is the HTTP routes and the socket protocol; nothing else reaches its storage.
-- **Media layer.** The single seam between the instance and whatever media server is in use. The instance asks it to make a media connection, publish a share's tracks, pull a share's tracks for a viewer, change a viewer's quality, force-close named tracks, report which tracks a connection really has, and mint a relay credential. v1 builds one implementation, for Cloudflare. A self-hosted media server, or reading Cloudflare's own usage figure, would be added behind this seam later.
-- **Room client.** The browser's side of the socket: it holds the full room state the backend sends, applies changes, sends heartbeats and byte reports, and reconnects by itself.
-- **Media client.** The browser's side of media: capture (screen, screen audio, webcam), the tab's one media connection, the encoding rules, quality step-down, and the statistics the usage count and the sharer's notes are driven by.
+- **Media layer.** The single seam between the instance and whatever media server is in use. The instance asks it to make a media connection, publish a share's tracks, pull a share's tracks from the sharer's sending connection to a viewer's receiving one, change a viewer's quality, force-close named tracks, report which tracks a connection really has, and mint a relay credential. v1 builds one implementation, for Cloudflare. A self-hosted media server, or reading Cloudflare's own usage figure, would be added behind this seam later.
+- **Room client.** The browser's side of the socket: it holds the full room state the backend sends, applies changes, sends heartbeats and byte reports, and reconnects by itself. It makes the sending connection on the tab's first share and the receiving connection on its first watch, restarts the one and replaces the other.
+- **Media client.** The browser's side of media: capture (screen, screen audio, webcam), the tab's two media connections (a sending one and a receiving one, each with its own health), the encoding rules, quality step-down, and the statistics the usage count and the sharer's notes are driven by.
 
 ### People, devices and invites
 
@@ -219,7 +219,7 @@ Four deep modules carry the design. Each is described by what it does, not where
 - The browser sends a heartbeat every 5 seconds. There is no idle detection.
 - A clean leave (tab closed, reload, navigating away) ends that tab's presence at once, along with any share it was sending.
 - A lost connection gets a grace period of 30 seconds from the last heartbeat heard. During it the member stays present and nothing is torn down.
-- A page that reconnects within its grace period is the same tab, with its shares, watching and media connection, even while the backend still holds the old connection open, as it does after most real network drops. A page opened afresh (a reload, the tab opened again) is a new tab.
+- A page that reconnects within its grace period is the same tab, with its shares, watching and media connections, even while the backend still holds the old connection open, as it does after most real network drops. A page opened afresh (a reload, the tab opened again) is a new tab.
 - After about 10 seconds of silence, other members see a "reconnecting" mark: on the member's name when they have no connected device left in the room, on a share's icon when the lost device is the one sending it. A second device dropping while another stays connected shows nothing.
 - When a grace period runs out, the backend closes that tab's shares and watching.
 - A backend restart treats everyone as in their grace period. Shares and watching survive it.
@@ -232,9 +232,9 @@ Four deep modules carry the design. Each is described by what it does, not where
 - Starting a share of a kind that is already live offers a hand-over. The backend registers the new share first, then closes the old one and moves each viewer in the same room (close the old pull, create the new one). If the new share fails to register, the old one carries on. A hand-over into a different room ends the share in the first room and carries nobody.
 - A sharer who returns after their grace period ran out has the share start again by itself if the tab still holds the capture, unless they started it from another device meanwhile. Their previous viewers are not carried over, since for them the share ended.
 - A screen share is video together with its screen audio as one unit. A webcam share is video only.
-- If media falters while the signaling connection is fine, the share stays live for 30 seconds while the browser tries to recover, then ends. Once the browser gives the media connection up, the tab restarts it through the backend, and again after each restart that finds no path, until it recovers or the 30 seconds run out.
+- If the sending connection falters while the signaling connection is fine, the share stays live for 30 seconds while the browser tries to recover, then ends. Once the browser gives the sending connection up, the tab restarts it through the backend, and again after each restart that finds no path, until it recovers or the 30 seconds run out. A receiving connection is never restarted and has no 30-second rule: once the browser gives it up, the tab asks the backend to replace it, and the backend makes a new one, pulls each of the tab's watches onto it and then closes the old pulls.
 - Watching belongs to a device, since each device has its own stage. A watching member is named to the sharer once however many devices they watch on.
-- A start or watch that does not go live lets go of the tab's media connection when the connection then carries nothing: the backend forgets it (closing first any track the media server made although it reported the call failed) and tells the tab it was dropped, so the tab's next try makes a new one. A connection that carries a share or a watch is left alone.
+- A start or watch that does not go live lets go of the tab's sending or receiving connection, the one it was on, when that connection then carries nothing: the backend forgets it (closing first any track the media server made although it reported the call failed) and tells the tab it was dropped, so the tab's next try makes a new one. A connection that carries a share or a watch is left alone.
 
 ### Screen audio
 
@@ -276,9 +276,9 @@ All numbers are fixed. Neither the sharer nor the owner gets a setting.
 
 ### Media connections and records
 
-- Each tab with a room open holds one media connection, used for both what it shares and what it watches. It is made the first time that tab shares or watches, not on opening the room.
+- Each tab with a room open holds up to two media connections: a sending one, for what it shares, made the first time it shares, and a receiving one, for what it watches, made the first time it watches. Neither is made on opening the room. The tab never offers on its receiving connection: every section of it is the media server's own. (ADR 0005.)
 - Only the backend talks to the media server, and only it holds the media server secret. A browser never receives or sends a media server identifier: it asks for "this member's screen" or "this member's webcam" and the backend builds the pull from its own records. (ADR 0003.)
-- The backend records, per media connection: device, room and the media server's identifier for it. Per share: member, device, room, kind, its video track and, for screen audio, its audio track. Per watch: the viewing device's media connection, the share watched and the pulled tracks.
+- The backend records, per media connection: device, room, purpose (sending or receiving) and the media server's identifier for it. Per share: member, device, room, kind, the sending connection, its video track and, for screen audio, its audio track. Per watch: the viewing device's receiving connection, the share watched and the pulled tracks.
 - The backend picks every track name and writes the record to storage before calling the media server. A crash mid-call leaves a record with nothing behind it, never a track with no record.
 - A record is dropped only after the forced close for it has returned.
 
@@ -310,26 +310,26 @@ One routine serves every case:
 - Every close is forced, ordinary stops and clean leaves included. There is one close path and none that depends on a browser cooperating. The browser tidies its own side when told a share or watch has ended.
 - A failed forced close keeps its record and is retried on a backoff (1s, 2s, 4s, up to 30s between tries) until it succeeds or a sweep shows the track gone.
 - The owner's page shows a removal as done at once. If closes are still failing after 1 minute it warns: "Still trying to stop what <name> was sharing and watching."
-- **Sweep.** At each cut-off and after a backend restart, the backend asks the media server which tracks the affected media connections really have and force-closes anything its records do not account for. There is no timed sweep.
-- A cut-off browser may keep an empty media connection open. It carries no tracks and cannot gain any, so it is left alone and its record dropped.
+- **Sweep.** At each cut-off and after a backend restart, the backend asks the media server which tracks the affected media connections, sending and receiving, really have and force-closes anything its records do not account for. There is no timed sweep.
+- A cut-off browser may keep its empty media connections open. It carries no tracks and cannot gain any, so it is left alone and its record dropped.
 - Removal from the instance also forgets all the member's devices. A removed or forgotten device's page becomes the plain "nothing here" page with no message.
 - Measured: a forced close stops a picture 281 to 467 ms after the call (ten timings, sharers and viewers, direct and relayed), and the media server reports the closed tracks within about 300 ms.
 
 ### Relay
 
 - Every media connection is offered the relay from the start, over UDP, TCP and TLS. The browser picks a direct path when one works. One member's browser is known to connect only through the relay.
-- The backend mints a fresh relay credential each time a tab makes its media connection and keeps no record of it. Nothing is shared between tabs or devices.
-- A credential lasts 12 hours. At 11 hours a tab on a direct path is silently handed a fresh one; a tab on the relay gets a connection restart with the fresh one, falling back to the ordinary reconnect path if the restart fails.
+- The backend mints a fresh relay credential each time a tab makes or replaces one of its media connections, one for each, and keeps no record of it. Nothing is shared between tabs, devices or a tab's two connections.
+- A credential lasts 12 hours. At 11 hours a connection on a direct path is silently handed a fresh one. On the relay, the sending connection is restarted with the fresh one, falling back to the ordinary reconnect path if the restart fails, and the receiving connection is replaced.
 - Revocation is never called. The forced close is the only cut-off; expiry is the only end of a credential.
 - Accepted exposure: until its credential expires, a removed device can relay unrelated traffic through the owner's account, drawing on the shared 1,000 GB and then $0.05 per GB. It cannot share, watch or reach the media server. The defences are expiry and the owner's Cloudflare billing alert.
 
 ### Usage and the usage budget
 
-- **What is counted.** Each tab reports, once a minute over the signaling connection, the running total of bytes its media connection's transport has received since it opened. The backend charges the difference between reports, so nothing is skipped at the start and a lost report is made up by the next. A tab sends a final total before a connection restart, which resets the total.
+- **What is counted.** Each tab reports, once a minute over the signaling connection, the running total of bytes its receiving connection's transport has received since it opened. The backend charges the difference between reports, so nothing is skipped at the start and a lost report is made up by the next. A tab sends a final total before its receiving connection is replaced or let go of; a replacement resets the total, and a restart of the sending connection does not touch it.
 - **Safety margin.** The backend adds a fixed margin to every reported byte. It is a constant, not a setting, and 0% since the usage comparison: the browser's own total read 7.9% above Cloudflare's media server egress, since it counts packet overhead that Cloudflare leaves out.
 - **Gaps.** Where no later total arrives (a closed or crashed tab), the backend charges each watched share's maximum bitrate from the last report until it records the watch as ended: 12 Mbps for a Chromium screen share, 6 for a Firefox one, 1.5 for a webcam.
 - **Relayed watching** is counted twice. Cloudflare bills the traffic between its relay and its media server once, but in the usage comparison, on a TCP relay, the media server's egress read 16% above what the browser received and the relay's 1% above, so counting it once could read below the bill. The doubling stays: Cloudflare's Billable Usage gives the media server and the relay one combined row, in quantities only for a whole billing period, so it cannot show which figure is billed (ticket 27). Counting high is the safe side for a budget, and few members need the relay.
-- **Not counted.** A sharer's upload, which Cloudflare does not bill. Usage is per media connection; there is no per-share or per-member breakdown.
+- **Not counted.** A sharer's upload, which Cloudflare does not bill: the sending connection reports nothing. Usage is per receiving connection; there is no per-share or per-member breakdown.
 - **The budget.** One number for the instance in GB per month, default 1,000, set by the owner in the app with the dollar equivalent beside it ($0.05 per GB past 1,000). No upper limit, no per-room or per-member quota.
 - **The month** resets on a day of the month the owner sets, in UTC, default 1.
 - **Warnings.** The owner at 80%, everyone present at 95%, as a strip above the stage. graeae never lowers quality on its own.
@@ -539,6 +539,7 @@ Not designed, and free for the implementer to settle without reopening a decisio
 - H.264 high came back for a Chromium screen share at one quality in build ticket 54, when the sharer encodes it in hardware, after share-reliability tickets 03 (Firefox does decode main and high), 09 (the Windows evidence run) and 14 (the owner's choice). Two qualities, webcams and Firefox keep baseline or VP9.
 - The two qualities for a Chromium screen share from Quality adaptation are switched off by build ticket 17, for the media server's freezes on the lower one; ticket 29 tries them as two tracks.
 - The step-down on a weak upload and its note, from Quality adaptation, are switched off by build ticket 18: the browser's estimate of the upload could not tell a weak upload from a healthy one; ticket 30.
+- The tab's one media connection, for both what it shares and what it watches, from Media layer records, was split into a sending connection and a receiving connection by ADR 0005 and build ticket 61. Tickets 57, 58 and 60 had one cause: the media server reused a section the tab had narrowed for sending to send it a watch. The receiving connection is replaced, not restarted, and only it is counted for usage.
 
 ### Unverified facts the design rests on
 

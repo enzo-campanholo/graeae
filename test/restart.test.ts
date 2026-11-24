@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LiveShare } from "../src/shared/socket/index.ts";
 import { startInstance, type TestInstance } from "./harness.ts";
-import { addMember, connectMedia, setUpOwner, shareWebcam, startWatching, startWebcam, watch } from "./steps.ts";
+import { addMember, connectMedia, setUpOwner, shareWebcam, startScreen, startWatching, startWebcam, watch } from "./steps.ts";
 import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -31,7 +31,7 @@ async function ownerWatchingBia() {
   await shareWebcam(biaTab);
   await ownerTab.next(); // her webcam went live
   const biasWebcam: LiveShare = { member: biaState.people.you.id, kind: "webcam" };
-  await connectMedia(ownerTab);
+  await connectMedia(ownerTab, "receiving");
   await watch(ownerTab, biasWebcam);
   await biaTab.next(); // the owner is watching
   return { instance, owner, bia, room, ownerTabId: ownerTab.id, biaTabId: biaTab.id, biasWebcam, ownerId: ownerState.people.you.id, biaId: biasWebcam.member };
@@ -104,8 +104,8 @@ async function ownerAndBia() {
   const { tab: ownerTab, state: ownerState } = await openRoom(owner, room);
   const { tab: biaTab, state: biaState } = await openRoom(bia, room);
   await ownerTab.next(); // Bia arrived
-  await connectMedia(biaTab);
-  await connectMedia(ownerTab);
+  await connectMedia(biaTab, "sending");
+  await connectMedia(ownerTab, "receiving");
   const biasWebcam: LiveShare = { member: biaState.people.you.id, kind: "webcam" };
   return { instance, owner, bia, room, ownerTab, biaTab, biasWebcam, ownerId: ownerState.people.you.id };
 }
@@ -179,23 +179,28 @@ describe("the sweep at a cut-off", () => {
 
     // The owner's connection now carries nothing, so it is let go of: but not before the
     // stray track on it is closed.
-    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped" } });
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
     await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));
   });
 
   it("closes such a track at the cut-off when the connection is not let go of", async () => {
     const { instance, ownerTab, biaTab, biasWebcam } = await ownerAndBia();
     await goLive(biaTab, ownerTab);
-    // The owner shares too, so a refused watch leaves the connection carrying something.
-    await goLive(ownerTab, biaTab);
+    // Bia shares her screen too, and the owner watches it, so a refused watch leaves the
+    // owner's receiving connection carrying something.
+    startScreen(biaTab, { audio: null, video: "2" });
+    expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published" } });
+    expect(await biaTab.next()).toMatchObject({ type: "shares", change: { type: "started" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "shares", change: { type: "started" } });
+    await watch(ownerTab, { member: biasWebcam.member, kind: "screen" });
     instance.media.fail("pull", { done: true });
     startWatching(ownerTab, biasWebcam);
     expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam } });
-    expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 2]);
+    expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([2, 2]);
 
     await ownerTab.close();
 
-    await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));
+    await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([2, 0]));
   });
 });
 

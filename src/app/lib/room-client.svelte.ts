@@ -3,30 +3,36 @@
 // it arrives; the protocol is in `src/shared/socket/`. Its connection beats and
 // reconnects by itself (`connection.svelte.ts`), and a reconnect brings the whole room.
 //
-// It also carries the tab's media connection's side of the conversation: it asks the
-// instance for the connection the first time the tab shares or watches, passes offers
-// and answers between the media client and the instance, one negotiation at a time, and
-// keeps this tab's own shares and the pictures of what it watches. The media client
+// It also carries the side of the conversation about the tab's two media connections
+// (ADR 0005): it asks the instance for the sending connection the first time the tab
+// shares, and for the receiving connection the first time it watches, passes offers and
+// answers between the media client and the instance, one negotiation at a time on each,
+// and keeps this tab's own shares and the pictures of what it watches. The media client
 // never talks to the instance itself.
 //
-// A lost signaling connection does not touch the media connection: what the tab sends
+// A lost signaling connection does not touch the media connections: what the tab sends
 // and watches keeps flowing while the socket reconnects. A reconnect within the grace
 // period finds the same tab, and lets go of whatever ended meanwhile. A tab that comes
-// back after its grace period ran out has lost its media connection with everything on
-// it: it makes a new one, starts its shares again with the captures it still holds, and
+// back after its grace period ran out has lost its media connections with everything on
+// them: it makes new ones, starts its shares again with the captures it still holds, and
 // watches again what it watched, where those shares are still live.
 //
-// Once the tab has its media connection it reports, once a minute, what that
+// Once the tab has its receiving connection it reports, once a minute, what that
 // connection's transport has received since it opened, for the usage count
-// (`usage-reports.ts`). A connection the instance dropped sends its final total before
-// the next one is made. One lost with the grace period sends none: the instance has
-// already charged it, and the tab is a new one there.
+// (`usage-reports.ts`); the sending connection reports nothing. A receiving connection
+// the instance dropped, or that is replaced, sends its final total first. One lost with
+// the grace period sends none: the instance has already charged it, and the tab is a new
+// one there.
 //
-// 11 hours after the tab's relay credential was minted, the instance hands it a fresh
-// one. On a direct path the tab takes it silently. On the relay it sends its final total
-// and restarts its media connection with it; if that fails, it reconnects the ordinary
-// way on the same socket: the instance ends what the connection carried, and the tab
-// makes a new one, starts its shares again and watches again what it watched.
+// The browser giving up a connection is answered per connection: the sending one is
+// restarted in place, keeping every share; the receiving one is replaced by a new one,
+// onto which the instance pulls every watch again before closing the old pulls.
+//
+// 11 hours after a connection's relay credential was minted, the instance hands it a
+// fresh one. On a direct path the tab takes it silently. On the relay a sending
+// connection restarts with it, and if that fails, reconnects the ordinary way on the
+// same socket: the instance ends its shares, and the tab makes a new one and starts its
+// shares again; a receiving connection on the relay is replaced.
 
 import type { QualityName } from "../../shared/encoding.ts";
 import {
@@ -36,6 +42,7 @@ import {
   type IceServer,
   type LiveShare,
   type MediaChange,
+  type MediaPurpose,
   type MediaState,
   type QualityChoice,
   type RoomView,
@@ -61,6 +68,27 @@ import { UsageReports } from "./usage-reports.ts";
 
 /** The wait between a restart of a failed media connection that found no path and the next. */
 const RESTART_AGAIN_MS = 2_000;
+
+/** The two purposes of the tab's media connections, in the order a rebuild makes them again. */
+const PURPOSES: readonly MediaPurpose[] = ["sending", "receiving"];
+
+/** What the room client holds of one of the tab's media connections. */
+interface Side {
+  /** The connection, once asked for: whether it was made. */
+  asked: Promise<boolean> | null;
+  /** Whether it is made: the instance handed it over. */
+  made: boolean;
+  /** How it is doing, as the media client last said. */
+  health: MediaHealth;
+  /** Whether the tab is bringing back a connection the browser gave up on (`recover`). */
+  recovering: boolean;
+  /** The relay credential it holds: the one it was made with, or the last fresh one. */
+  iceServers: IceServer[];
+}
+
+function newSide(): Side {
+  return { asked: null, made: false, health: "fine", recovering: false, iceServers: [] };
+}
 
 /** A one-off pick of what others share: every webcam, everything, or nothing. */
 export type Shortcut = "webcams" | "everything" | "nothing";
@@ -128,18 +156,10 @@ export class RoomClient {
    */
   private tab: string | undefined;
   private readonly media = createMediaClient();
-  /** The tab's media connection, once asked for: whether it was made. */
-  private connection: Promise<boolean> | null = null;
-  /** Whether the tab's media connection is made: the instance handed it over. */
-  private made = false;
-  /** Whether the media connection falters, as the media client last said. */
-  private faltering = false;
-  /** Whether the browser has given the media connection up, as the media client last said. */
-  private givenUp = false;
-  /** Whether the tab is restarting a media connection the browser gave up on (`recover`). */
-  private recovering = false;
-  /** The relay credential the media connection holds: the one it was made with, or the last fresh one. */
-  private iceServers: IceServer[] = [];
+  /** The tab's two media connections, each made the first time it is needed. */
+  private readonly sides: Record<MediaPurpose, Side> = { sending: newSide(), receiving: newSide() };
+  /** A replacement of the receiving connection cut short by the lost socket: asked for again on the next. */
+  private replaceAgain = false;
   /** Captures the browser ended by itself while their share was starting, to stop once it is live. */
   private readonly over = new WeakSet<Capture>();
   /** Requests waiting for their answer in the media area, oldest first. */
@@ -158,12 +178,12 @@ export class RoomClient {
   private readonly askedAt = new Map<string, number>();
   /** The qualities a stage rebuilt after the grace period was watched at: each is chosen again once its share is watched. */
   private restoring: { share: LiveShare; quality: QualityChoice }[] = [];
-  /** How to stop listening for the quality each watched share arrives at, by its video's mid. Nothing renders from it. */
+  /** How to stop listening for the quality each watched share arrives at, by its key. Nothing renders from it. */
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
   private readonly listening = new Map<string, () => void>();
-  /** The negotiation under way on the media connection, which the next one waits for. */
-  private negotiating: Promise<unknown> = Promise.resolve();
-  /** The usage reports, once the media connection is made. */
+  /** The negotiation under way on each media connection, which the next one on it waits for. */
+  private readonly negotiating: Record<MediaPurpose, Promise<unknown>> = { sending: Promise.resolve(), receiving: Promise.resolve() };
+  /** The usage reports, once the receiving connection is made. */
   private readonly usage = new UsageReports(
     () => this.media.transport(),
     (request) => this.send({ type: "usage", request }),
@@ -172,13 +192,13 @@ export class RoomClient {
   );
   /**
    * Whether this socket has brought the room's state. Until it has, the tab may be a new
-   * one on the instance, its grace period run out, and a report of the old media
+   * one on the instance, its grace period run out, and a report of the old receiving
    * connection's total would be charged to it in full again.
    */
   private synced = false;
-  /** Whether the tab is making its media connection again after a failed restart: the stage says it is reconnecting. */
+  /** Whether the tab is making its sending connection again after a failed restart: the stage says it is reconnecting. */
   private rebuilding = $state(false);
-  /** The captures of this tab's shares being carried to a new media connection: their ending on the old one keeps them. */
+  /** The captures of this tab's shares being carried to a new sending connection: their ending on the old one keeps them. */
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: only the room client reads it
   private readonly carrying = new Set<Capture>();
 
@@ -204,7 +224,7 @@ export class RoomClient {
 
   /**
    * Whether the tab is reconnecting: the instance has gone unheard for about 3 seconds
-   * while the connection reconnects, or the media connection is being made again.
+   * while the connection reconnects, or the sending connection is being made again.
    */
   get reconnecting(): boolean {
     return this.socket.reconnecting || this.rebuilding;
@@ -285,15 +305,15 @@ export class RoomClient {
   }
 
   /**
-   * Sends `capture` as this tab's share of `kind`, which is starting: the media
+   * Sends `capture` as this tab's share of `kind`, which is starting: the sending
    * connection the first time, the offer, the instance's answer. On a failure the
    * capture stops and the share is gone, and the page says it didn't start. With
    * `handOver`, the member's share of that kind live elsewhere is replaced by this one.
    */
   private async publish(kind: ShareKind, capture: Capture, handOver = false) {
     try {
-      if (!(await this.connected())) throw new Error("no media connection");
-      const live = await this.negotiate(async () => {
+      if (!(await this.connected("sending"))) throw new Error("no sending connection");
+      const live = await this.negotiate("sending", async () => {
         const offer = await this.media.offer(capture);
         tabLog.info("share.offered", { kind, offer: offer.sdp, video: offer.video, ...(offer.audio ? { audio: offer.audio } : {}) });
         const answer = await this.request(
@@ -449,9 +469,10 @@ export class RoomClient {
   }
 
   /**
-   * Watches `share` on this tab: the media connection the first time, the instance's
+   * Watches `share` on this tab: the receiving connection the first time, the instance's
    * pull and the media server's offer, the browser's answer. The share is on the stage
-   * once the instance says `watched`. A refused watch leaves the stage as it was.
+   * once the instance says `watched`. A refused watch leaves the stage as it was. One
+   * asked for while the receiving connection is being replaced waits until it is done.
    */
   private async watch(share: LiveShare) {
     if (this.unwanted.some((candidate) => sameShare(candidate, share)))
@@ -472,12 +493,12 @@ export class RoomClient {
     this.askedAt.set(keyOf(share), performance.now());
     let lost = false;
     try {
-      if (!(await this.connected())) {
-        tabLog.warn("watch.failed", { share, why: "no media connection" });
+      if (!(await this.connected("receiving"))) {
+        tabLog.warn("watch.failed", { share, why: "no receiving connection" });
         return;
       }
       this.timed(share, "media connection");
-      await this.negotiate(async () => {
+      await this.negotiate("receiving", async () => {
         this.timed(share, "turn");
         const pulled = await this.request(
           { type: "watching", request: { type: "watch", share } },
@@ -489,13 +510,7 @@ export class RoomClient {
           return;
         }
         tabLog.info("watch.pulled", { share, offer: pulled.offer, video: pulled.video, ...(pulled.audio ? { audio: pulled.audio } : {}) });
-        const { answer, stream } = await this.media.pull(pulled.offer, pulled.video, pulled.audio);
-        this.pictures = [
-          ...this.pictures.filter((picture) => !sameShare(picture.share, share)),
-          { share, video: pulled.video, stream, received: null },
-        ];
-        this.listen(share, pulled.video);
-        await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
+        const answer = await this.takePull(share, pulled);
         this.timed(share, "answer");
         tabLog.info("watch.confirmed", { share, answer, ms: Math.round(performance.now() - (this.askedAt.get(keyOf(share)) ?? 0)) });
       });
@@ -555,7 +570,7 @@ export class RoomClient {
     this.usage.stop();
     for (const stop of this.listening.values()) stop();
     this.listening.clear();
-    this.givenUp = false;
+    for (const purpose of PURPOSES) this.sides[purpose] = newSide();
     this.media.close();
     this.socket.close();
   }
@@ -567,15 +582,18 @@ export class RoomClient {
         this.waiting.splice(index, 1);
         return;
       }
-      // Its media faltered too long and the instance let go of it: the next share or watch makes a new one.
+      // The instance let go of one of the tab's connections: the sending one's media
+      // faltered too long, or the receiving one carries nothing any more. The next share
+      // or watch makes a new one.
       if (message.change.type === "dropped") {
-        tabLog.warn("media.dropped", { made: this.made });
-        if (this.made) this.usage.report({ final: true });
-        this.resetMedia();
+        const { connection } = message.change;
+        tabLog.warn("media.dropped", { connection, made: this.sides[connection].made });
+        if (connection === "receiving" && this.sides.receiving.made) this.usage.report({ final: true });
+        this.resetMedia(connection);
       }
       if (message.change.type === "handed-over") this.handedOverFrom(message.change.kind);
       if (message.change.type === "moved") this.moved(message.change);
-      if (message.change.type === "renewed") void this.renew(message.change.iceServers);
+      if (message.change.type === "renewed") void this.renew(message.change.connection, message.change.iceServers);
       return;
     }
     const before = this.view;
@@ -617,14 +635,17 @@ export class RoomClient {
   /**
    * A new socket brought the whole room again, after the tab held `before`. The same tab,
    * back within its grace period, lets go of what ended while it was away. A tab whose
-   * grace period ran out finds its media connection gone with everything on it, and
-   * builds it again: its shares start again with the captures it still holds, unless a
+   * grace period ran out finds its media connections gone with everything on them, and
+   * builds them again: its shares start again with the captures it still holds, unless a
    * share of that kind of the member's went live meanwhile from elsewhere, and it
    * watches again what it watched, where those shares are still live. Nobody who watched
-   * its shares before is carried over: for them those shares ended.
+   * its shares before is carried over: for them those shares ended. Each connection is
+   * looked at on its own: one the instance no longer holds is built again.
    */
   private rejoined(before: RoomView, media: MediaState) {
-    tabLog.info("media.rejoined", { connected: media.connected, made: this.made, sending: media.sending, rebuild: !media.connected && this.made });
+    const made = PURPOSES.filter((purpose) => this.sides[purpose].made);
+    const lost = made.filter((purpose) => !media.connected.includes(purpose));
+    tabLog.info("media.rejoined", { connected: media.connected, made, sending: media.sending, rebuild: lost });
     const view = this.view!;
     const you = view.people.you.id;
     const liveOfYours = (kind: ShareKind) =>
@@ -634,8 +655,7 @@ export class RoomClient {
     for (const share of this.unwanted) if (this.watches(share)) this.leaving = [...this.leaving, share];
     this.unwanted = this.unwanted.filter((share) => this.asking.some((asked) => sameShare(asked, share)));
 
-    if (media.connected || !this.made) {
-      for (const picture of this.pictures) if (!this.watches(picture.share)) this.unwatched(picture.share);
+    if (!lost.includes("sending")) {
       for (const own of this.mine) {
         if (own.state === "starting") continue;
         // Started from another tab or device while this one was away.
@@ -644,56 +664,65 @@ export class RoomClient {
         // A stop the lost socket never carried.
         else if (own.state === "stopping") this.send({ type: "shares", request: { type: "stop", kind: own.kind } });
       }
-      if (!this.made) return;
-      // An unwatch the lost socket may never have carried, of a share leaving or to be watched afresh.
-      for (const share of [...this.leaving, ...this.rewatch])
-        if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
-      // A watch whose pull the lost socket never brought is on the stage with no picture: ask again.
-      for (const share of view.watching.stage) {
-        if ([...this.leaving, ...this.rewatch].some((other) => sameShare(other, share))) continue;
-        if (this.pictures.some((picture) => sameShare(picture.share, share))) continue;
-        this.rewatch = [...this.rewatch, share];
-        this.send({ type: "watching", request: { type: "unwatch", share } });
+      // The instance may have missed the sending connection faltering or recovering.
+      if (this.sides.sending.made)
+        this.send({ type: "media", request: { type: this.sides.sending.health !== "fine" ? "faltering" : "recovered" } });
+    }
+    if (!lost.includes("receiving")) {
+      for (const picture of this.pictures) if (!this.watches(picture.share)) this.unwatched(picture.share);
+      if (this.sides.receiving.made) {
+        // An unwatch the lost socket may never have carried, of a share leaving or to be watched afresh.
+        for (const share of [...this.leaving, ...this.rewatch])
+          if (this.watches(share)) this.send({ type: "watching", request: { type: "unwatch", share } });
+        // A watch whose pull the lost socket never brought is on the stage with no picture: ask again.
+        for (const share of view.watching.stage) {
+          if ([...this.leaving, ...this.rewatch].some((other) => sameShare(other, share))) continue;
+          if (this.pictures.some((picture) => sameShare(picture.share, share))) continue;
+          this.rewatch = [...this.rewatch, share];
+          this.send({ type: "watching", request: { type: "unwatch", share } });
+        }
+        // A replacement the lost socket cut short starts again.
+        if (this.replaceAgain) void this.replace();
       }
-      // The instance may have missed the media connection faltering or recovering.
-      this.send({ type: "media", request: { type: this.faltering ? "faltering" : "recovered" } });
-      return;
     }
 
-    void this.rebuild(before.watching);
+    if (lost.length > 0) void this.rebuild(before.watching, lost);
   }
 
   /**
-   * Builds the tab's media connection again, the instance having closed the old one with
-   * everything on it: a new one, made by the first share or watch. Its shares start again
-   * with the captures it still holds, unless a share of that kind of the member's is live
-   * from elsewhere, and it watches again what was on `before`'s stage and still is live,
-   * or follows again the member it followed. Settles once each has been asked for.
+   * Builds the tab's `lost` media connections again, the instance having closed the old
+   * ones with everything on them: a new one, made by the first share or watch. Its shares
+   * start again with the captures it still holds, unless a share of that kind of the
+   * member's is live from elsewhere, and it watches again what was on `before`'s stage
+   * and still is live, or follows again the member it followed. Settles once each has
+   * been asked for.
    */
-  private rebuild(before: RoomView["watching"]): Promise<unknown> {
-    tabLog.warn("media.rebuild", { stage: before.stage, mine: this.mine.map((own) => ({ kind: own.kind, state: own.state })) });
+  private rebuild(before: RoomView["watching"], lost: readonly MediaPurpose[]): Promise<unknown> {
+    tabLog.warn("media.rebuild", { connections: lost, stage: before.stage, mine: this.mine.map((own) => ({ kind: own.kind, state: own.state })) });
     const view = this.view!;
     const you = view.people.you.id;
     const liveOfYours = (kind: ShareKind) =>
       view.shares.live.some((share) => share.member === you && share.kind === kind);
-    this.resetMedia();
+    for (const purpose of lost) this.resetMedia(purpose);
+    const asked: Promise<unknown>[] = [];
+    if (lost.includes("sending"))
+      for (const own of this.mine) {
+        // One still starting finds the new connection by itself.
+        if (own.state === "starting") continue;
+        if (own.state === "live" && own.capture && !liveOfYours(own.kind)) {
+          this.update(own.kind, { state: "starting" });
+          asked.push(this.publish(own.kind, own.capture));
+        } else if (own.state === "live" && liveOfYours(own.kind)) {
+          // Started from another tab or device meanwhile.
+          this.handedOverFrom(own.kind);
+        } else {
+          this.tidy(own);
+        }
+      }
+    if (!lost.includes("receiving")) return Promise.all(asked);
     this.pictures = [];
     // A watch at a chosen quality goes back to it once watched again; a new watch would be at Auto.
     this.restoring = before.qualities;
-    const asked: Promise<unknown>[] = [];
-    for (const own of this.mine) {
-      // One still starting finds the new connection by itself.
-      if (own.state === "starting") continue;
-      if (own.state === "live" && own.capture && !liveOfYours(own.kind)) {
-        this.update(own.kind, { state: "starting" });
-        asked.push(this.publish(own.kind, own.capture));
-      } else if (own.state === "live" && liveOfYours(own.kind)) {
-        // Started from another tab or device meanwhile.
-        this.handedOverFrom(own.kind);
-      } else {
-        this.tidy(own);
-      }
-    }
     // What was leaving went with the old connection, and is not watched again. What was
     // to be watched afresh is, being on `before`'s stage.
     const left = this.leaving;
@@ -708,19 +737,25 @@ export class RoomClient {
   }
 
   /**
-   * The instance handed this tab a fresh relay credential, 11 hours after its last was
-   * minted. On a direct path the tab takes it silently; on the relay it restarts its media
-   * connection with it, and reconnects the ordinary way if the restart fails, or if the
-   * switch in `renewal.ts` says to reconnect instead.
+   * The instance handed `connection` a fresh relay credential, 11 hours after its last was
+   * minted. On a direct path the tab takes it silently. On the relay the sending
+   * connection restarts with it, and reconnects the ordinary way if the restart fails, or
+   * if the switch in `renewal.ts` says to reconnect instead; the receiving connection is
+   * replaced, since it is never restarted.
    */
-  private async renew(iceServers: IceServer[]) {
-    if (!this.made) return;
-    this.iceServers = iceServers;
-    const totals = await this.media.transport().catch(() => null);
-    const how = renewal(totals?.relayed ?? false);
-    tabLog.info("media.renew", { how, relayed: totals?.relayed ?? null });
+  private async renew(connection: MediaPurpose, iceServers: IceServer[]) {
+    const side = this.sides[connection];
+    if (!side.made) return;
+    side.iceServers = iceServers;
+    const relayed = await this.media.relayed(connection).catch(() => false);
+    const how = renewal(relayed);
+    tabLog.info("media.renew", { connection, how, relayed });
     if (how === "silently") {
-      this.media.renew(iceServers);
+      this.media.renew(connection, iceServers);
+      return;
+    }
+    if (connection === "receiving") {
+      await this.replace();
       return;
     }
     if (how === "restart" && (await this.restart(iceServers))) return;
@@ -728,15 +763,12 @@ export class RoomClient {
   }
 
   /**
-   * Restarts the media connection with the fresh credential `iceServers`, as its next
-   * negotiation, after sending the final total of what it received: the restart resets
-   * the total. True once the connection has its path back.
+   * Restarts the sending connection with the fresh credential `iceServers`, as its next
+   * negotiation. True once the connection has its path back.
    */
   private restart(iceServers: IceServer[]): Promise<boolean> {
-    return this.negotiate(async () => {
-      if (!this.made) return false;
-      this.usage.report({ final: true, restarting: true });
-      await this.usage.sent();
+    return this.negotiate("sending", async () => {
+      if (!this.sides.sending.made) return false;
       const { sdp: offer, mid } = await this.media.restart(iceServers);
       tabLog.info("pc.restart", { offer, mid });
       const answer = await this.request(
@@ -761,28 +793,26 @@ export class RoomClient {
   }
 
   /**
-   * The ordinary reconnect path on the same socket, after a failed restart: the tab sends
-   * its final total, the instance ends everything its media connection carried and lets
-   * it go, and the tab builds it again (`rebuild`). The stage says "Reconnecting…"
-   * meanwhile. Done once.
+   * The ordinary reconnect path on the same socket, after a failed restart of the sending
+   * connection: the instance ends every share it carried and lets it go, and the tab
+   * builds it again (`rebuild`). The stage says "Reconnecting…" meanwhile. Done once.
    */
   private async reconnectMedia() {
-    if (!this.made || this.rebuilding || !this.view) return;
-    tabLog.warn("media.reconnect");
+    if (!this.sides.sending.made || this.rebuilding || !this.view) return;
+    tabLog.warn("media.reconnect", { connection: "sending" });
     this.rebuilding = true;
     const before = this.view.watching;
     // Its own shares end on the old connection, but keep their captures for the new one.
     for (const own of this.mine) if (own.state === "live" && own.capture) this.carrying.add(own.capture);
     try {
-      // Its last report: one after it would be counted from zero again.
-      this.usage.stop();
-      this.usage.report({ final: true });
-      await this.usage.sent();
-      await this.negotiate(() =>
-        this.request({ type: "media", request: { type: "reconnect" } }, (change) => change.type === "dropped"),
+      await this.negotiate("sending", () =>
+        this.request(
+          { type: "media", request: { type: "reconnect" } },
+          (change) => change.type === "dropped" && change.connection === "sending",
+        ),
       );
       this.carrying.clear();
-      await this.rebuild(before);
+      await this.rebuild(before, ["sending"]);
     } catch (error) {
       // The socket was lost on the way: the room's state on the next one says whether
       // the instance let the connection go, and the tab rebuilds from that.
@@ -807,8 +837,8 @@ export class RoomClient {
     const picture = this.pictures.find((candidate) => sameShare(candidate.share, share));
     if (!picture) return;
     this.askedAt.delete(keyOf(share));
-    this.listening.get(picture.video)?.();
-    this.listening.delete(picture.video);
+    this.listening.get(keyOf(share))?.();
+    this.listening.delete(keyOf(share));
     this.media.drop(picture.video);
     this.pictures = this.pictures.filter((candidate) => candidate !== picture);
   }
@@ -820,15 +850,9 @@ export class RoomClient {
    * with its other negotiations.
    */
   private moved({ share, offer, video, audio }: Extract<MediaChange, { type: "moved" }>) {
-    void this.negotiate(async () => {
+    void this.negotiate("receiving", async () => {
       this.dropPicture(share);
-      const pulled = await this.media.pull(offer, video, audio);
-      this.pictures = [
-        ...this.pictures.filter((picture) => !sameShare(picture.share, share)),
-        { share, video, stream: pulled.stream, received: null },
-      ];
-      this.listen(share, video);
-      await this.request({ type: "media", request: { type: "answer", answer: pulled.answer } }, (change) => change.type === "answered");
+      await this.takePull(share, { offer, video, ...(audio === undefined ? {} : { audio }) });
       tabLog.info("watch.moved", { share, video });
     }).catch((error: unknown) => {
       // The connection was lost on the way: the stage comes back with the room's state.
@@ -847,15 +871,28 @@ export class RoomClient {
     if (!this.handedOver.includes(kind)) this.handedOver = [...this.handedOver, kind];
   }
 
+  /**
+   * Takes the media server's `offer` pulling `share` onto the receiving connection: the
+   * share's picture is the new one at once, and the instance has the tab's answer, which
+   * this gives, once it settles.
+   */
+  private async takePull(share: LiveShare, { offer, video, audio }: { offer: string; video: string; audio?: string }): Promise<string> {
+    const { answer, stream } = await this.media.pull(offer, video, audio);
+    this.pictures = [...this.pictures.filter((picture) => !sameShare(picture.share, share)), { share, video, stream, received: null }];
+    this.listen(share, video);
+    await this.request({ type: "media", request: { type: "answer", answer } }, (change) => change.type === "answered");
+    return answer;
+  }
+
   /** Keeps the picture of `share`, arriving on `video`, told of the quality it arrives at. */
   private listen(share: LiveShare, video: string) {
-    this.listening.get(video)?.();
+    this.listening.get(keyOf(share))?.();
     const stop = this.media.received(video, (received) => {
       this.pictures = this.pictures.map((picture) =>
         picture.video === video && sameShare(picture.share, share) ? { ...picture, received } : picture,
       );
     });
-    this.listening.set(video, stop);
+    this.listening.set(keyOf(share), stop);
   }
 
   /**
@@ -872,10 +909,10 @@ export class RoomClient {
     performance.measure(`graeae watch: ${step}`, { start, end: performance.now(), detail: keyOf(share) });
   }
 
-  /** Runs `negotiation` on the media connection once every earlier one is done. */
-  private negotiate<T>(negotiation: () => Promise<T>): Promise<T> {
-    const turn = this.negotiating.then(negotiation);
-    this.negotiating = turn.catch(() => undefined);
+  /** Runs `negotiation` on the `connection` once every earlier one on it is done. */
+  private negotiate<T>(connection: MediaPurpose, negotiation: () => Promise<T>): Promise<T> {
+    const turn = this.negotiating[connection].then(negotiation);
+    this.negotiating[connection] = turn.catch(() => undefined);
     return turn;
   }
 
@@ -893,86 +930,138 @@ export class RoomClient {
     this.mine = this.mine.filter((candidate) => candidate !== own);
   }
 
-  /** Lets go of the media connection, keeping the captures: the next share or watch makes a new one. */
-  private resetMedia() {
-    this.usage.reset();
-    for (const stop of this.listening.values()) stop();
-    this.listening.clear();
-    this.media.reset();
-    this.connection = null;
-    this.made = false;
-    this.faltering = false;
-    this.givenUp = false;
-  }
-
-  /** The tab's media connection, made the first time it is needed. False if it could not be made. */
-  private connected(): Promise<boolean> {
-    this.connection ??= (async () => {
-      const change = await this.request(
-        { type: "media", request: { type: "connect" } },
-        (change) => change.type === "connected" || change.type === "unavailable",
+  /**
+   * Replaces the receiving connection with a new one, as its next negotiation: the tab
+   * sends the old one's final total, the instance makes the new one and pulls each watch
+   * onto it in turn, each picture moving over as the tab answers its pull, and then
+   * closes the old pulls. Every other negotiation on the receiving connection, a watch
+   * asked for meanwhile among them, waits until it is done. True once it is.
+   */
+  private replace(): Promise<boolean> {
+    this.replaceAgain = false;
+    return this.negotiate("receiving", async () => {
+      const side = this.sides.receiving;
+      if (!side.made) return false;
+      tabLog.info("media.replace", { connection: "receiving", watching: this.pictures.length });
+      this.usage.stop();
+      this.usage.report({ final: true });
+      await this.usage.sent();
+      this.replaceAgain = true;
+      const made = await this.request(
+        { type: "media", request: { type: "replace" } },
+        (change) => (change.type === "connected" || change.type === "unavailable") && change.connection === "receiving",
       );
-      if (change.type !== "connected") {
-        tabLog.warn("media.unavailable");
-        this.connection = null;
+      if (made.type !== "connected") {
+        // The instance kept the old connection: its watches stay on it, as do the reports.
+        this.replaceAgain = false;
+        tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement" });
+        this.usage.start();
         return false;
       }
-      tabLog.info("media.connected");
-      this.iceServers = change.iceServers;
-      this.media.connect(change.iceServers, (health) => this.healthChanged(health));
-      this.made = true;
+      side.iceServers = made.iceServers;
+      side.health = "fine";
+      this.media.replace(made.iceServers, (health) => this.healthChanged("receiving", health));
       this.usage.start();
+      for (;;) {
+        const step = await this.awaitChange((change) => change.type === "pulled" || change.type === "replaced");
+        if (step.type !== "pulled") break;
+        await this.takePull(step.share, step);
+      }
+      this.replaceAgain = false;
+      this.media.retire();
+      tabLog.info("media.replaced", { connection: "receiving", watching: this.pictures.length });
+      return true;
+    }).catch((error: unknown) => {
+      // The socket was lost on the way: asked for again once the next one has the room.
+      tabLog.warn("media.replace-failed", { connection: "receiving", error });
+      return false;
+    });
+  }
+
+  /** Lets go of `connection`, keeping the captures: the next share or watch makes a new one. */
+  private resetMedia(connection: MediaPurpose) {
+    if (connection === "receiving") {
+      this.usage.stop();
+      for (const stop of this.listening.values()) stop();
+      this.listening.clear();
+      this.replaceAgain = false;
+    }
+    this.media.reset(connection);
+    this.sides[connection] = newSide();
+  }
+
+  /** The tab's `connection`, made the first time it is needed. False if it could not be made. */
+  private connected(connection: MediaPurpose): Promise<boolean> {
+    const side = this.sides[connection];
+    const asked = (side.asked ??= (async () => {
+      const change = await this.request(
+        { type: "media", request: { type: "connect", connection } },
+        (change) => (change.type === "connected" || change.type === "unavailable") && change.connection === connection,
+      );
+      // Let go of while it was being made: the next share or watch asks again.
+      if (this.sides[connection] !== side) return false;
+      if (change.type !== "connected") {
+        tabLog.warn("media.unavailable", { connection });
+        side.asked = null;
+        return false;
+      }
+      tabLog.info("media.connected", { connection });
+      side.iceServers = change.iceServers;
+      this.media.connect(connection, change.iceServers, (health) => this.healthChanged(connection, health));
+      side.made = true;
+      if (connection === "receiving") this.usage.start();
       return true;
     })().catch((error: unknown) => {
       // The socket was lost before the answer came: the next share or watch asks again.
-      tabLog.warn("media.unavailable", { error });
-      this.connection = null;
+      tabLog.warn("media.unavailable", { connection, error });
+      side.asked = null;
       return false;
-    });
-    return this.connection;
+    }));
+    return asked;
   }
 
   /**
-   * How the media connection is doing has changed. The instance hears when it falters,
-   * which gives this tab's shares 30 seconds, and when it recovers. One the browser has
-   * given up on is restarted (`recover`).
+   * How `connection` is doing has changed. The instance hears when the sending
+   * connection falters, which gives this tab's shares 30 seconds, and when it recovers;
+   * a faltering receiving connection ends nothing. One the browser has given up on is
+   * brought back (`recover`).
    */
-  private healthChanged(health: MediaHealth) {
-    (health === "fine" ? tabLog.info : tabLog.warn).call(tabLog, "media.health", { health });
-    const faltering = health !== "fine";
-    if (faltering !== this.faltering) {
-      this.faltering = faltering;
-      this.send({ type: "media", request: { type: faltering ? "faltering" : "recovered" } });
-    }
-    this.givenUp = health === "failed";
-    if (this.givenUp) void this.recover();
+  private healthChanged(connection: MediaPurpose, health: MediaHealth) {
+    const side = this.sides[connection];
+    (health === "fine" ? tabLog.info : tabLog.warn).call(tabLog, "media.health", { connection, health });
+    const was = side.health;
+    side.health = health;
+    if (connection === "sending" && (health === "fine") !== (was === "fine"))
+      this.send({ type: "media", request: { type: health === "fine" ? "recovered" : "faltering" } });
+    if (health === "failed") void this.recover(connection);
   }
 
   /**
-   * Restarts the media connection the browser gave up on, keeping every share and watch,
-   * and again a moment after each restart that finds no path, as the network may still be
-   * down. Stops once it recovers, or once it is no longer this tab's: the instance let it
-   * go, its shares having faltered for 30 seconds, or the tab left.
+   * Brings back `connection` the browser gave up on, keeping every share and watch: the
+   * sending connection is restarted, the receiving one replaced. Again a moment after
+   * each try that finds no path, as the network may still be down. Stops once it
+   * recovers, or once it is no longer this tab's: the instance let it go, its shares
+   * having faltered for 30 seconds, or the tab left.
    */
-  private async recover() {
-    if (this.recovering) return;
-    this.recovering = true;
+  private async recover(connection: MediaPurpose) {
+    const side = this.sides[connection];
+    if (side.recovering) return;
+    side.recovering = true;
     try {
-      while (this.made && this.givenUp) {
-        if (await this.restart(this.iceServers)) return;
+      while (this.sides[connection] === side && side.made && side.health === "failed") {
+        if (connection === "sending" ? await this.restart(side.iceServers) : await this.replace()) return;
         await new Promise((resolve) => setTimeout(resolve, RESTART_AGAIN_MS));
       }
     } finally {
-      this.recovering = false;
+      side.recovering = false;
     }
   }
 
-  /**
-   * Sends `message` and gives the next change in the media area that `matches`, which
-   * answers it. Fails at once when the connection is lost and the message could not go.
-   */
-  private request(message: ClientMessage, matches: (change: MediaChange) => boolean): Promise<MediaChange> {
-    const reply = new Promise<MediaChange>((resolve, reject) => {
+  /** The next change in the media area that `matches`, which comes unasked. Fails when the socket is lost first. */
+  private awaitChange<T extends MediaChange>(matches: (change: MediaChange) => change is T): Promise<T>;
+  private awaitChange(matches: (change: MediaChange) => boolean): Promise<MediaChange>;
+  private awaitChange(matches: (change: MediaChange) => boolean): Promise<MediaChange> {
+    return new Promise<MediaChange>((resolve, reject) => {
       this.waiting.push({
         accepts: (change) => {
           if (!matches(change)) return false;
@@ -982,6 +1071,14 @@ export class RoomClient {
         lost: () => reject(new Error("the connection was lost")),
       });
     });
+  }
+
+  /**
+   * Sends `message` and gives the next change in the media area that `matches`, which
+   * answers it. Fails at once when the connection is lost and the message could not go.
+   */
+  private request(message: ClientMessage, matches: (change: MediaChange) => boolean): Promise<MediaChange> {
+    const reply = this.awaitChange(matches);
     if (!this.socket.send(message)) this.waiting.pop()?.lost();
     return reply;
   }

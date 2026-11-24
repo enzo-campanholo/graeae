@@ -42,7 +42,10 @@
 // - `presence.arrived`, `presence.left`, `presence.reconnecting`,
 //   `presence.reconnected`, `tab.silent`, `tab.heard` (a tab's own shares' mark)
 // - `media.connected`, `media.unavailable`, `media.answered`, `media.restarted`,
-//   `media.reconnect`, `media.dropped`, `falter.start`, `falter.end`, `falter.due`
+//   `media.reconnect`, `media.dropped`, each with the `connection` it is about
+//   (sending or receiving); `media.replacing`, `media.replacement-abandoned`,
+//   `media.replaced` and `watch.pulled-again` (a receiving connection replaced);
+//   `falter.start`, `falter.end`, `falter.due`
 // - `share.refused` (`why`), `share.live`, `share.ending` (its end began: no longer listed),
 //   `share.ended`, `share.close-failed`
 // - `watch.refused` (`why`), `watch.started`, `watch.ended`, `watch.close-failed`,
@@ -87,7 +90,9 @@
 //   `quality.chosen`
 // - `media.connected`, `media.unavailable`, `media.health`, `media.dropped`,
 //   `media.rejoined`, `media.rebuild`, `media.reconnect`, `media.reconnect-failed`,
-//   `media.renew`
+//   `media.renew`, `media.replace`, `media.replaced`, `media.replace-failed`, each with
+//   its `connection`;
+//   `pc.*` lines too
 // - `stats`: every 15 seconds while sharing or watching, one line per stream:
 //   `direction`, `kind`, `mid`, `rid`, `bitrate`, `fps`, `width`, `height`,
 //   `packetsLost`, `jitter`, `rtt`, `layer` (the quality received), `limitedBy` (the
