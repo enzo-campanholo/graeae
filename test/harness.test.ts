@@ -52,6 +52,25 @@ describe("the test clock", () => {
   });
 });
 
+describe("an eviction", () => {
+  it("forgets what the instance held in memory and keeps its sockets open, unnoticed by the tabs", async () => {
+    const instance = await startInstance({ startAt: START });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { tab } = await openRoom(owner, room);
+    const starts = () => instance.logs().filter((line) => line.event === "instance.start").length;
+    expect(starts()).toBe(1);
+
+    await instance.evict();
+    await connectMedia(tab, "receiving");
+
+    // The socket's message woke an instance started afresh, which still had the socket.
+    expect(starts()).toBe(2);
+    expect(instance.logs().filter((line) => line.event === "restart.restored").at(-1)).toMatchObject({ woke: true, lost: [] });
+    expect(tab.queued()).toEqual([]);
+  });
+});
+
 describe("the rows a steady room writes", () => {
   it("stay within 4 a tab a minute, so ten tabs for eight hours write under 20% of a day's allowance", async () => {
     // 20% of 100,000 rows over 10 tabs and 480 minutes is 4.17 a tab a minute.

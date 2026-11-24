@@ -160,6 +160,11 @@ export class RoomClient {
   private readonly sides: Record<MediaPurpose, Side> = { sending: newSide(), receiving: newSide() };
   /** A replacement of the receiving connection cut short by the lost socket: asked for again on the next. */
   private replaceAgain = false;
+  /**
+   * How many times the receiving connection has been replaced, counted once the instance
+   * has made the new one: a `moved` that arrived before that was meant for the old one.
+   */
+  private replacements = 0;
   /** Captures the browser ended by itself while their share was starting, to stop once it is live. */
   private readonly over = new WeakSet<Capture>();
   /** Requests waiting for their answer in the media area, oldest first. */
@@ -847,10 +852,17 @@ export class RoomClient {
    * A share this tab watches was handed over to another tab or device of its sharer in
    * this room: the instance closed the old pull and pulled the new share in its place. It
    * stays on the stage; its picture is the new one once the tab has answered, in turn
-   * with its other negotiations.
+   * with its other negotiations. A replacement of the receiving connection that went
+   * through first pulled the new share onto the new connection as one of its steps, so
+   * this offer, for the old one, is not taken.
    */
   private moved({ share, offer, video, audio }: Extract<MediaChange, { type: "moved" }>) {
+    const replacements = this.replacements;
     void this.negotiate("receiving", async () => {
+      if (this.replacements !== replacements) {
+        tabLog.info("watch.moved", { share, video, by: "the replacement" });
+        return;
+      }
       this.dropPicture(share);
       await this.takePull(share, { offer, video, ...(audio === undefined ? {} : { audio }) });
       tabLog.info("watch.moved", { share, video });
@@ -935,7 +947,8 @@ export class RoomClient {
    * sends the old one's final total, the instance makes the new one and pulls each watch
    * onto it in turn, each picture moving over as the tab answers its pull, and then
    * closes the old pulls. Every other negotiation on the receiving connection, a watch
-   * asked for meanwhile among them, waits until it is done. True once it is.
+   * asked for meanwhile among them, waits until it is done, and every offer the tab gets
+   * meanwhile, a hand-over's among them, is one of its steps. True once it is.
    */
   private replace(): Promise<boolean> {
     this.replaceAgain = false;
@@ -958,6 +971,7 @@ export class RoomClient {
         this.usage.start();
         return false;
       }
+      this.replacements += 1;
       side.iceServers = made.iceServers;
       side.health = "fine";
       this.media.replace(made.iceServers, (health) => this.healthChanged("receiving", health));

@@ -7,8 +7,13 @@
 // and steers through `instance.media`. The instance's log lines, which a deploy writes to
 // Workers Logs, are kept in memory instead, so the test output stays readable, and a test
 // reads them through `instance.logs`.
+//
+// A test can stop the instance in two ways: `restart`, which drops every socket as a
+// deploy does, and `evict`, which keeps them, as when Cloudflare evicts an instance whose
+// sockets hibernate.
 
 import {
+  evictDurableObject,
   reset,
   runDurableObjectAlarm,
   runInDurableObject,
@@ -98,6 +103,13 @@ export interface TestInstance extends Client {
    * older schema on newer code.
    */
   restart(options?: { migrations?: readonly Migration[] }): Promise<void>;
+  /**
+   * Evicts the instance, as Cloudflare does with one that has had nothing to do for a
+   * while: what it held in memory is gone, and its storage and its sockets are kept, the
+   * sockets hibernated. No tab notices. The instance starts again on the next request,
+   * alarm or message on a socket. It waits for the requests under way to finish.
+   */
+  evict(): Promise<void>;
 }
 
 export interface TestClock {
@@ -190,6 +202,9 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
       await runInDurableObject(stub(), (_, state) => state.abort("Instance dispose")).catch(() => {
         // The abort ends the call that made it.
       });
+    },
+    async evict() {
+      await evictDurableObject(stub());
     },
   };
 }

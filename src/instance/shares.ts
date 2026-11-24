@@ -7,7 +7,11 @@
 // watcher's receiving connection. Each record names the connection it is on. A receiving
 // connection is never restarted: it is replaced (`replace`), with a new connection the
 // tab's watches are pulled onto one by one (`replaceNext`), and the old one's pulls are
-// closed once they all are.
+// closed once they all are. How far a replacement has got is read from the records alone,
+// so it outlasts an eviction between two steps: a watch pulled onto the replacement and
+// waiting for it to be done is one whose pull has returned and that is not yet watching
+// (`carried`). A share handed over meanwhile pulls nothing of its own: its watch goes on
+// the stage with no pull, and the replacement pulls it as one of its steps (`move`).
 //
 // Every call follows one order. The record is written first, with every track name
 // picked here, then the media layer is called. A close is always a forced close, and a
@@ -145,8 +149,6 @@ export interface Moved {
   offer: string;
   video: string;
   audio: string | null;
-  /** The quality the watcher now watches at, when it is not the one they chose: the new share has one quality. */
-  quality: QualityChoice | null;
 }
 
 /** A condition on the `share` and `watch` tables, which both name a member, device, room and tab. */
@@ -188,6 +190,8 @@ export interface WatchingListener {
   ending(shares: readonly Ended[]): void;
   /** A hand-over moved the tab `tabId`'s watch of `share` to the new share, pulled as `moved` says. */
   moved(tabId: string, share: LiveShare, moved: Moved): void;
+  /** A hand-over left the tab `tabId` watching `share` at `quality`, not the one it chose: the new share has one quality. */
+  requalified(tabId: string, share: LiveShare, quality: QualityChoice): void;
 }
 
 /** What became of a request to watch a share. */
@@ -254,12 +258,6 @@ export class Shares {
    * there are none: whatever was under way never returns.
    */
   private readonly inFlight = new Set<string>();
-  /**
-   * Watches pulled onto a replacement receiving connection, waiting for the replacement to
-   * be done to go on the stage in place of the old connection's. A sweep leaves them alone
-   * too; after a restart they are half-made, and closed.
-   */
-  private readonly pending = new Set<string>();
   private readonly retries: Retries;
   private readonly falterings: Falterings;
   private readonly handOvers: HandOvers;
@@ -443,6 +441,13 @@ export class Shares {
       this.forgetIfEmpty(made.id);
       return "stale";
     }
+    if (made === null) {
+      // The tab keeps its old connection, and no replacement will pull what a hand-over
+      // put on its stage for the one let go of: those shares leave the stage.
+      const current = this.connectionOf(tab.id, "receiving");
+      const unpulled = current ? this.watches("WHERE connection_id = ?", current.id).filter(isUnpulled) : [];
+      for (const watch of unpulled) await this.closeWatch(watch);
+    }
     return made;
   }
 
@@ -454,10 +459,7 @@ export class Shares {
     const watches = this.watches("WHERE connection_id = ?", replacement.id);
     // Off the record first, so nothing more goes onto it while its pulls close.
     this.sql.exec("UPDATE media_connection SET role = 'replaced' WHERE id = ?", replacement.id);
-    for (const watch of watches) {
-      this.pending.delete(watch.id);
-      await this.closeWatch(watch);
-    }
+    for (const watch of watches) await this.closeWatch(watch);
     this.forgetIfEmpty(replacement.id);
   }
 
@@ -479,7 +481,14 @@ export class Shares {
   ): Promise<{ share: LiveShare; offer: string; video: string; audio: string | null } | "done" | "stale"> {
     for (;;) {
       const replacement = this.replacementOf(tab.id);
-      if (replacement?.id !== replacementId || typeof replacement.media_id !== "string" || !stillOpen()) return "stale";
+      if (replacement?.id !== replacementId || typeof replacement.media_id !== "string") return "stale";
+      if (!stillOpen()) {
+        // The tab's socket closed while the media server was making it: the tab left, or
+        // is in its grace period and asks again on its next socket. Its leaving could not
+        // forget a connection still being made. With nothing on it, it needs no close.
+        this.forgetIfEmpty(replacementId);
+        return "stale";
+      }
       const current = this.connectionOf(tab.id, "receiving");
       const carried = new Set(this.watches("WHERE connection_id = ?", replacementId).map((watch) => watch.shareId));
       const next = current
@@ -504,7 +513,6 @@ export class Shares {
       let pulled: Pulled | null;
       try {
         pulled = await this.pull(record, replacement.media_id, sharerMediaId, watched);
-        if (pulled) this.pending.add(record.id);
       } finally {
         this.inFlight.delete(record.id);
       }
@@ -514,7 +522,6 @@ export class Shares {
         continue;
       }
       if (!stillOpen() || this.gone(watched) || this.replacementOf(tab.id)?.id !== replacementId) {
-        this.pending.delete(record.id);
         await this.closeWatch(record);
         this.forgetIfEmpty(replacementId);
         if (!stillOpen()) return "stale";
@@ -541,13 +548,12 @@ export class Shares {
       ? this.watches("WHERE connection_id = ? AND watching_at IS NOT NULL AND left_at IS NULL", old.id)
       : [];
     const carried = this.watches("WHERE connection_id = ? AND watching_at IS NULL", replacementId).filter((watch) =>
-      this.pending.has(watch.id),
+      this.carried(watch),
     );
     const stray: WatchRecord[] = [];
     const now = Date.now();
     // In one go, so the stage never shows a share twice, or loses one in between.
     for (const watch of carried) {
-      this.pending.delete(watch.id);
       const before = stage.find((other) => other.shareId === watch.shareId);
       if (!before) {
         stray.push(watch);
@@ -749,24 +755,7 @@ export class Shares {
    * same is for the sweep, which closes what no record names.
    */
   private async pull(record: WatchRecord, watcherMediaId: string, sharerMediaId: string, watched: ShareRecord) {
-    this.sql.exec(
-      `INSERT INTO watch (id, tab_id, connection_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track,
-         audio_track, quality, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      record.id,
-      record.tab,
-      record.connection,
-      record.member,
-      record.device,
-      record.room,
-      watched.id,
-      watched.member,
-      watched.kind,
-      record.video.name,
-      record.audio?.name ?? null,
-      record.quality,
-      Date.now(),
-    );
+    this.insertWatch(record, watched, null);
     let pulled: Pulled;
     try {
       pulled = await this.media.pull(
@@ -784,6 +773,29 @@ export class Shares {
     if (record.audio) record.audio.mid = midOf(record.audio.name);
     this.sql.exec("UPDATE watch SET video_mid = ?, audio_mid = ? WHERE id = ?", record.video.mid, record.audio?.mid ?? null, record.id);
     return pulled;
+  }
+
+  /** Writes the watch `record` of `watched`, with nothing pulled for it yet, on the watcher's stage from `watchingAt` or not yet. */
+  private insertWatch(record: WatchRecord, watched: ShareRecord, watchingAt: number | null) {
+    this.sql.exec(
+      `INSERT INTO watch (id, tab_id, connection_id, member_id, device_id, room_address, share_id, sharer_id, kind, video_track,
+         audio_track, quality, created_at, watching_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      record.id,
+      record.tab,
+      record.connection,
+      record.member,
+      record.device,
+      record.room,
+      watched.id,
+      watched.member,
+      watched.kind,
+      record.video.name,
+      record.audio?.name ?? null,
+      record.quality,
+      Date.now(),
+      watchingAt,
+    );
   }
 
   /**
@@ -827,47 +839,73 @@ export class Shares {
 
   /**
    * Moves `watch`, of a share a hand-over within its room has just closed, to the share
-   * `to` that replaced it: its old pull is closed, then the new share is pulled to the same
-   * tab, at the quality the watcher chose if `to` has two. The watcher's stage keeps the
-   * share, and the tab hears `moved`. If the old pull's close fails, the watcher stays on
-   * the old share until a try succeeds, and is not moved. If the new pull fails, or the tab
-   * leaves or the new share ends meanwhile, the share leaves the stage.
+   * `to` that replaced it: its old pull is closed, then the new share is pulled to the
+   * tab's receiving connection, at the quality the watcher chose if `to` has two. The
+   * watcher's stage keeps the share, and the tab hears `moved`. If the old pull's close
+   * fails, the watcher stays on the old share until a try succeeds, and is not moved. If
+   * the new pull fails, or the tab leaves or the new share ends meanwhile, the share
+   * leaves the stage.
+   *
+   * While the tab replaces its receiving connection, every offer it gets is one of the
+   * replacement's steps (`replaceNext`), so the move pulls nothing: the new share goes on
+   * the stage of the connection being replaced with nothing pulled for it yet, and the
+   * replacement pulls it as one of its steps. A pull that returns to find the tab's
+   * receiving connection replaced, or being replaced, is for a session the tab is letting
+   * go of: it is closed, and the move done again.
    */
   private async move(watch: WatchRecord, to: ShareRecord, connected: (tabId: string) => boolean) {
     if (!(await this.closeWatch(watch, { moving: true }))) return;
-    // Onto a replacement, when the watcher's tab is replacing its receiving connection.
-    const connection = this.receivingTarget(watch.tab);
-    const record = newWatch({ ...watch, connection: connection?.id ?? watch.connection }, to, to.qualities === 2 ? watch.quality : "auto");
-    const watcherMediaId = connection?.media_id;
-    const sharerMediaId = this.connectionById(to.connection)?.media_id;
-    if (typeof watcherMediaId !== "string" || typeof sharerMediaId !== "string") {
-      this.listener.unwatched(watch.tab, watch.share);
-      return;
-    }
-    this.inFlight.add(record.id);
-    try {
-      const pulled = await this.pull(record, watcherMediaId, sharerMediaId, to);
-      if (!pulled) {
+    const quality = to.qualities === 2 ? watch.quality : "auto";
+    const requalified = () => {
+      if (quality !== watch.quality) this.listener.requalified(watch.tab, watch.share, quality);
+    };
+    for (;;) {
+      const current = this.connectionOf(watch.tab, "receiving");
+      const watcherMediaId = current?.media_id;
+      const sharerMediaId = this.connectionById(to.connection)?.media_id;
+      if (!current || typeof watcherMediaId !== "string" || typeof sharerMediaId !== "string") {
         this.listener.unwatched(watch.tab, watch.share);
         return;
       }
-      if (!connected(watch.tab) || this.gone(to)) {
-        await this.closeWatch(record);
-        this.forgetIfEmpty(record.connection);
-        this.listener.unwatched(watch.tab, watch.share);
+      const record = newWatch({ ...watch, connection: current.id }, to, quality);
+      if (this.replacementUnderWay(watch.tab)) {
+        // The new share may have ended, or the watcher left, while the old pull closed.
+        if (!connected(watch.tab) || this.gone(to)) {
+          this.listener.unwatched(watch.tab, watch.share);
+          return;
+        }
+        this.insertWatch(record, to, Date.now());
+        log.info("handover.moved", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, from: watch.id, step: true });
+        requalified();
         return;
       }
-      this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id);
-      this.listener.began(record.id, watch.tab, to.maxBitrate);
-      log.info("handover.moved", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, from: watch.id });
-      this.listener.moved(watch.tab, record.share, {
-        offer: pulled.offer,
-        video: record.video.mid!,
-        audio: record.audio?.mid ?? null,
-        quality: record.quality === watch.quality ? null : record.quality,
-      });
-    } finally {
-      this.inFlight.delete(record.id);
+      this.inFlight.add(record.id);
+      try {
+        const pulled = await this.pull(record, watcherMediaId, sharerMediaId, to);
+        if (!pulled) {
+          this.listener.unwatched(watch.tab, watch.share);
+          return;
+        }
+        if (!connected(watch.tab) || this.gone(to)) {
+          await this.closeWatch(record);
+          this.forgetIfEmpty(record.connection);
+          this.listener.unwatched(watch.tab, watch.share);
+          return;
+        }
+        if (this.receivingTarget(watch.tab)?.id !== current.id) {
+          log.info("handover.pulled-again", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, why: "the connection was replaced meanwhile" });
+          await this.closeWatch(record);
+          continue;
+        }
+        this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id);
+        this.listener.began(record.id, watch.tab, to.maxBitrate);
+        log.info("handover.moved", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, from: watch.id });
+        this.listener.moved(watch.tab, record.share, { offer: pulled.offer, video: record.video.mid!, audio: record.audio?.mid ?? null });
+        requalified();
+        return;
+      } finally {
+        this.inFlight.delete(record.id);
+      }
     }
   }
 
@@ -1073,12 +1111,9 @@ export class Shares {
     if (covered) {
       // With what a replacement under way has pulled again, which is not on the stage yet.
       const pulls = this.watches(`WHERE ${covered.where}`, ...covered.bindings).filter(
-        (watch) => watch.watching || this.pending.has(watch.id),
+        (watch) => watch.watching || this.carried(watch),
       );
-      for (const watch of pulls) {
-        this.pending.delete(watch.id);
-        await this.closeWatch(watch, { subject });
-      }
+      for (const watch of pulls) await this.closeWatch(watch, { subject });
     }
     return ended;
   }
@@ -1210,10 +1245,16 @@ export class Shares {
       log.warn("sweep.skipped", { tab: tabId, connection: mediaId });
       return [];
     }
-    const busy = (id: string) =>
-      this.inFlight.has(id) || this.pending.has(id) || this.closingShares.has(id) || this.closingWatches.has(id);
     const shares = this.records("WHERE connection_id = ?", connectionId);
     const watches = this.watches("WHERE connection_id = ?", connectionId);
+    // A watch carried onto a replacement, or on the stage for a replacement under way to pull, is under way too.
+    const replacing = new Set(
+      watches
+        .filter((watch) => this.carried(watch) || (isUnpulled(watch) && this.replacementUnderWay(watch.tab) !== undefined))
+        .map((watch) => watch.id),
+    );
+    const busy = (id: string) =>
+      this.inFlight.has(id) || replacing.has(id) || this.closingShares.has(id) || this.closingWatches.has(id);
     const openTrack = (name: string) => open.find((track) => track.name === name);
 
     // Every track a record whose call is done, or still under way, accounts for.
@@ -1439,8 +1480,36 @@ export class Shares {
 
   /** The receiving connection a new pull of `tabId`'s goes to: the replacement while one is under way. */
   private receivingTarget(tabId: string): ConnectionRow | undefined {
+    return this.replacementUnderWay(tabId) ?? this.connectionOf(tabId, "receiving");
+  }
+
+  /**
+   * `tabId`'s replacement receiving connection once the media server has made it: from
+   * then until it is done, every offer the tab gets is one of its steps.
+   */
+  private replacementUnderWay(tabId: string): ConnectionRow | undefined {
     const replacement = this.replacementOf(tabId);
-    return replacement && typeof replacement.media_id === "string" ? replacement : this.connectionOf(tabId, "receiving");
+    return replacement && typeof replacement.media_id === "string" ? replacement : undefined;
+  }
+
+  /**
+   * Whether `watch` is pulled onto a replacement receiving connection, its pull returned,
+   * and waits for the replacement to be done to go on the stage in place of the old
+   * connection's. Read from its records, so it outlasts an eviction between two steps.
+   */
+  private carried(watch: WatchRecord): boolean {
+    return (
+      !watch.watching &&
+      watch.video.mid !== null &&
+      !this.inFlight.has(watch.id) &&
+      !this.closingWatches.has(watch.id) &&
+      this.connectionById(watch.connection)?.role === "replacement"
+    );
+  }
+
+  /** The replacement receiving connection of `tabId`'s whose steps are under way, by id, or null when there is none. */
+  replacing(tabId: string): string | null {
+    return this.replacementUnderWay(tabId)?.id ?? null;
   }
 
   /** Every connection `tabId` has on record, in any role. */
@@ -1546,6 +1615,11 @@ function tracksOf(share: ShareRecord): Track[] {
 /** A watch's pulled tracks: the share's video and, when it has any, its screen audio. */
 function pulledTracksOf(watch: WatchRecord): PulledTrack[] {
   return watch.audio ? [watch.video, watch.audio] : [watch.video];
+}
+
+/** Whether `watch` is on the stage with nothing pulled: a hand-over's, during a replacement, for the replacement to pull (see `move`). */
+function isUnpulled(watch: WatchRecord): boolean {
+  return watch.watching && watch.video.mid === null;
 }
 
 /** A new watch of the share `watched` by the watcher's tab `watcher.tab`, at `quality`, before anything is pulled. */

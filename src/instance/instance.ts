@@ -36,6 +36,9 @@ import { Shares, type Covered, type Ended } from "./shares.ts";
 import { Signaling, tagsOf, type Cut, type Tab } from "./signaling.ts";
 import { Usage } from "./usage.ts";
 
+/** What `Instance.stepping` holds for a tab whose replacement connection is still being made. */
+const MAKING = "making";
+
 /** The name of the instance's one Durable Object. Every request reaches the same one. */
 export const INSTANCE_NAME = "instance";
 
@@ -60,8 +63,13 @@ export class Instance extends DurableObject<Env> {
   private readonly shares: Shares;
   private readonly usage: Usage;
   private readonly relay: Relay;
-  /** The tabs replacing their receiving connection whose answer to the replacement's last pull is awaited, with the replacement's id. */
-  private readonly replacing = new Map<string, string>();
+  /**
+   * The tabs with a step of a replacement of their receiving connection under way, with
+   * the replacement's id, so an answer that arrives meanwhile starts no other. Which tabs
+   * are replacing, and how far each has got, is in storage: an eviction can come between
+   * two steps, but not while one waits on the media server.
+   */
+  private readonly stepping = new Map<string, string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -104,11 +112,12 @@ export class Instance extends DurableObject<Env> {
         // A share no longer counts from the moment its end begins, so its room hears then, not once its close returns.
         ending: (ended) => this.sharesEnded(ended),
         // A hand-over carried this tab's watching over to the new share: it answers the new pull.
-        moved: (tab, share, { offer, video, audio, quality }) => {
+        moved: (tab, share, { offer, video, audio }) => {
           const change = { type: "moved" as const, share, offer, video, ...withAudio(audio) };
           this.signaling.toTab(tab, { type: "media", change });
-          if (quality !== null) this.signaling.toTab(tab, { type: "watching", change: { type: "quality", share, quality } });
         },
+        requalified: (tab, share, quality) =>
+          this.signaling.toTab(tab, { type: "watching", change: { type: "quality", share, quality } }),
       },
       () => this.schedule(),
     );
@@ -454,12 +463,10 @@ export class Instance extends DurableObject<Env> {
       const answered = await this.shares.renegotiate(tab, answer);
       (answered ? log.info : log.warn)("media.answered", { ...tagsOf(tab), ok: answered });
       this.signaling.toTab(tab.id, { type: "media", change: { type: "answered" } });
-      // The answer to a replacement's pull: on to the next.
-      const replacement = this.replacing.get(tab.id);
-      if (replacement !== undefined) {
-        this.replacing.delete(tab.id);
-        await this.replaceStep(tab, replacement);
-      }
+      // While the tab replaces its receiving connection, every offer it answers is one of
+      // the replacement's steps: on to the next, unless one is under way already.
+      const replacement = this.shares.replacing(tab.id);
+      if (replacement !== null && !this.stepping.has(tab.id)) await this.replaceStep(tab, replacement);
     },
     // A replacement needs a check, as a connection does: it pulls the tab's watches again.
     "media.replace": async (tab, _, allowed) => {
@@ -467,8 +474,15 @@ export class Instance extends DurableObject<Env> {
         log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "not allowed" });
         return;
       }
-      this.replacing.delete(tab.id);
-      const made = await this.shares.replace(tab, () => this.relay.mint());
+      // The replacement is on record before its credential is minted: an answer meanwhile
+      // waits for the first step, which this starts once the tab has heard `connected`.
+      this.stepping.set(tab.id, MAKING);
+      let made: Awaited<ReturnType<Shares["replace"]>>;
+      try {
+        made = await this.shares.replace(tab, () => this.relay.mint());
+      } finally {
+        if (this.stepping.get(tab.id) === MAKING) this.stepping.delete(tab.id);
+      }
       if (made === "stale") return;
       if (!made) {
         log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "the media server or the relay failed, or nothing to replace" });
@@ -608,13 +622,19 @@ export class Instance extends DurableObject<Env> {
    * it, `replaced`.
    */
   private async replaceStep(tab: Tab, replacement: string) {
-    const step = await this.shares.replaceNext(tab, replacement, () => this.signaling.isOpen(tab.id));
+    this.stepping.set(tab.id, replacement);
+    let step: Awaited<ReturnType<Shares["replaceNext"]>>;
+    try {
+      step = await this.shares.replaceNext(tab, replacement, () => this.signaling.isOpen(tab.id));
+    } finally {
+      // Not a step of a later replacement's, which may have begun meanwhile.
+      if (this.stepping.get(tab.id) === replacement) this.stepping.delete(tab.id);
+    }
     if (step === "stale") return;
     if (step === "done") {
       this.signaling.toTab(tab.id, { type: "media", change: { type: "replaced" } });
       return;
     }
-    this.replacing.set(tab.id, replacement);
     const { share, offer, video, audio } = step;
     this.signaling.toTab(tab.id, { type: "media", change: { type: "pulled", share, offer, video, ...withAudio(audio) } });
   }
@@ -638,7 +658,6 @@ export class Instance extends DurableObject<Env> {
    * nothing it asks is granted any more: whatever it was sending and watching is cut off.
    */
   private async left(tab: Tab) {
-    this.replacing.delete(tab.id);
     await this.cutOff({ tabId: tab.id });
   }
 

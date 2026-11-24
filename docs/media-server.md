@@ -93,6 +93,13 @@ sections.
   closed`. The session's track list still names it, so the instance retries the close
   every 30 s until the tab leaves. *Ticket 57, run 2; ticket 58.* The stand-in has no
   calls to fail.
+- **Not seen yet: closing a pull whose offer was never answered.** A hand-over's `moved`
+  that reaches a tab just as its receiving connection is replaced is left unanswered
+  (ticket 62): the replacement pulls the new share onto the new connection instead, and
+  closes the old connection's pull of it with the rest. If that close fails as above, it
+  is retried on its backoff, and the old connection's record stays until a sweep shows
+  the track gone or the tab leaves. The stand-in never closes a track, so a real-media
+  run is the only check.
 
 ## Failures seen once
 

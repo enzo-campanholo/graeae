@@ -15,7 +15,7 @@
 // media server makes the offer (`pulled`) and the tab sends its answer back. A receiving
 // connection that needs a new path is replaced, never restarted (`replace`): the instance
 // makes a new one, pulls each of the tab's watches onto it in turn, then closes the old
-// connection's pulls.
+// connection's pulls. Until it is done, every offer the tab gets is one of those steps.
 //
 // A tab runs one negotiation at a time on each connection, and waits for `answered`
 // before it starts the next on the receiving one.
@@ -123,7 +123,9 @@ export type MediaChange =
    * `video`, and its screen audio, when it has any, on `audio`. `offer` is the media
    * server's SDP offer; the tab answers it with `answer`. A new watch goes on the stage
    * with the watching area's `watched`, which comes next; a watch pulled onto a
-   * replacement connection is on the stage already.
+   * replacement connection is on the stage already. While a replacement is under way,
+   * from its `connected` to its `replaced`, every offer is one of its steps: a share
+   * handed over meanwhile arrives as a `pulled` onto the new connection, never a `moved`.
    */
   | { type: "pulled"; share: LiveShare; offer: string; video: string; audio?: string }
   /** `share` could not be watched on this tab: a check failed, or the media server did. */
@@ -132,7 +134,11 @@ export type MediaChange =
    * The share `share` this tab watches was handed over to another tab or device of its
    * sharer in this room: its old pull is closed, and the new share is pulled in its place.
    * It stays on the stage. `offer`, `video` and `audio` are as in `pulled`, and the tab
-   * answers with `answer`, in turn with its other negotiations.
+   * answers with `answer`, in turn with its other negotiations. Never sent while a
+   * replacement of the receiving connection is under way (see `pulled`). One sent just
+   * before the instance began a replacement is for the old connection, which the
+   * replacement then pulls the new share from as one of its steps: a tab whose
+   * replacement went through after this arrived leaves its offer be, unanswered.
    */
   | { type: "moved"; share: LiveShare; offer: string; video: string; audio?: string }
   /**
