@@ -1,6 +1,6 @@
 # 63: Usage misses a replaced connection's last seconds
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Blocked by:** none
 
@@ -49,3 +49,32 @@ Before asking to replace its receiving connection, the tab sends that connection
 - Reading Cloudflare's own usage figure.
 - The safety margin and the rule that counts relayed watching twice.
 - 62's hand-over and eviction cases, and 64's asking again.
+
+### Done
+
+**What changed.** Migration 0010 adds `usage_watch.old_connection`. `Usage.newTotal` sets it on each watch of the tab's that does not have it yet. It also pins the watch's `since` to the old connection's last report, or the watch's start if later, and its `relayed` to that report's. A watch that ended since that report is charged at once. From then on:
+- a report deletes only `old_connection = 0` rows, so the new connection's totals never cancel the charge;
+- `watchEnded` charges such a watch when its pull closes, even while the tab can report;
+- `tabGone` ends any still open at the cut-off.
+
+A second `newTotal`, from a replacement asked for again, leaves marked watches as they are, so the overlap is charged once. An `unavailable` replacement never calls `newTotal`. The header of `usage.ts` and the spec's "Gaps" bullet state the rule.
+
+**Tests.**
+- Seven new tests in `test/usage.test.ts` ("a replaced receiving connection"):
+  - one share;
+  - one share, relayed;
+  - two shares;
+  - a watch started after the final total;
+  - `unavailable`;
+  - asked again;
+  - the tab leaving mid-replacement.
+- One in `test/migrations.test.ts`: it starts on migrations 1 to 9 with a budget and a reset day, restarts on 10, and charges a replacement's overlap.
+- Totals: 516 in the Workers runtime and 69 Playwright, with typecheck and lint.
+
+**Review.**
+- **Spec:** the reviewer suggested that a replacement asked again and then answered `unavailable` counts twice, since the old watches stay marked while the tab "reports on that connection". It does not report on it. The room client sends the abandoned replacement's total as its final one and goes on reporting that connection (`room-client.svelte.ts`, `replace`). So nothing ever reports the old connection again, and charging its watches until their pulls close is right. That the instance keeps the old connection while the tab holds the abandoned one is 64's to settle. `newTotal` also marks watches on a fresh `connect`. This is harmless, since a let-go receiving connection carries nothing, and keeps one rule.
+- **Standards:**
+  - Fixed: the stale schema-guard comment in `newTotal`, and an unused column read in `received`.
+  - Left as they are:
+    - the test helper `replaceWatching`, which differs from the two in `replacing.test.ts` and `connections.test.ts` in moving the clock;
+    - the migration test adding no `usage_watch` rows before the restart. A report on the older schema already reads the new column, as 0009's test notes for its own.

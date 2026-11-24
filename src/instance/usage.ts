@@ -25,6 +25,14 @@
 //   bitrate from the tab's last report (or the watch's start, if later) until the instance
 //   recorded the watch as ended. A watch that ends while its tab can still report waits:
 //   the tab's next report covers it, and only if the tab goes without one is it charged.
+// - A receiving connection the tab has left behind (`newTotal`) is one no later total
+//   covers, though it receives each watch on it until the instance closes that watch's
+//   pull at the end of a replacement. So each watch on it is charged by the same rule,
+//   from the old connection's last report (or the watch's start, if later) until its pull
+//   is closed or the tab is cut off, whichever comes first, as relayed when that report
+//   was. A report from the new connection never cancels it, and a replacement asked for
+//   again charges it once. A replacement answered `unavailable` leaves the old connection
+//   in use: its total carries on, and its next report covers the time in between.
 // - A sharer's upload is never reported, so never counted: a tab reports what its
 //   receiving connection received, and its sending connection reports nothing (ADR 0005).
 //
@@ -99,20 +107,37 @@ export class Usage {
       relayed ? 1 : 0,
       0,
     );
-    // This total covers everything the tab received until now: watches that ended since
-    // the last report need no charge of their own, and those still going start again
-    // here, from the tab's `reported_at` (see `chargeGaps`). Not writing each watch's
-    // `since` saves a row per watch on every report.
-    this.sql.exec("DELETE FROM usage_watch WHERE tab_id = ? AND ended_at IS NOT NULL", tab);
+    // This total covers everything the tab received on this connection until now: watches
+    // that ended since the last report need no charge of their own, and those still going
+    // start again here, from the tab's `reported_at` (see `chargeGaps`). Not writing each
+    // watch's `since` saves a row per watch on every report. A watch on a connection the
+    // tab has left behind is not this connection's, so this total covers none of it.
+    this.sql.exec("DELETE FROM usage_watch WHERE tab_id = ? AND ended_at IS NOT NULL AND old_connection = 0", tab);
   }
 
   /**
    * The instance made `tab` a new receiving connection, or replaced its old one: the tab's
    * next total counts from zero. (The `restarted` column holds this; the name is older.)
+   * No report covers the old connection from here, though it receives each watch on it
+   * until the instance closes its pull: each such watch is charged as a gap from the old
+   * connection's last report, or the watch's start if later, until it ends. One the tab
+   * left behind already, as a replacement it asked for again, keeps the gap it has.
    */
   newTotal(tab: string) {
-    // An instance started on an older schema than this code's has no totals to reset.
+    // An instance started on a schema from before the usage count has no totals to reset.
     if (!this.counting()) return;
+    const last = this.sql
+      .exec<{ reported_at: number; relayed: number }>("SELECT reported_at, relayed FROM usage_tab WHERE tab_id = ?", tab)
+      .toArray()[0];
+    this.sql.exec(
+      `UPDATE usage_watch SET old_connection = 1, since = MAX(since, ?), relayed = COALESCE(?, relayed)
+       WHERE tab_id = ? AND old_connection = 0`,
+      last?.reported_at ?? 0,
+      last?.relayed ?? null,
+      tab,
+    );
+    // One that ended since that report waited for the next, which will not cover it.
+    this.chargeGaps("WHERE w.tab_id = ? AND w.old_connection = 1 AND w.ended_at IS NOT NULL", tab);
     this.sql.exec("UPDATE usage_tab SET restarted = 1 WHERE tab_id = ?", tab);
   }
 
@@ -131,18 +156,21 @@ export class Usage {
 
   /**
    * The instance recorded the watch `watch` as ended. If its tab can still report
-   * (`tabReports`), its next report covers the watch; otherwise the gap is charged now.
+   * (`tabReports`) on the connection the watch was on, its next report covers the watch;
+   * otherwise the gap is charged now.
    */
   watchEnded(watch: string, tabReports: boolean) {
     this.sql.exec("UPDATE usage_watch SET ended_at = ? WHERE watch_id = ? AND ended_at IS NULL", Date.now(), watch);
-    if (!tabReports) this.chargeGaps("WHERE w.watch_id = ? AND w.ended_at IS NOT NULL", watch);
+    this.chargeGaps(`WHERE w.watch_id = ? AND w.ended_at IS NOT NULL${tabReports ? " AND w.old_connection = 1" : ""}`, watch);
   }
 
   /**
    * `tab` is gone, and will report no more: each watch of its that ended since its last
-   * report is charged. A watch still recorded (its close failing) is charged when it ends.
+   * report is charged, and each on a connection it left behind ends here if it has not
+   * already. Another watch still recorded (its close failing) is charged when it ends.
    */
   tabGone(tab: string) {
+    this.sql.exec("UPDATE usage_watch SET ended_at = ? WHERE tab_id = ? AND old_connection = 1 AND ended_at IS NULL", Date.now(), tab);
     this.chargeGaps("WHERE w.tab_id = ? AND w.ended_at IS NOT NULL", tab);
     // A watch still recorded keeps the tab's last report as its own, since that goes with the tab.
     this.sql.exec(
@@ -245,13 +273,15 @@ export class Usage {
   /**
    * Charges each watch `where` takes in (as `w`) at its maximum bitrate over its gap, and
    * forgets it. The gap starts at the tab's last report, or the watch's start if later,
-   * and is charged as relayed when that report was.
+   * and is charged as relayed when that report was. For a watch on a connection the tab
+   * left behind, that report is the old connection's last, which `newTotal` kept with it.
    */
   private chargeGaps(where: string, ...bindings: SqlStorageValue[]) {
     const gaps = this.sql
       .exec<WatchRow>(
-        `SELECT w.watch_id, w.max_bitrate, MAX(w.since, COALESCE(t.reported_at, w.since)) AS since,
-           COALESCE(t.relayed, w.relayed) AS relayed, w.ended_at
+        `SELECT w.watch_id, w.max_bitrate,
+           CASE WHEN w.old_connection = 1 THEN w.since ELSE MAX(w.since, COALESCE(t.reported_at, w.since)) END AS since,
+           CASE WHEN w.old_connection = 1 THEN w.relayed ELSE COALESCE(t.relayed, w.relayed) END AS relayed, w.ended_at
          FROM usage_watch AS w LEFT JOIN usage_tab AS t ON t.tab_id = w.tab_id ${where}`,
         ...bindings,
       )

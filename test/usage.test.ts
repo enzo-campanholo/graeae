@@ -7,8 +7,19 @@
 import { describe, expect, it } from "vitest";
 import type { UsageAnswer } from "../src/shared/api.ts";
 import type { LiveShare } from "../src/shared/socket/index.ts";
-import { startInstance, type TestBrowser } from "./harness.ts";
-import { addMember, connectMedia, FAKE_OFFER, setUpOwner, shareScreen, shareWebcam, stopWatching, watch } from "./steps.ts";
+import { startInstance, type TestBrowser, type TestInstance } from "./harness.ts";
+import {
+  addMember,
+  connectMedia,
+  FAKE_ANSWER,
+  FAKE_OFFER,
+  setUpOwner,
+  shareScreen,
+  shareWebcam,
+  startScreen,
+  stopWatching,
+  watch,
+} from "./steps.ts";
 import { openRoom, type Tab } from "./sockets.ts";
 
 const SECOND = 1000;
@@ -333,6 +344,130 @@ describe("where no later total arrives", () => {
     await tab.close();
 
     expect((await usage(owner)).used).toBe(10_000);
+  });
+});
+
+/**
+ * A replacement of `tab`'s receiving connection while it watches: the new connection, each
+ * watch pulled onto it and answered, then `replaced`, which comes once the old pulls are
+ * closed. The test's clock moves `seconds` while it is under way, before the first answer.
+ */
+async function replaceWatching(instance: TestInstance, tab: Tab, seconds: number) {
+  tab.send({ type: "media", request: { type: "replace" } });
+  expect(await tab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+  let waited = false;
+  for (;;) {
+    const message = await tab.next();
+    if (message.type !== "media" || message.change.type === "answered") continue;
+    if (message.change.type === "replaced") return;
+    expect(message.change.type).toBe("pulled");
+    if (!waited) await instance.clock.advance(seconds * SECOND);
+    waited = true;
+    tab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+  }
+}
+
+describe("a replaced receiving connection", () => {
+  it("is charged at each watched share's maximum bitrate from its final total until its pulls are closed", async () => {
+    const { instance, owner, tab } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { final: true });
+
+    await replaceWatching(instance, tab, 4);
+    // 4 seconds of the webcam at 1.5 Mbps on the old connection, after its final total.
+    expect((await usage(owner)).used).toBe(1_000_000 + 750_000);
+    // The new connection's total counts from zero, and covers none of the old one's.
+    await report(tab, 500_000);
+    expect((await usage(owner)).used).toBe(1_000_000 + 750_000 + 500_000);
+  });
+
+  it("is charged twice after a final total that was relayed", async () => {
+    const { instance, owner, tab } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { relayed: true, final: true });
+
+    await replaceWatching(instance, tab, 4);
+    await report(tab, 500_000);
+
+    expect((await usage(owner)).used).toBe(2_000_000 + 1_500_000 + 500_000);
+  });
+
+  it("is charged for each share it carried", async () => {
+    const instance = await startInstance();
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab } = await openRoom(owner, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await tab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    await tab.next(); // her webcam started
+    startScreen(biaTab, { audio: null, video: "2" });
+    expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published", kind: "screen" } });
+    await tab.next(); // her screen started
+    await connectMedia(tab, "receiving");
+    await watch(tab, { member: biaState.people.you.id, kind: "webcam" });
+    await watch(tab, { member: biaState.people.you.id, kind: "screen" });
+    await report(tab, 1_000_000, { final: true });
+
+    await replaceWatching(instance, tab, 4);
+
+    // 4 seconds of the webcam at 1.5 Mbps and of the screen at 12.
+    expect((await usage(owner)).used).toBe(1_000_000 + 750_000 + 6_000_000);
+  });
+
+  it("is charged from a watch's start when that came after the final total", async () => {
+    const { instance, owner, tab, biaTab, share } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { final: true });
+    await instance.clock.advance(SECOND);
+    startScreen(biaTab, { audio: null, video: "2" });
+    await tab.next(); // her screen started
+    await watch(tab, { member: share.member, kind: "screen" });
+
+    await replaceWatching(instance, tab, 2);
+
+    // 3 seconds of the webcam at 1.5 Mbps, and 2 of the screen at 12.
+    expect((await usage(owner)).used).toBe(1_000_000 + 562_500 + 3_000_000);
+  });
+
+  it("is never charged when the replacement is unavailable: the tab keeps the connection and reports on it", async () => {
+    const { instance, owner, tab } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { final: true });
+    instance.media.fail("connect");
+
+    tab.send({ type: "media", request: { type: "replace" } });
+    expect(await tab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving" } });
+    await instance.clock.advance(4 * SECOND);
+    await report(tab, 3_000_000);
+
+    expect((await usage(owner)).used).toBe(3_000_000);
+  });
+
+  it("is charged once when the tab asks again in the middle of its replacement", async () => {
+    const { instance, owner, tab, share } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { final: true });
+    tab.send({ type: "media", request: { type: "replace" } });
+    expect(await tab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await tab.next()).toMatchObject({ type: "media", change: { type: "pulled", share } });
+    await instance.clock.advance(2 * SECOND);
+
+    // The tab lets go of the new connection unanswered, and asks again.
+    await replaceWatching(instance, tab, 2);
+    await report(tab, 500_000);
+
+    // 4 seconds of the webcam at 1.5 Mbps, from the final total until the old pull closed.
+    expect((await usage(owner)).used).toBe(1_000_000 + 750_000 + 500_000);
+  });
+
+  it("is charged until the tab leaves, when it leaves in the middle of its replacement", async () => {
+    const { instance, owner, tab, share } = await ownerWatchingBia();
+    await report(tab, 1_000_000, { final: true });
+    tab.send({ type: "media", request: { type: "replace" } });
+    expect(await tab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await tab.next()).toMatchObject({ type: "media", change: { type: "pulled", share } });
+
+    await instance.clock.advance(4 * SECOND);
+    await tab.close();
+
+    expect((await usage(owner)).used).toBe(1_000_000 + 750_000);
   });
 });
 

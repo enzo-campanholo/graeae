@@ -2,7 +2,18 @@ import { describe, expect, it } from "vitest";
 import { checkNumbering, migrations, type Migration } from "../src/instance/migrations.ts";
 import { startInstance } from "./harness.ts";
 import type { DeviceInviteAnswer, InvitesAnswer } from "../src/shared/api.ts";
-import { addMember, connectMedia, invite, pressJoin, setUpOwner, shareScreen, shareWebcam, stopWebcam, watch } from "./steps.ts";
+import {
+  addMember,
+  connectMedia,
+  FAKE_ANSWER,
+  invite,
+  pressJoin,
+  setUpOwner,
+  shareScreen,
+  shareWebcam,
+  stopWebcam,
+  watch,
+} from "./steps.ts";
 import { openRoom } from "./sockets.ts";
 
 // Stand-ins for migrations later code might ship, so these tests outlive any real
@@ -292,5 +303,49 @@ describe("the a-connection-for-each-purpose migration", () => {
     ownerTab.send({ type: "usage", request: { type: "received", bytes: 1_000_000, relayed: false } });
     await ownerTab.heartbeat();
     expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_000_000 });
+  });
+});
+
+describe("the a-replaced-connections-watches migration", () => {
+  const added = migrations.find((migration) => migration.name === "a-replaced-connections-watches")!;
+  const before = migrations.filter((migration) => migration.number < added.number);
+
+  // Nothing of usage can be reported on the older schema with today's code, which reads
+  // the new column with every report: the watching comes after the restart.
+  it("starts an instance that already has members, rooms and usage settings, whose replaced connections are then charged", async () => {
+    const instance = await startInstance({ migrations: before });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const put = (path: string, body: unknown) =>
+      owner.fetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    expect((await put("/api/owner/usage/budget", { gigabytes: 50 })).status).toBe(200);
+    expect((await put("/api/owner/usage/reset-day", { day: 5 })).status).toBe(200);
+
+    await instance.restart({ migrations });
+
+    expect(await (await bia.fetch("/api/me")).json()).toMatchObject({ name: "Bia", owner: false });
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 0, budget: 50_000_000_000, resetDay: 5 });
+    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: biaTab, state: biaState } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // her webcam went live
+    const biasWebcam = { member: biaState.people.you.id, kind: "webcam" as const };
+    await connectMedia(ownerTab, "receiving");
+    await watch(ownerTab, biasWebcam);
+    ownerTab.send({ type: "usage", request: { type: "received", bytes: 1_000_000, relayed: false, final: true } });
+    await ownerTab.heartbeat();
+
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled", share: biasWebcam } });
+    await instance.clock.advance(2000);
+    ownerTab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "answered" } });
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "replaced" } });
+
+    // 1 MB as received, and 2 seconds of the webcam at 1.5 Mbps on the old connection after it.
+    expect(await (await owner.fetch("/api/owner/usage")).json()).toMatchObject({ used: 1_000_000 + 375_000 });
   });
 });
