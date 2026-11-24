@@ -7,10 +7,11 @@
 // watcher's receiving connection. Each record names the connection it is on. A receiving
 // connection is never restarted: it is replaced (`replace`), with a new connection the
 // tab's watches are pulled onto one by one (`replaceNext`), and the old one's pulls are
-// closed once they all are. How far a replacement has got is read from the records alone,
-// so it outlasts an eviction between two steps: a watch pulled onto the replacement and
-// waiting for it to be done is one whose pull has returned and that is not yet watching
-// (`carried`). A share handed over meanwhile pulls nothing of its own: its watch goes on
+// closed once they all are. A tab with no receiving connection on record has nothing to
+// replace, which asks the media server nothing. How far a replacement has got is read
+// from the records alone, so it outlasts an eviction between two steps: a watch pulled
+// onto the replacement and waiting for it to be done is one whose pull has returned and
+// that is not yet watching (`carried`). A share handed over meanwhile pulls nothing of its own: its watch goes on
 // the stage with no pull, and the replacement pulls it as one of its steps (`move`).
 //
 // Every call follows one order. The record is written first, with every track name
@@ -428,12 +429,15 @@ export class Shares {
    * with a relay credential `mint` mints, and the tab's watches are then pulled onto it one
    * by one (`replaceNext`). A replacement already under way for the tab is let go of, and
    * whatever was pulled onto it closed: the tab has let go of that connection to ask again.
-   * Its id and credential; null when the media server or the relay failed, or the tab has
-   * no receiving connection to replace; "stale" when another replacement took its place
-   * meanwhile.
+   * Its id and credential; null when the media server or the relay failed; "nothing to
+   * replace" when the tab has no receiving connection on record, which asks the media
+   * server nothing; "stale" when another replacement took its place meanwhile.
    */
-  async replace(tab: Tab, mint: () => Promise<IceServer[]>): Promise<{ id: string; iceServers: IceServer[] } | "stale" | null> {
-    if (!this.connectionOf(tab.id, "receiving")) return null;
+  async replace(
+    tab: Tab,
+    mint: () => Promise<IceServer[]>,
+  ): Promise<{ id: string; iceServers: IceServer[] } | "stale" | "nothing to replace" | null> {
+    if (!this.connectionOf(tab.id, "receiving")) return "nothing to replace";
     await this.abandonReplacement(tab.id);
     log.info("media.replacing", { ...tagsOf(tab) });
     const made = await this.makeConnection(tab, "receiving", "replacement", mint);

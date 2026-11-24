@@ -16,6 +16,10 @@
 // connection that needs a new path is replaced, never restarted (`replace`): the instance
 // makes a new one, pulls each of the tab's watches onto it in turn, then closes the old
 // connection's pulls. Until it is done, every offer the tab gets is one of those steps.
+// A replacement that cannot be made is `unavailable` with why: the media server or the
+// relay failed, and the tab asks again after a wait that doubles up to 30 seconds; or
+// there is nothing to replace, or it is not allowed, and the tab lets go of its receiving
+// connection instead.
 //
 // A tab runs one negotiation at a time on each connection, and waits for `answered`
 // before it starts the next on the receiving one.
@@ -34,6 +38,14 @@ export interface IceServer {
 
 /** Which of a tab's two media connections a message is about: the one it shares over, or the one it watches over. */
 export type MediaPurpose = "sending" | "receiving";
+
+/**
+ * Why a media connection is unavailable. "failed": the media server or the relay failed,
+ * and asking again may succeed. "nothing to replace": the instance holds no receiving
+ * connection of the tab's to replace. "not allowed": the tab's device or access no longer
+ * holds. Asking again never helps with either of the last two.
+ */
+export type Unavailable = "failed" | "nothing to replace" | "not allowed";
 
 /** Whether `value` names one of a tab's two media connections. */
 export function isMediaPurpose(value: unknown): value is MediaPurpose {
@@ -92,9 +104,9 @@ export type MediaRequest =
   /**
    * Replace the tab's receiving connection, which the browser gave up on, or which is on
    * the relay when its credential is renewed. The instance makes a new one and replies
-   * `connected` for it (or `unavailable`), then pulls each of the tab's watches onto it
-   * in turn, each with `pulled`, which the tab answers before the next comes; then it
-   * closes the old connection's pulls, and the tab hears `replaced`. The tab sends its
+   * `connected` for it (or `unavailable`, with why), then pulls each of the tab's watches
+   * onto it in turn, each with `pulled`, which the tab answers before the next comes;
+   * then it closes the old connection's pulls, and the tab hears `replaced`. The tab sends its
    * final usage total first: the new connection counts from zero.
    */
   | { type: "replace" };
@@ -112,8 +124,13 @@ export type MediaChange =
    * (`restart`), or replaces its receiving connection (`replace`).
    */
   | { type: "renewed"; connection: MediaPurpose; iceServers: IceServer[] }
-  /** The tab's `connection` could not be made. The tab may ask again. */
-  | { type: "unavailable"; connection: MediaPurpose }
+  /**
+   * The tab's `connection` could not be made, or its receiving connection could not be
+   * replaced, for `reason`. A tab may ask for a connection again. One whose replacement
+   * failed keeps its receiving connection and may ask again, waiting longer each time;
+   * one with nothing to replace, or not allowed, lets go of its receiving connection.
+   */
+  | { type: "unavailable"; connection: MediaPurpose; reason: Unavailable }
   /** This tab's share of `kind` is live: `answer` is the media server's SDP answer to its offer. */
   | { type: "published"; kind: ShareKind; answer: string }
   /** This tab's share of `kind` did not start: a check failed, or the media server did. */

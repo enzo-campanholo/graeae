@@ -434,7 +434,7 @@ describe("a replaced receiving connection", () => {
     instance.media.fail("connect");
 
     tab.send({ type: "media", request: { type: "replace" } });
-    expect(await tab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving" } });
+    expect(await tab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving", reason: "failed" } });
     await instance.clock.advance(4 * SECOND);
     await report(tab, 3_000_000);
 

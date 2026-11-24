@@ -25,8 +25,12 @@
 // one there.
 //
 // The browser giving up a connection is answered per connection: the sending one is
-// restarted in place, keeping every share; the receiving one is replaced by a new one,
-// onto which the instance pulls every watch again before closing the old pulls.
+// restarted in place, keeping every share, again 2 seconds after each restart that finds
+// no path; the receiving one is replaced by a new one, onto which the instance pulls
+// every watch again before closing the old pulls. A replacement the media server or the
+// relay failed is asked for again after a wait that doubles from 2 seconds up to 30; one
+// with nothing to replace, or not allowed, is never asked for again: the tab lets go of
+// its receiving connection as on `dropped`, and its next watch makes a new one.
 //
 // 11 hours after a connection's relay credential was minted, the instance hands it a
 // fresh one. On a direct path the tab takes it silently. On the relay a sending
@@ -66,8 +70,18 @@ import { renewal } from "./media/renewal.ts";
 import type { SharerNotes } from "./media/sending.ts";
 import { UsageReports } from "./usage-reports.ts";
 
-/** The wait between a restart of a failed media connection that found no path and the next. */
+/** The wait between a restart of a failed sending connection that found no path and the next. */
 const RESTART_AGAIN_MS = 2_000;
+
+/**
+ * The wait after the first replacement of a failed receiving connection that the media
+ * server or the relay failed, doubled after each one after that, up to
+ * `REPLACE_AGAIN_MAX_MS`: 2, 4, 8, 16, 30, 30… seconds. A tab left open on a media server
+ * that is down asks about twice a minute, and has its pictures back without a reload once
+ * it is up again.
+ */
+const REPLACE_AGAIN_MS = 2_000;
+const REPLACE_AGAIN_MAX_MS = 30_000;
 
 /** The two purposes of the tab's media connections, in the order a rebuild makes them again. */
 const PURPOSES: readonly MediaPurpose[] = ["sending", "receiving"];
@@ -82,12 +96,19 @@ interface Side {
   health: MediaHealth;
   /** Whether the tab is bringing back a connection the browser gave up on (`recover`). */
   recovering: boolean;
+  /** Ends `recover`'s wait before its next try at once, as the connection is no longer given up. */
+  wake: (() => void) | null;
   /** The relay credential it holds: the one it was made with, or the last fresh one. */
   iceServers: IceServer[];
 }
 
 function newSide(): Side {
-  return { asked: null, made: false, health: "fine", recovering: false, iceServers: [] };
+  return { asked: null, made: false, health: "fine", recovering: false, wake: null, iceServers: [] };
+}
+
+/** The wait after the failed try `tries` (counted from 0) at bringing back `connection`. */
+function againAfter(connection: MediaPurpose, tries: number): number {
+  return connection === "sending" ? RESTART_AGAIN_MS : Math.min(REPLACE_AGAIN_MS * 2 ** tries, REPLACE_AGAIN_MAX_MS);
 }
 
 /** A one-off pick of what others share: every webcam, everything, or nothing. */
@@ -949,6 +970,12 @@ export class RoomClient {
    * closes the old pulls. Every other negotiation on the receiving connection, a watch
    * asked for meanwhile among them, waits until it is done, and every offer the tab gets
    * meanwhile, a hand-over's among them, is one of its steps. True once it is.
+   *
+   * Unavailable because the media server or the relay failed, the tab keeps its old
+   * connection and the reports on it, and may ask again. Unavailable with nothing to
+   * replace, or not allowed, asking again cannot help: the tab lets go of its receiving
+   * connection as on `dropped`, the final total having gone already, and its next watch
+   * makes a new one.
    */
   private replace(): Promise<boolean> {
     this.replaceAgain = false;
@@ -965,9 +992,18 @@ export class RoomClient {
         (change) => (change.type === "connected" || change.type === "unavailable") && change.connection === "receiving",
       );
       if (made.type !== "connected") {
-        // The instance kept the old connection: its watches stay on it, as do the reports.
         this.replaceAgain = false;
-        tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement" });
+        const reason = made.type === "unavailable" ? made.reason : "failed";
+        tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement", reason });
+        if (reason !== "failed") {
+          // Unless a `dropped` heard meanwhile let go of it already, and a watch since asked for another.
+          if (this.sides.receiving === side) {
+            for (const picture of this.pictures) this.dropPicture(picture.share);
+            this.resetMedia("receiving");
+          }
+          return false;
+        }
+        // The instance kept the old connection: its watches stay on it, as do the reports.
         this.usage.start();
         return false;
       }
@@ -1015,7 +1051,7 @@ export class RoomClient {
       // Let go of while it was being made: the next share or watch asks again.
       if (this.sides[connection] !== side) return false;
       if (change.type !== "connected") {
-        tabLog.warn("media.unavailable", { connection });
+        tabLog.warn("media.unavailable", { connection, reason: change.type === "unavailable" ? change.reason : null });
         side.asked = null;
         return false;
       }
@@ -1048,23 +1084,34 @@ export class RoomClient {
     if (connection === "sending" && (health === "fine") !== (was === "fine"))
       this.send({ type: "media", request: { type: health === "fine" ? "recovered" : "faltering" } });
     if (health === "failed") void this.recover(connection);
+    else side.wake?.();
   }
 
   /**
    * Brings back `connection` the browser gave up on, keeping every share and watch: the
-   * sending connection is restarted, the receiving one replaced. Again a moment after
-   * each try that finds no path, as the network may still be down. Stops once it
-   * recovers, or once it is no longer this tab's: the instance let it go, its shares
-   * having faltered for 30 seconds, or the tab left.
+   * sending connection is restarted, the receiving one replaced. Again after each try
+   * that finds no path, as the network or the media server may still be down: 2 seconds
+   * after each restart, and after each failed replacement a wait that doubles from 2
+   * seconds up to 30 (`REPLACE_AGAIN_MS`). Stops once it recovers, by a try or by
+   * itself, even in the middle of a wait, so the next time the browser gives it up starts
+   * again from 2 seconds; or once it is no longer this tab's: the instance let it go, its
+   * shares having faltered for 30 seconds; the instance had nothing to replace, or did
+   * not allow it; or the tab left.
    */
   private async recover(connection: MediaPurpose) {
     const side = this.sides[connection];
     if (side.recovering) return;
     side.recovering = true;
+    const givenUp = () => this.sides[connection] === side && side.made && side.health === "failed";
     try {
-      while (this.sides[connection] === side && side.made && side.health === "failed") {
+      for (let tries = 0; givenUp(); tries += 1) {
         if (connection === "sending" ? await this.restart(side.iceServers) : await this.replace()) return;
-        await new Promise((resolve) => setTimeout(resolve, RESTART_AGAIN_MS));
+        if (!givenUp()) return;
+        await new Promise<void>((resolve) => {
+          side.wake = resolve;
+          setTimeout(resolve, againAfter(connection, tries));
+        });
+        side.wake = null;
       }
     } finally {
       side.recovering = false;

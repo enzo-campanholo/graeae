@@ -101,7 +101,7 @@ describe("a tab's media connection", () => {
 
     biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
 
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending" } });
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending", reason: "failed" } });
     await shareWebcam(biaTab);
   });
 
@@ -111,7 +111,7 @@ describe("a tab's media connection", () => {
 
     biaTab.send({ type: "media", request: { type: "connect", connection: "sending" } });
 
-    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending" } });
+    expect(await biaTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "sending", reason: "failed" } });
     await shareWebcam(biaTab);
   });
 });

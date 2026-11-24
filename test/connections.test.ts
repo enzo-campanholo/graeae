@@ -17,7 +17,7 @@ import {
   startWatching,
   watch,
 } from "./steps.ts";
-import { openRoom, type Tab } from "./sockets.ts";
+import { addressOf, openRoom, type Tab } from "./sockets.ts";
 
 /** Has `tab`, already sharing its webcam, share its screen too, with no sound, and `other` hear it go live. */
 async function alsoShareScreen(tab: Tab, other: Tab) {
@@ -213,8 +213,40 @@ describe("a replacement of the receiving connection", () => {
     );
     await vi.waitFor(() => expect(names(instance)[2]).toEqual([]));
   });
+});
 
-  it("is refused to a tab with no receiving connection", async () => {
+describe("a replacement that cannot be made", () => {
+  /** The `media.unavailable` lines the instance wrote, by what they say. */
+  function unavailableLines(instance: { logs(): readonly { event: string }[] }) {
+    return instance.logs().filter((line) => line.event === "media.unavailable");
+  }
+
+  it("is unavailable because it failed when the media server fails to make the new connection, and the old one keeps its pulls", async () => {
+    const { instance, ownerTab, biasWebcam } = await eachSharingAndWatching();
+    const before = names(instance);
+    instance.media.fail("connect");
+
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving", reason: "failed" } });
+    expect(names(instance)).toEqual(before);
+    expect(unavailableLines(instance).at(-1)).toMatchObject({ connection: "receiving", why: "the media server or the relay failed" });
+    // Asked again once the media server is back, it goes through.
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await answerReplacement(ownerTab)).toEqual([biasWebcam]);
+  });
+
+  it("is unavailable because it failed when the relay refuses the new connection's credential", async () => {
+    const { instance, ownerTab } = await eachSharingAndWatching();
+    instance.media.fail("relayCredential");
+
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving", reason: "failed" } });
+  });
+
+  it("is unavailable with nothing to replace for a tab with no receiving connection on record, asking the media server nothing", async () => {
     const instance = await startInstance();
     const owner = instance.browser();
     const { tab } = await openRoom(owner, await setUpOwner(owner));
@@ -222,8 +254,35 @@ describe("a replacement of the receiving connection", () => {
 
     tab.send({ type: "media", request: { type: "replace" } });
 
-    expect(await tab.next()).toEqual({ type: "media", change: { type: "unavailable", connection: "receiving" } });
+    expect(await tab.next()).toEqual({
+      type: "media",
+      change: { type: "unavailable", connection: "receiving", reason: "nothing to replace" },
+    });
     expect(instance.media.calls("connect")).toBe(1);
+    expect(instance.media.credentials()).toHaveLength(1);
+    expect(unavailableLines(instance).at(-1)).toMatchObject({ connection: "receiving", why: "nothing to replace" });
+  });
+
+  // A member removed from the room is cut off in the same step as the storage change, and
+  // nothing a cut-off tab sends is read: its ask is never answered `unavailable` ("not
+  // allowed" is for a check that fails on a tab still heard), and costs nothing.
+  it("is never made for a member removed from the room, whose tab hears only that it is gone", async () => {
+    const { instance, owner, room, biaTab, biasWebcam } = await eachSharingAndWatching();
+    const connects = instance.media.calls("connect");
+    const credentials = instance.media.credentials().length;
+    const close = instance.media.hold("close");
+    const removing = owner.fetch(`/api/owner/people/${biasWebcam.member}/rooms/${addressOf(room)}`, { method: "DELETE" });
+    await close.reached;
+
+    biaTab.send({ type: "media", request: { type: "replace" } });
+    close.release();
+
+    expect((await removing).status).toBe(200);
+    expect(await biaTab.next()).toEqual({ type: "gone" });
+    await biaTab.closed();
+    expect(instance.media.calls("connect")).toBe(connects);
+    expect(instance.media.credentials()).toHaveLength(credentials);
+    expect(unavailableLines(instance)).toEqual([]);
   });
 });
 

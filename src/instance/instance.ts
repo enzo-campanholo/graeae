@@ -20,7 +20,7 @@ import type {
   UsageAnswer,
 } from "../shared/api.ts";
 import { encodingPlan } from "../shared/encoding.ts";
-import type { BudgetLevel, ClientMessage, LiveShare, MediaPurpose, RoomView, UsageState } from "../shared/socket/index.ts";
+import type { BudgetLevel, ClientMessage, LiveShare, MediaPurpose, RoomView, Unavailable, UsageState } from "../shared/socket/index.ts";
 import { checkRequest, requestNameOf, type Checked, type CheckedRequest, type RequestName } from "../shared/socket/requests.ts";
 import { LIST_SOCKET_PATH, type ListedRoom, type ListState } from "../shared/socket/list.ts";
 import { LOG_PATH } from "../shared/socket/log.ts";
@@ -469,9 +469,14 @@ export class Instance extends DurableObject<Env> {
       if (replacement !== null && !this.stepping.has(tab.id)) await this.replaceStep(tab, replacement);
     },
     // A replacement needs a check, as a connection does: it pulls the tab's watches again.
+    // Each refusal says why, since the tab asks again only after a failure.
     "media.replace": async (tab, _, allowed) => {
+      const unavailable = (reason: Unavailable) => {
+        log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: whyUnavailable(reason) });
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "unavailable", connection: "receiving", reason } });
+      };
       if (!allowed) {
-        log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "not allowed" });
+        unavailable("not allowed");
         return;
       }
       // The replacement is on record before its credential is minted: an answer meanwhile
@@ -484,9 +489,8 @@ export class Instance extends DurableObject<Env> {
         if (this.stepping.get(tab.id) === MAKING) this.stepping.delete(tab.id);
       }
       if (made === "stale") return;
-      if (!made) {
-        log.warn("media.unavailable", { ...tagsOf(tab), connection: "receiving", why: "the media server or the relay failed, or nothing to replace" });
-        this.signaling.toTab(tab.id, { type: "media", change: { type: "unavailable", connection: "receiving" } });
+      if (made === "nothing to replace" || made === null) {
+        unavailable(made ?? "failed");
         return;
       }
       log.info("media.connected", { ...tagsOf(tab), connection: "receiving", replacement: true });
@@ -512,7 +516,7 @@ export class Instance extends DurableObject<Env> {
     "media.recovered": (tab) => this.shares.recovered(tab.id),
     "media.connect": async (tab, { connection }, allowed) => {
       if (!allowed) {
-        log.warn("media.unavailable", { ...tagsOf(tab), connection, why: "not allowed" });
+        log.warn("media.unavailable", { ...tagsOf(tab), connection, why: whyUnavailable("not allowed") });
         return;
       }
       const iceServers = await this.shares.connect(tab, connection, () => this.relay.mint());
@@ -526,14 +530,14 @@ export class Instance extends DurableObject<Env> {
         if (connection === "receiving") this.usage.newTotal(tab.id);
         this.relay.minted(tab.id, connection);
         this.schedule();
-      } else log.warn("media.unavailable", { ...tagsOf(tab), connection, why: "the media server or the relay failed" });
+      } else log.warn("media.unavailable", { ...tagsOf(tab), connection, why: whyUnavailable("failed") });
       // The socket was lost while the connection was being made: the tab may ask again.
       if (iceServers && !this.signaling.isOpen(tab.id)) this.shares.unanswered(tab.id, connection);
       this.signaling.toTab(
         tab.id,
         iceServers
           ? { type: "media", change: { type: "connected", connection, iceServers } }
-          : { type: "media", change: { type: "unavailable", connection } },
+          : { type: "media", change: { type: "unavailable", connection, reason: "failed" } },
       );
     },
     "watching.watch": async (tab, { share }, allowed) => {
@@ -1106,6 +1110,11 @@ function withCookie(response: Response, cookie: string): Response {
 
 function roomPath(address: string): string {
   return `/r/${address}`;
+}
+
+/** Why a media connection is unavailable, as a `media.unavailable` line says it. */
+function whyUnavailable(reason: Unavailable): string {
+  return reason === "failed" ? "the media server or the relay failed" : reason;
 }
 
 /** A pull's screen audio transceiver, as a message carries it: left out when the share has none. */

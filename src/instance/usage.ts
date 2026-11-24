@@ -31,8 +31,9 @@
 //   from the old connection's last report (or the watch's start, if later) until its pull
 //   is closed or the tab is cut off, whichever comes first, as relayed when that report
 //   was. A report from the new connection never cancels it, and a replacement asked for
-//   again charges it once. A replacement answered `unavailable` leaves the old connection
-//   in use: its total carries on, and its next report covers the time in between.
+//   again charges it once. A replacement answered `unavailable` because it failed leaves
+//   the old connection in use: its total carries on, and its next report covers the time
+//   in between. One with nothing to replace has no old connection left to charge.
 // - A sharer's upload is never reported, so never counted: a tab reports what its
 //   receiving connection received, and its sending connection reports nothing (ADR 0005).
 //
