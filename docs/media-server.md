@@ -29,8 +29,12 @@ sections.
   section only when there is none. Such a section belonged to a stopped share or an
   ended watch. *Ticket 57, run 3: the pulls went in mids 0, 2, 3 … 13 in turn.* On the
   receiving connection that leaves an ended watch's section, which nothing renegotiates
-  before the next pull; the stand-in reuses it there, and whether the media server does
-  is checked by the real-media runs of ticket 61.
+  before the next pull, and there the media server does not reuse it: a later watch gets
+  a new section. *Ticket 61, on `graeae-test` (`b5219829`): in `repro-59.ts`
+  (`cam share share cam`, three runs) and `repro-58.ts` (`share watch share watch`)
+  the first watch went in mid 0 and the second, after the first ended, in a new mid 1.*
+  The stand-in still reuses an ended watch's section, the harder case; the tab answers
+  either.
 - **Chrome answered inactive for that section** unless its transceiver was set to
   receive first, and then nothing arrived. *Ticket 57, run 2.* That was a section the
   tab had made for a share. On the receiving connection every transceiver is made by
@@ -65,8 +69,10 @@ sections.
   *Ticket 59: every first watch after a reload (`repro-59.ts`).* With the tab's codec
   handling, its later offers then listed 42e01f, and by the rule above a later watch in
   a section that knew only 42001f decoded nothing (ticket 60). On the receiving
-  connection every watch is such a section; whether the later ones go out as the first
-  does is checked by ticket 61's real-media runs. The stand-in offers Chrome's own list.
+  connection every watch is such a section, and the later ones go out as the first does.
+  *Ticket 61, on `graeae-test`: each watch, first or later, in a new section listing
+  H.264 42e01f at 125, VP9, VP8 and AV1 with their retransmissions, sent on 125 and
+  decoded (`repro-59.ts` and `repro-58.ts`).* The stand-in offers Chrome's own list.
 
 ## The transport
 

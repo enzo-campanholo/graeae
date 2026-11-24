@@ -1,6 +1,6 @@
 # 61: A tab sends on one media connection and receives on another
 
-**Status:** ready-for-human
+**Status:** resolved
 
 **Blocked by:** none
 
@@ -60,9 +60,18 @@
 
 ## Not yet known
 
-- Whether the media server answers a pull on a receiving connection with no tab offer at all as it answers the first watch now: a new section with its own five codecs, sent on 125. Ticket 59 saw it for a first watch. The real-media check above covers later ones.
-- How long a replacement leaves a watched picture blank, on the relay at an 11-hour renewal. Measure it with `pnpm real-media` once; if it is over 2 seconds, record it here.
+- Whether the media server answers a pull on a receiving connection with no tab offer at all as it answers the first watch now: a new section with its own five codecs, sent on 125. Ticket 59 saw it for a first watch. The real-media check above covers later ones. *Answered: yes. Every watch, later ones too, got a new section (an ended watch's was not reused), listing H.264 42e01f at 125, VP9, VP8 and AV1, and went out on 125.*
+- How long a replacement leaves a watched picture blank, on the relay at an 11-hour renewal. Measure it with `pnpm real-media` once; if it is over 2 seconds, record it here. *Under 2 seconds: see the comment below.*
 
 ## Comments
 
 Built in the working tree, with typecheck, lint and `pnpm test` green (496 Vitest tests, 68 Playwright). The loopback passes ticket 60's order with no codec handling in the tab. A watch in an ended watch's reused section is answered `recvonly` with no step from `inactive`, so that step is gone. The review's edge cases in replacing a receiving connection are filed as 62. Ready for a human: the deploy to `graeae-test`, the real-media runs (`repro-59.ts` twice, `repro-58.ts` once), `pnpm perf`, and the replacement's blank time, which still need the owner's go-ahead.
+
+Checked on `graeae-test` with `e9fceac` deployed (version `b5219829`), from this server's virtual desktop, members invited into files and removed afterwards:
+
+- `repro-59.ts --steps "cam share share cam" --runs 3`: green 3 of 3, exit 0. The first watch decoded in mid 0 (117, 134, 135 frames), and the second, in ticket 60's red order, in a new mid 1 of the receiving connection (156, 157, 150 frames), both on 125.
+- `repro-59.ts --steps "share share screen" --runs 2`: green 2 of 2, exit 0, decoded at 1920x1080 on 125 (147, 161 frames).
+- `repro-58.ts` (`share watch share watch`): green, exit 0, the watches in mids 0 and 1 (110, 156 frames).
+- The media server never reused an ended watch's section on the receiving connection, where the stand-in does; `docs/media-server.md` records it. The drivers' "(published on)" line now compares mids of two connections, so it reads oddly but checks nothing.
+- A replacement's blank time: the worst gap between a watched picture's frames was 750, 750 and 650 ms across three replacements, so not recorded under "Not yet known". It was measured on a direct path with the receiving connection's failure faked in the watcher's tab, not on the relay at an 11-hour renewal; each made one new connection, the old one closed.
+- `pnpm perf`: no flashing, with no added round trip and with `GRAEAE_PERF_RTT=60`.
