@@ -1,11 +1,8 @@
 // The stand-in media server: two plain RTCPeerConnections in the same page, one for each
 // of the tab's media connections (ADR 0005). One answers the tab's offers on its sending
-// connection; the other makes the offers of its watches on its receiving connection, the
-// way Cloudflare's media server does, as far as `docs/media-server.md` records it: a
-// closed pull's section is reused for the next. Its codec lists are the browser's own,
-// since on the receiving connection every section is the media server's and the tab
-// offers nothing there. What it cannot stand in for is listed in that file too (a rebuilt
-// transport the real one never connects shows here as a changed ufrag).
+// connection; the other makes the offers of its watches on its receiving connection.
+// Which of the media server's behaviours it plays, and how it differs, is recorded beside
+// each behaviour in `docs/media-server.md`, and only there.
 
 /** The ICE ufrag a description carries, or null for a description with none. */
 export function ufragOf(sdp: string): string | null {

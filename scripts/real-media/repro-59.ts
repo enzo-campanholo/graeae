@@ -115,12 +115,12 @@ try {
       }
       await watcher.run(`unwatch "${who}" ${kind}`);
       await wait(1500);
-      const watch = watchSummary(before, after, published);
+      const watch = watchSummary(before, after);
       if (watch.red) verdict = 1;
       red ||= watch.red;
       watches.push(`${step} watch after ${shares} shares: ${watch.text}`);
     }
-    console.log(`run ${run}: shares in mids [${published.join(", ")}]; ${watches.join("; ")} → ${red ? "RED" : "green"}`);
+    console.log(`run ${run}: shares in sending mids [${published.join(", ")}]; ${watches.join("; ")} → ${red ? "RED" : "green"}`);
   }
 } catch (error) {
   if (!(error instanceof NoVerdict)) throw error;

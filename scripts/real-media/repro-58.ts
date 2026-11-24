@@ -93,12 +93,12 @@ try {
       await sharer.run(`unwatch "${watcherName}" webcam`);
       await new Promise((wake) => setTimeout(wake, 1500));
 
-      const watch = watchSummary(before, after, published);
+      const watch = watchSummary(before, after);
       if (watch.red) verdict = 1;
       red ||= watch.red;
       watches.push(`watch ${watches.length + 1} after ${shares} shares: ${watch.text}`);
     }
-    console.log(`run ${run}: shares in mids [${published.join(", ")}]; ${watches.join("; ")} → ${red ? "RED" : "green"}`);
+    console.log(`run ${run}: shares in sending mids [${published.join(", ")}]; ${watches.join("; ")} → ${red ? "RED" : "green"}`);
   }
 } catch (error) {
   if (!(error instanceof NoVerdict)) throw error;

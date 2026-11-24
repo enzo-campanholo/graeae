@@ -184,7 +184,10 @@ export async function startInstance(options: StartOptions = {}): Promise<TestIns
     async restart(restartOptions = {}) {
       if (restartOptions.migrations) Instance.migrations = restartOptions.migrations;
       // Aborting drops the sockets too, which evicting alone would keep, as hibernation does.
-      await runInDurableObject(stub(), (_, state) => state.abort("the test restarts the instance")).catch(() => {
+      // workerd reports every abort as an uncaught exception; the Workers test pool hides
+      // the report for the reason it gives its own aborts, "Instance dispose", so this one
+      // gives that reason too and a green run prints none.
+      await runInDurableObject(stub(), (_, state) => state.abort("Instance dispose")).catch(() => {
         // The abort ends the call that made it.
       });
     },

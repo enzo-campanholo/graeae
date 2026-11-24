@@ -136,13 +136,13 @@ export async function liveOut(member: Member): Promise<Reading["outbound"][numbe
   return after.flatMap((r) => r.outbound).find((o) => o.frames > (was.get(o.mid) ?? 0));
 }
 
-/** What one watch did: where it went, what that section knows, and what arrived. */
-export function watchSummary(before: Reading[], after: Reading[], published: readonly string[]) {
+/** What one watch did: its section on the receiving connection, what that section knows, and what arrived. */
+export function watchSummary(before: Reading[], after: Reading[]) {
   const mids = new Set(before.flatMap((r) => r.transceivers.map((t) => `${t.mid}:${t.current}`)));
   const placed = after.flatMap((r) => r.transceivers).filter((t) => t.current === "recvonly" && t.kind === "video" && !mids.has(`${t.mid}:${t.current}`));
   const was = new Map(before.flatMap((r) => r.inbound).map((i) => [i.ssrc, i.frames]));
   const decoded = after.flatMap((r) => r.inbound).reduce((sum, i) => sum + i.frames - (was.get(i.ssrc) ?? 0), 0);
-  const where = placed.map((t) => `${t.mid}${published.includes(t.mid!) ? " (published on)" : ""}`).join(", ") || "?";
+  const where = placed.map((t) => t.mid).join(", ") || "?";
   const knows = placed.map((t) => `[${t.recvCodecs.join(", ")}]`).join(" ");
   const received = after.reduce((sum, r) => sum + r.received, 0) - before.reduce((sum, r) => sum + r.received, 0);
   const inbound =
@@ -151,5 +151,5 @@ export function watchSummary(before: Reading[], after: Reading[], published: rea
       .filter((i) => placed.length === 0 || placed.some((t) => t.mid === i.mid))
       .map((i) => `mid ${i.mid} ${i.packets - (before.flatMap((b) => b.inbound).find((b) => b.ssrc === i.ssrc)?.packets ?? 0)} packets ${i.received} received ${i.keyFrames} key ${i.dropped} dropped ${i.plis} PLI ${i.firs} FIR ${i.nacks} NACK ${i.codec ?? "no codec"}${i.width ? ` ${i.width}x${i.height}` : ""}`)
       .join(", ") || "none";
-  return { red: decoded === 0, text: `mid ${where} knowing ${knows || "?"}, ${decoded} frames (transport +${Math.round(received / 1024)} KiB; inbound ${inbound})${decoded === 0 ? " RED" : ""}` };
+  return { red: decoded === 0, text: `receiving mid ${where} knowing ${knows || "?"}, ${decoded} frames (transport +${Math.round(received / 1024)} KiB; inbound ${inbound})${decoded === 0 ? " RED" : ""}` };
 }

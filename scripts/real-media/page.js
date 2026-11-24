@@ -1,8 +1,8 @@
 // Runs in graeae's page before its own scripts (`member.ts` passes it to `addInitScript`).
 // Keeps every media connection and capture the page makes, so the driver can read their
 // statistics and see a capture end, without graeae's code knowing. Nothing here changes
-// what the page does.
-/* global window, console, setInterval, clearInterval */
+// what the page does, but `fail` when the driver asks.
+/* global window, document, console, performance, Event, setInterval, clearInterval */
 
 const kept = { connections: [], captures: [] };
 window.__realMedia = kept;
@@ -213,4 +213,60 @@ kept.sampleStop = () => {
   const samples = kept.samples;
   kept.samples = [];
   return samples;
+};
+
+// Which of the tab's two media connections (ADR 0005) a connection is: the media server
+// offers on the receiving one and the tab on the sending one.
+const purposeOf = (connection) => {
+  if (connection.currentRemoteDescription?.type === "offer") return "receiving";
+  if (connection.currentLocalDescription?.type === "offer") return "sending";
+  return null;
+};
+
+// When each frame of every picture on the page was shown, for the last minute.
+const frames = [];
+const hooked = new WeakSet();
+setInterval(() => {
+  for (const video of document.querySelectorAll("video")) {
+    if (hooked.has(video)) continue;
+    hooked.add(video);
+    const shown = (now) => {
+      frames.push(now);
+      while (frames[0] < now - 60_000) frames.shift();
+      video.requestVideoFrameCallback(shown);
+    };
+    video.requestVideoFrameCallback(shown);
+  }
+}, 20);
+
+/**
+ * Makes the open connection of this purpose report "failed", as Chrome does when its
+ * transport fails, so the page restarts it (sending) or replaces it (receiving). Only the
+ * page is told; the connection itself goes on.
+ */
+kept.fail = (purpose) => {
+  const connection = kept.connections.filter((c) => c.connectionState !== "closed" && purposeOf(c) === purpose).at(-1);
+  if (!connection) return { failed: false };
+  kept.failedAt = performance.now();
+  kept.madeBefore = kept.connections.length;
+  Object.defineProperty(connection, "connectionState", { get: () => "failed" });
+  connection.dispatchEvent(new Event("connectionstatechange"));
+  return { failed: true };
+};
+
+/** The longest time between two frames shown since the last `fail`, with one picture watched. */
+kept.gaps = () => {
+  const since = kept.failedAt ?? performance.now() - 60_000;
+  const shown = frames.filter((at) => at > since - 3000);
+  let worst = 0;
+  let from = 0;
+  for (let i = 1; i < shown.length; i++) {
+    if (shown[i] - shown[i - 1] > worst) [worst, from] = [shown[i] - shown[i - 1], shown[i - 1]];
+  }
+  return {
+    worstMs: Math.round(worst),
+    startsMsAfterFail: kept.failedAt === undefined ? null : Math.round(from - kept.failedAt),
+    framesSince: shown.filter((at) => at > since).length,
+    connectionsMade: kept.madeBefore === undefined ? null : kept.connections.length - kept.madeBefore,
+  };
 };

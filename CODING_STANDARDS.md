@@ -13,3 +13,6 @@ A change to how `src/app/lib/media/browser.ts` negotiates is read against
   the code that relies on it, as in `stopping.ts`.
 - Each behaviour the stand-in plays has a scenario in `test/loopback`. For each one it
   does not play, the ticket names a real-media check on `graeae-test`.
+- A change to `docs/media-server.md` or to the stand-in
+  (`test/loopback/page/media-server.ts`) is read against the other: each behaviour's
+  note on whether the stand-in plays it is still true.

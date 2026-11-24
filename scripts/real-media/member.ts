@@ -1,6 +1,6 @@
 // `pnpm real-media`: one member of a deployed graeae instance in a real, headed Chromium
 // (or Firefox, to watch), on the real media server, driven by commands typed or piped in.
-// It joins by an invite address (or a room's, once its profile is remembered), shares or
+// It joins by an invite address (or, given that invite again, the room it led to), shares or
 // watches on command, and prints what it sends and receives every few seconds:
 // resolution, frame rate, frames encoded or decoded, codec, encoder or decoder, and sound
 // level. Not a test: it calls Cloudflare's media server, which `pnpm test` never does.
@@ -75,6 +75,10 @@
 //   until <seconds> <text>       waits for text on the page
 //   see <text>                   says whether the text is on the page
 //   signal <word> | waitfor <seconds> <word>   take turns with another member on this machine
+//   fail sending|receiving       the page's media connection of that kind reports "failed",
+//                                so the page restarts (sending) or replaces (receiving) it
+//   gaps                         the longest time between two frames shown since the last
+//                                fail, with one picture watched (a replacement's blank time)
 //   sample <ms> | unsample <file>   reads the page's connections every <ms> (estimate, round
 //                                trip, bytes, target, frames, freezes) and writes them, one
 //                                JSON a line, to <file>
@@ -259,11 +263,18 @@ async function keepFirefoxState() {
   if (options.browser === "firefox") await context.storageState({ path: join(profile, "firefox-state.json") }).catch(() => undefined);
 }
 
-/** Into the room: by the invite the first time, by the room's address once remembered. */
+/**
+ * Into the room: by the invite the first time, and by the room's address when given the
+ * same invite again, since an invite is used once. A profile's remembered room is kept
+ * with the invite that led there, so a new invite (a member removed and invited again
+ * under the same label) joins by itself rather than by the old member's address.
+ */
 async function enter() {
   const remembered = join(profile, "room-address");
+  const ledThere = join(profile, "room-address-invite");
   const url = options.url!;
-  if (url.includes("/invite/") && existsSync(remembered)) {
+  const again = existsSync(remembered) && existsSync(ledThere) && readFileSync(ledThere, "utf8") === url;
+  if (url.includes("/invite/") && again) {
     await page.goto(readFileSync(remembered, "utf8"));
   } else if (url.includes("/invite/")) {
     await page.goto(url);
@@ -274,6 +285,7 @@ async function enter() {
   }
   await page.getByRole("main", { name: "Stage" }).waitFor({ timeout: 30_000 });
   writeFileSync(remembered, page.url());
+  if (url.includes("/invite/")) writeFileSync(ledThere, url, { mode: 0o600 });
   await keepFirefoxState();
   say(`in the room at ${new URL(page.url()).pathname}`);
 }
@@ -434,6 +446,13 @@ async function run(line: string) {
       return page.waitForTimeout(Number(rest[0]) * 1000);
     case "stats":
       return printStats();
+    case "fail": {
+      if (rest[0] !== "sending" && rest[0] !== "receiving") throw new Error(`"sending" or "receiving", not ${rest[0]}`);
+      const { failed } = (await page.evaluate(`window.__realMedia.fail(${JSON.stringify(rest[0])})`)) as { failed: boolean };
+      return say(failed ? `the ${rest[0]} connection reports failed` : `no open ${rest[0]} connection`);
+    }
+    case "gaps":
+      return say(`gaps ${JSON.stringify(await page.evaluate("window.__realMedia.gaps()"))}`);
     case "sample":
       return say(JSON.stringify(await page.evaluate(`window.__realMedia.sampleStart(${Number(rest[0]) || 250})`)));
     case "unsample": {
