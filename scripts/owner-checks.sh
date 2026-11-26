@@ -207,8 +207,8 @@ finish() {
 #   scripts/owner-checks.sh
 #
 # Each check ends with pass, fail or skip and a note, written as a dated line under
-# "## Owner's results" in .scratch/v1/issues/25-owners-verification.md. A re-run skips the
-# checks already there, unless you name them to redo (the new line is added below the old).
+# "## Owner's results" in .scratch/v1/issues/25-owners-verification.md. The wizard skips
+# checks with an owner result or existing release evidence unless you name them to redo.
 # For steps 3 and 5 of the nine-step pass it runs a Linux Chromium member on this machine
 # (scripts/real-media/desktop.sh and `pnpm real-media`), and stops it again when done.
 # The instance address is kept in .env.owner-checks (git-ignored).
@@ -217,8 +217,9 @@ finish() {
 # best effort, and there is no Mac to test on). Their ids, vivaldi-1080p60, macos and
 # macos-1 to macos-9, are no longer asked; a line already recorded for one stays in the
 # results and is ignored. Brave is the second member on Windows where Vivaldi was, and Zen
-# is checked at the Firefox level (zen-watch, zen-webcam, zen-screen). Every other id is
-# unchanged, so answers recorded before still count.
+# is checked at the Firefox level (zen-watch, zen-webcam, zen-screen). Agent results for
+# Brave, Zen and the Linux pass are already recorded; name them at the redo prompt
+# only if you want to repeat them.
 
 run_wizard() {
 
@@ -430,9 +431,9 @@ need_linux() {
 # ── Which checks are left ─────────────────────────────────────────────────
 
 ALL_IDS=(back-in step3-windows-share step5-linux-tab t32-click-for-sound t32-light-pill
-  t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio zen-watch zen-webcam zen-screen)
+  t32-panel t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio zen-watch zen-webcam zen-screen)
 LINUX_IDS=(step3-windows-share step5-linux-tab t32-click-for-sound t32-light-pill)
-BRAVE_IDS=(t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio)
+BRAVE_IDS=(t32-panel t32-webcam t32-game t32-fullscreen-strip brave-1080p60 launcher-audio)
 ZEN_IDS=(zen-watch zen-webcam zen-screen)
 
 already=()
@@ -454,7 +455,7 @@ if any_pending "${ZEN_IDS[@]}"; then ZEN_PART=1; fi
 # Before you start; each part's opening stage, and the Linux part's closing one; one stage
 # per check left.
 TOTAL_STAGES=$((1 + LINUX_PART * 2 + BRAVE_PART + ZEN_PART))
-for id in back-in "${LINUX_IDS[@]}" "${BRAVE_IDS[@]}" "${ZEN_IDS[@]}"; do
+for id in "${ALL_IDS[@]}"; do
   if pending "$id"; then TOTAL_STAGES=$((TOTAL_STAGES + 1)); fi
 done
 
@@ -463,10 +464,10 @@ banner "graeae 0.1: the owner's checks on real machines"
 # ── Before you start ──────────────────────────────────────────────────────
 
 stage "Before you start"
-say "On hand: the Windows 11 PC with Chrome, Brave and Zen, a real webcam, a game you can run"
-say "windowed at 1080p, and a game started through a launcher (Steam, Epic, Battle.net…). Set"
-say "the Windows monitor to 120 Hz: at 144 Hz Chrome captures at 48 fps (the README's 144 Hz"
-say "caveat)."
+say "On hand: the Windows 11 PC with Chrome and Brave, a real webcam, and an audible game"
+say "you can run windowed at 1080p from a launcher (Steam, Epic, Battle.net…). Set the Windows"
+say "monitor to 120 Hz: at 144 Hz Chrome captures at 48 fps (the README's 144 Hz caveat)."
+if (( ZEN_PART )); then say "Have Zen on hand for the rerun you selected."; fi
 printf '\n'
 say "Everything happens on graeae-test, never the old prototype. Its address is"
 say "https://graeae-test.<your workers.dev subdomain>.workers.dev; the subdomain is under"
@@ -475,6 +476,10 @@ printf '\n'
 ask GRAEAE_INSTANCE "graeae-test's address:"
 GRAEAE_INSTANCE="${GRAEAE_INSTANCE%/}"
 write_env GRAEAE_INSTANCE "$GRAEAE_INSTANCE"
+if (( LINUX_PART || BRAVE_PART || ZEN_PART )); then
+  ask OWNER_NAME "Your own display name in graeae, exactly as the room shows it:"
+  write_env OWNER_NAME "$OWNER_NAME"
+fi
 sleep 1
 
 # ── 1. Getting back in ────────────────────────────────────────────────────
@@ -500,14 +505,12 @@ fi
 
 if (( LINUX_PART )); then
   stage "A Linux member joins the room"
-  say "A Chromium on this machine joins as a member, to watch your Windows share (step 3) and to"
-  say "share a tab with sound for you to watch (step 5)."
+  say "A Chromium on this machine joins as a member. Its white tab with sound is the source"
+  say "for the autoplay and pill checks."
   printf '\n'
   step "In Windows Chrome, in the room you will use, open the gear (the owner page)."
   step "Under Invites: type the name $LINUX_NAME, tick only that room, press Create and copy link."
   printf '\n'
-  ask OWNER_NAME "Your own display name in graeae, exactly as the room shows it:"
-  write_env OWNER_NAME "$OWNER_NAME"
   invite=""
   until [[ "$invite" == https://*/invite/* ]]; do
     read -e -r -p "  Paste the invite link (https://…/invite/…): " invite || exit 1
@@ -563,8 +566,8 @@ fi
 if pending t32-click-for-sound && need_linux; then
   stage "Ticket 32: the hover pill and \"Click for sound\" over bright content"
   linux_share_page || warn "the Linux member is not sharing; this check needs its white page"
-  say "Windows Chrome, dark theme, watching $LINUX_NAME's white document."
-  step "Hover the picture: is the pill (volume, Focus, Fullscreen, Stop watching) readable over white?"
+  step "In Windows Chrome, switch to Dark and click the screen icon beside $LINUX_NAME in the bar"
+  step "if its white document is not on your stage yet. Is the hover pill readable over white?"
   step "Press F5 to reload, and do not click anywhere on the page. Does \"Click for sound\" show over"
   step "the white picture, and is it readable? Click it: the tone comes in."
   step "If it never showed: copy the room's address, close the tab, paste it into a new tab, and"
@@ -575,8 +578,8 @@ fi
 if pending t32-light-pill && need_linux; then
   stage "Ticket 32: the light theme's pill edge over white"
   linux_share_page || warn "the Linux member is not sharing; this check needs its white page"
-  step "In Windows Chrome: your avatar at the top of the bar, then Light."
-  step "Hover $LINUX_NAME's white picture. On this real panel, can you tell where the pill ends"
+  step "In Windows Chrome: your avatar at the top of the bar, then Light. Watch $LINUX_NAME's"
+  step "screen if it is not already on your stage. On this real panel, can you tell where the pill ends"
   step "and the white page begins? Agents found the edge faint but the icons clear."
   step "Then switch back to the theme you use."
   record t32-light-pill "Ticket 32: the light theme's hover pill edge over white on a real panel"
@@ -612,6 +615,14 @@ if (( BRAVE_PART )); then
   step "anything with its Shields, note it: the checks are at Brave's default settings."
   step "Arrange the two windows so you can see Brave's stage (a second monitor helps)."
   pause "Press Enter once Brave is in the room…"
+fi
+
+if pending t32-panel; then
+  stage "Ticket 32: the room on a real display"
+  step "On a physical display at low brightness, check whether the stage is distinct from the"
+  step "room background in both themes. In Light, open the gear, then People. Bring up Remove"
+  step "from graeae for your Brave test member. Is the red confirmation button readable? Cancel."
+  record t32-panel "Ticket 32: stage and room background at low brightness, and the light-theme remove button"
 fi
 
 if pending t32-webcam; then
@@ -699,6 +710,7 @@ fi
 if pending launcher-audio; then
   stage "v1/21: a game started through a launcher; the viewer hears only the game"
   step "Start a game through its launcher (Steam, Epic, Battle.net…) and leave the launcher running."
+  step "Verify you can hear the game locally before sharing it; a silent menu does not test isolation."
   step "Make the launcher or another app sound too if you can (a friend's message, a store video,"
   step "music in another window), so a leak would be heard."
   step "In Chrome: Share screen, the Window tab, the game's window (not the launcher), audio on, Share."
@@ -782,7 +794,7 @@ if (( ${#left[@]} )); then
   printf '\n'; warn "Still unrecorded: ${left[*]}"
   note "Run scripts/owner-checks.sh again for them."
 fi
-say "Hand the results to an agent to apply: the platform table, ticket 21 and ticket 25."
+say "Hand the results to an agent to apply: the platform table, v1 tickets 21 and 25, and build ticket 32."
 printf '\n'
 }
 

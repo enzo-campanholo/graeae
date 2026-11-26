@@ -8,7 +8,7 @@ Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md
 
 **Status:** ready-for-human
 
-An agent can do everything here except the real-media checks, which need the owner sharing real windows, a webcam and a game on `graeae-test` alongside it.
+The agent passes covered the fakes, real media on Linux, and Windows screenshots. What remains needs the owner's Windows Chrome, real webcam and game, and physical screen on `graeae-test`. Run `scripts/owner-checks.sh` for the panel and autoplay checks, the webcam and game tiles, and fullscreen and the strip. Record findings here before resolving the ticket.
 
 ## Before the pass
 

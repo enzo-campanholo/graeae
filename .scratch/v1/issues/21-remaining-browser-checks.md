@@ -4,6 +4,12 @@ Type: task
 Status: ready-for-human
 Map: ../map.md
 
+## Release follow-up
+
+[Build ticket 65](../../v1-build/issues/65-the-release-checks-on-windows.md) covered Brave, Zen and the launcher stand-in on `graeae-test`. The README and build spec now reflect Brave's pass and Zen's screen-sharing gap. Two qualities stay off because of freezes (build ticket 17). The short-lived relay check passed (build ticket 25); the build spec documents the current sending and receiving renewal paths separately. No prototype rerun is needed for release.
+
+- [ ] Check application audio with a real launcher-started game known to be making sound. The stand-in isolated the application's sound, but the real game tried by the agent gave no audible sample. Until this check is recorded, the README leaves real-game audio unverified.
+
 ## Question
 
 Does ~~Vivaldi and~~ Brave on Windows 11 ~~each~~ share at 1080p60 with hardware H.264 at its default settings, and does single-application audio work in it and for a game started through a launcher? And does Zen on Windows 11 hold the Firefox row? (Vivaldi dropped and Zen added on 2026-11-20, the owner's decision: see the comment below.)

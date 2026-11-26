@@ -8,9 +8,9 @@ Map: ../map.md
 
 Does the built app hold up on real machines and against Cloudflare's own figures?
 
-This is the owner's work on a deployed instance, once every ticket in [the build](../../v1-build/issues/) is resolved. The steps and pass marks are in the spec under [Verification before v1 is called done](../../v1-build/spec.md#verification-before-v1-is-called-done). v1 is not called done until this is resolved. It does not replace [Remaining browser checks](21-remaining-browser-checks.md), which runs on the prototype.
+This is the owner's sign-off on the deployed app. The steps and pass marks are in the spec under [Verification before v1 is called done](../../v1-build/spec.md#verification-before-v1-is-called-done). v1 is not called done until this is resolved. [Remaining browser checks](21-remaining-browser-checks.md) were run on `graeae-test` instead of the prototype.
 
-- [ ] Follow the README from an empty Cloudflare account to a working instance, exactly as written, and fix any step that is wrong or missing
+- [x] README walkthrough: the owner accepted the earlier agent walkthrough on a fresh instance for `v0.1.0`; no separate Cloudflare account run is required. Dashboard onboarding and real media with newly created Realtime credentials remain untested (see below).
 - [x] Usage comparison: one real session of at least 2 GB, then Cloudflare's egress for the same period on the Analytics tab. graeae reading 0 to 10% above passes; otherwise change the margin and repeat (build ticket 23: 2.2 GB, margin set to 0%, reading +7.9%)
 - [x] In the same sitting, read the relay's analytics with one viewer on the relay. If relayed watching is billed once, switch the doubling off (build ticket 27: Billable Usage cannot tell which figure is billed, so the doubling stays until a bill shows it)
 - [x] When the comparison passes, remove "unverified" from the README's cost section (it no longer says it)
@@ -19,7 +19,8 @@ This is the owner's work on a deployed instance, once every ticket in [the build
 - [x] The Durable Object stays under the free plan's daily duration quota across a real evening, with the heartbeat and byte reports running (settled without a measurement: one object awake 24 hours uses at most 10,800 of the 13,000 GB-s, see [the research](../../../docs/research/free-plan-durable-object-limits.md). The same research found rows written can run out in an evening: build ticket 49)
 - [x] Which CPU limit applies to a free-plan Durable Object (30 s per request, socket message or alarm by Cloudflare's limits table, one FAQ line implying 10 ms; no graeae path comes near either, by reading the code. Not measured: graeae-test's invocation logs are off, so its lines carry no CPU time)
 - [x] A deploy leaves a dashboard-attached custom hostname in place; if not, the README documents the deploy flag (2026-11-20: attached through the Custom Domains API to a throwaway instance, two deploys as Updating says, kept and serving both times; `wrangler delete` removed it and its DNS record)
-- [ ] Results from Remaining browser checks are applied: the platform table, two qualities on or off, restart or reconnect at 11 hours
+- [x] Apply the available browser evidence: Brave verified; Zen's screen-sharing gap documented; two qualities stay off; the existing 11-hour relay behavior stays in place.
+- [ ] Record the real launcher-started game audio result ([Remaining browser checks](21-remaining-browser-checks.md)) and finish the owner's Windows checks on `graeae-test` ([build ticket 32](../../v1-build/issues/32-second-critique-pass.md) and owner recovery).
 
 ## Comments
 
@@ -36,3 +37,14 @@ This is the owner's work on a deployed instance, once every ticket in [the build
 - Step 5: Win Watcher watched Linux A's tab share at 59.2 fps with no freezes, and its 440 Hz tab audio at 0.16 median.
 
 The other seven steps were checked Linux to Linux in Chromium 157 in build ticket 32. The wizard's `step3-windows-share` and `step5-linux-tab` need not be asked.
+
+## Existing release evidence
+
+These results are from the agent run in [build ticket 65](../../v1-build/issues/65-the-release-checks-on-windows.md), not from the owner. The wizard recognizes them and only repeats them if asked.
+
+- 2026-11-24 · `step3-windows-share` · **pass** · Linux Chromium saw and heard the Windows Chrome share.
+- 2026-11-24 · `step5-linux-tab` · **pass** · Windows Chrome saw and heard the Linux Chromium tab share.
+- 2026-11-24 · `brave-1080p60` · **pass** · Default-profile Brave sent hardware H.264 high at 59.9 fps with application audio.
+- 2026-11-24 · `zen-watch` · **pass** · Zen watched the Windows Chrome screen share at 59.9 fps with audio.
+- 2026-11-24 · `zen-webcam` · **pass** · Zen's fake webcam decoded in Chrome at 26.8 fps; the owner's real webcam check is separate.
+- 2026-11-24 · `zen-screen` · **fail** · Zen captured the window but the sender encoded no frames; the README names the gap. An owner rerun is optional.

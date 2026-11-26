@@ -372,13 +372,13 @@ Three levels. Supported: the targets hold and a failure is a bug. Limited: it wo
 
 | Platform | Level | Watching | Sharing |
 |---|---|---|---|
-| Windows 11, current stable Chrome or Helium | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio as above |
-| Windows 11, current stable Brave | Supported, not yet verified | The same | The same |
-| Windows 11, current stable Firefox or Zen (Zen not yet verified) | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
+| Windows 11, current stable Chrome, Helium or Brave | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio as above |
+| Windows 11, current stable Firefox | Limited | Everything, with screen audio | Webcam. Screen is video only, with no quality promise; sending a screen share on Windows has not been verified |
+| Windows 11, current stable Zen | Limited | Everything, with screen audio | Webcam. Screen sharing is video only and may send no picture; use Chromium to share a screen |
 | Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
 | Everything else | Best effort | | |
 
-- 2026-11-20, the owner's decision: ~~Vivaldi~~ leaves the Supported row for best effort, ~~macOS~~ leaves the Limited row for best effort (no Mac to test on; macOS is untested), and Zen joins the Firefox row. Zen is built on Firefox and gets its gaps; it is not yet verified ([Remaining browser checks](../v1/issues/21-remaining-browser-checks.md)). The Linux row was checked Linux to Linux in Chromium 157 on 2026-11-20 (build ticket 32); steps 3 and 5 of the Linux pass under Verification, against a Windows member, are in the owner's wizard (`scripts/owner-checks.sh`).
+- Vivaldi and macOS are best effort and untested, by the owner's decision. Build ticket 65 verified Brave, Zen watching and Zen webcam; Zen screen capture started but sent no picture. The Linux row was checked Linux to Linux in Chromium 157 (build ticket 32), and steps 3 and 5 of the Linux pass against Windows passed in build ticket 65.
 - "Everything else" covers macOS in any browser, Vivaldi, Edge, Opera and other Chromium browsers, Firefox and Zen off Windows, Windows 10, Safari, and every phone browser.
 - The app never checks the operating system and never blocks a browser. Extra audio a picker offers on Linux or a best-effort platform is passed through, not promised, when it is a tab's or one application's; any other is dropped.
 - A gap is shown only when it matters and only to the member affected. No banner on arrival, no badge for viewers.
@@ -403,7 +403,7 @@ Three levels. Supported: the targets hold and a failure is a bug. Limited: it wo
 It is part of the deliverable and must contain:
 
 - The steps from an empty Cloudflare account to a working instance: the dashboard work, clone and install, the secrets file with the command that generates a setup secret, deploy, open the setup address, set the reset day to match the Cloudflare billing date, create invites.
-- Cost: expected $0; Cloudflare requires a card on file; the media server and the relay share 1,000 GB a month, then $0.05 per GB billed automatically; the usage budget defaults to 1,000 GB so no media bill arrives unless the owner raises it; the usage budget bounds watched media, not the whole bill, so keep Cloudflare's billing alert on.
+- Cost: expected $0; Cloudflare requires a card on file; the media server and the relay share 1,000 GB a month, then $0.05 per GB billed automatically; the usage budget defaults to 1,000 GB, matching the included allowance; the usage budget bounds watched media, not the whole bill, so keep Cloudflare's billing alert on.
 - That the usage count is unverified, until the comparison under Verification passes.
 - A recommendation to delete the local secrets file after the first deploy.
 - The platform table, naming the best-effort platforms as untested.
@@ -454,6 +454,8 @@ Nothing automated talks to Cloudflare's media server or relay, and nothing autom
 
 Done by the owner on the built app unless noted.
 
+**Deploying from the README.** The owner accepted the earlier agent walkthrough on a fresh instance for this release. The dashboard setup from an empty account and a real share with newly created Realtime credentials were not tested; see [Owner's verification](../v1/issues/25-owners-verification.md).
+
 **Usage comparison.** Run one real session of at least 2 GB, then read the media server's egress for the same period on Cloudflare's Analytics tab. graeae's figure reading 0 to 10% above Cloudflare's passes. Outside that, change the margin and run it again. In the same sitting read the relay's analytics with one viewer on the relay: if relayed watching is billed once, drop the doubling. ~~The bill shows which figure is charged~~ Not settled: Billable Usage cannot tell, so the doubling stays (ticket 27). Until it passes, the README says the count is unverified.
 
 Done in build ticket 23 with a 2.2 GB session: 5% read +13.3%, so the margin went to 0%. The margin multiplies every report, so the same session reads +7.9% at 0% with no second run. On the relay, Cloudflare's pricing says once, but its media server sent 16% more than the browser received, so the doubling stays until Cloudflare's billable usage shows which figure it billed (ticket 27).
@@ -472,13 +474,13 @@ Done in build ticket 23 with a 2.2 GB session: 5% read +13.3%, so the margin wen
 
 A failure outside the named gaps is fixed or added to the platform table as a gap.
 
-**Still open from the prototype** (tracked in [Remaining browser checks](../v1/issues/21-remaining-browser-checks.md), on the throwaway quality-proof prototype):
+**Remaining browser checks** (tracked in [v1 ticket 21](../v1/issues/21-remaining-browser-checks.md), run on `graeae-test` in place of the prototype):
 
-- ~~Vivaldi and~~ Brave ~~each~~ shares at 1080p60 with hardware H.264. A browser that fails drops to Limited with its gap named. Vivaldi dropped on 2026-11-20, the owner's decision: it is best effort, untested.
-- Zen on Windows 11 at the Firefox level: it watches a Chrome screen share with its audio, shares a webcam, and shares a screen that its viewer sees as video only. Added on 2026-11-20, the owner's decision. A failure names a gap on Zen in its row.
-- Single-application audio for a game started through a launcher. A failure adds a caveat.
-- ~~Both qualities stay on the hardware encoder with the game's frame rate unchanged.~~ Passed in build ticket 17 (RTX 5070 Ti, Chrome on Windows 11, CS2), but two qualities are switched off for the media server's freezes, as set out under Encoding and quality.
-- ~~An expired relay credential and a relay in use; a connection restart with a fresh credential without a visible blip. If the restart fails, a tab on the relay reconnects once at 11 hours.~~ Passed in build ticket 25, with the lives shortened, on Cloudflare: two restarts on a TCP relay, each answered in under a second, with the picture held through both credentials running out.
+- Brave on Windows 11 passed 1080p60 with hardware H.264 and application audio (build ticket 65).
+- Zen on Windows 11 passed watching with screen audio and sharing a webcam. Its screen share sent no picture; the platform table names the gap (build ticket 65).
+- Single-application audio passed with a launcher stand-in, but the real game tried by the agent gave no audible sample. The real-game check remains with the owner.
+- Both qualities stayed on the hardware encoder with the game's frame rate unchanged (build ticket 17, RTX 5070 Ti, Chrome on Windows 11, CS2), but two qualities are switched off for the media server's freezes, as set out under Encoding and quality.
+- Relay renewal passed in build ticket 25, with the lives shortened, on Cloudflare: two restarts on a TCP relay, each answered in under a second, with the picture held through both credentials running out. The current sending connection restarts on the relay, with reconnect as fallback; the receiving connection is replaced.
 
 **Measured once something is built.**
 

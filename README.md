@@ -30,7 +30,7 @@ Every share goes through Cloudflare's media server in the owner's account. graea
 - **Expected cost: $0.** The instance runs on Cloudflare's free Workers plan, and Cloudflare's media server and relay include 1,000 GB a month.
 - **Cloudflare requires a card on file** before it turns on Realtime, the product that holds the media server and the relay.
 - **The media server and the relay share the 1,000 GB.** Past it, Cloudflare charges $0.05 per GB, billed to the card automatically. Only what Cloudflare sends out counts; what members send in is free.
-- **The usage budget defaults to 1,000 GB**, so no media bill arrives unless you raise it. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live. Browsers report what they receive once a minute, so the count, its warnings and the stop run up to a minute behind.
+- **The usage budget defaults to 1,000 GB**, matching Cloudflare's included allowance. The owner sets it on the owner page, under Usage, with its dollar cost shown beside it. When usage reaches it, all watching stops until the month resets or you raise it. Shares stay live. Browsers report what they receive once a minute, so the count, its warnings and the stop run up to a minute behind.
 - **The usage budget bounds what members watch, not the whole bill.** Relay traffic graeae never sees, such as a removed device using an unexpired relay credential, is not counted. **Set a budget alert in Cloudflare.** In the dashboard, go to Manage Account › Billing › Billable Usage and select **Create budget alert**. It emails you once a billing period when the account's usage-based spend passes the figure you set. It does not stop anything.
 - **The usage count reads a little above Cloudflare's.** graeae counts the bytes each browser reports receiving. On a real 2 GB session the browsers' totals read 7.9% above Cloudflare's own figure, since browsers count packet overhead that Cloudflare leaves out. Watching through the relay is counted twice. Cloudflare says it bills relayed media once, so that reads well above the bill, but one session on the relay showed Cloudflare's media server sending more than the browser received, and Cloudflare's billing shows the media server and the relay as one figure, so it cannot tell which of the two it charges. The doubling stays: it errs high, the safe side for a budget.
 
@@ -40,7 +40,8 @@ What the 1,000 GB buys, by the estimate graeae was designed to: 30 hours a month
 
 - Designed for a group of about 4 to 6, with at most 8 members present in one room at once. Access lists and the number of rooms are not limited.
 - Four screens live at once at 1080p60 is the aim, but the load on a viewer's machine of decoding three or four game shares has not been measured.
-- Every member needs at least 20 Mbps of upload to share a screen at 1080p60. A sharer with less is sent at 720p, and is told so.
+- Plan on at least 20 Mbps of upload to share a screen at 1080p60. The browser adapts to a weaker connection; graeae does not switch the share to 720p or warn about low upload speed.
+- One application's audio was isolated in a launcher test, but audio from a launcher-started game was not verified.
 - Hardware encoding at 1080p60 has been proven on two recent NVIDIA graphics cards only. The effect of sharing on a game is unmeasured on a weaker machine.
 - **The 144 Hz caveat:** on Windows, a sharer whose monitor runs at 144 Hz gets 48 fps instead of 60, until Chrome's fix for it ships. graeae notices and tells the sharer; setting the monitor to 120 Hz gives 60.
 - No phone layout, no sharing from a phone, no voice or text chat, no recording.
@@ -52,9 +53,9 @@ Three levels. **Supported**: the targets hold, and a failure is a bug. **Limited
 
 | Platform | Level | Watching | Sharing |
 |---|---|---|---|
-| Windows 11, current stable Chrome or Helium | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio |
-| Windows 11, current stable Brave | Supported, not yet verified | The same | The same |
-| Windows 11, current stable Firefox or Zen (Zen not yet verified) | Limited | Everything, with screen audio | Webcam fully promised. Screen works, video only, no quality promise |
+| Windows 11, current stable Chrome, Helium or Brave | Supported | Everything, with screen audio | Screen at 1080p60, webcam at 720p30, screen audio |
+| Windows 11, current stable Firefox | Limited | Everything, with screen audio | Webcam. Screen is video only, with no quality promise; sending a screen share on Windows has not been verified |
+| Windows 11, current stable Zen | Limited | Everything, with screen audio | Webcam. Screen sharing is video only and may send no picture; use Chromium to share a screen |
 | Linux, current stable Chromium | Limited | Everything, with screen audio | A tab with its audio; a window or whole screen as video only; a webcam. No quality promise |
 | Everything else | Best effort, untested | Whatever the browser can do | Whatever the browser can do |
 
