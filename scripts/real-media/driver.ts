@@ -136,6 +136,18 @@ export async function liveOut(member: Member): Promise<Reading["outbound"][numbe
   return after.flatMap((r) => r.outbound).find((o) => o.frames > (was.get(o.mid) ?? 0));
 }
 
+/**
+ * The frames decoded between `before` and `after` on every connection the page holds,
+ * counted by connection and stream: not `watchSummary`'s count by stream alone, since a
+ * share pulled onto a new connection may come on the same ssrc.
+ */
+export function framesBetween(before: Reading[], after: Reading[]): number {
+  const decoded = (readings: Reading[]) =>
+    new Map(readings.flatMap((reading, index) => reading.inbound.map((stream) => [`${index}:${stream.ssrc}`, stream.frames])));
+  const was = decoded(before);
+  return [...decoded(after)].reduce((sum, [key, frames]) => sum + frames - (was.get(key) ?? 0), 0);
+}
+
 /** What one watch did: its section on the receiving connection, what that section knows, and what arrived. */
 export function watchSummary(before: Reading[], after: Reading[]) {
   const mids = new Set(before.flatMap((r) => r.transceivers.map((t) => `${t.mid}:${t.current}`)));

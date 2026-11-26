@@ -6,9 +6,10 @@ import { inBar, SETUP_SECRET } from "./app.ts";
 
 // A receiving connection the browser gave up on, whose replacement is unavailable. Asked
 // again while the media server fails, after a wait that doubles from 2 seconds up to 30;
-// never again once the instance has nothing to replace. The owner watches; the owner's
-// socket is routed through the test, which records what goes each way and can answer for
-// the instance or hold a message. The media is fake. Members Sami and Tiago are this
+// never again once the instance has nothing to replace. And one whose replacement carried
+// nothing, which the instance then lets go of. The owner watches; the owner's socket is
+// routed through the test, which records what goes each way and can answer for the
+// instance or hold a message. The media is fake. Members Sami, Tiago and Ulla are this
 // file's alone.
 
 const opened: BrowserContext[] = [];
@@ -103,6 +104,10 @@ async function ownerAndSharer(browser: Browser, baseURL: string | undefined, nam
 const replaces = (route: Awaited<ReturnType<typeof routed>>) =>
   route.sent.filter((message) => message.type === "media" && message.request?.type === "replace");
 
+/** How many times the page asked for a receiving connection. */
+const connects = (route: Awaited<ReturnType<typeof routed>>) =>
+  route.sent.filter((message) => message.request?.type === "connect" && message.request.connection === "receiving").length;
+
 test("a tab whose replacements the media server fails asks again 2, 4, 8, 16, 30 and 30 seconds apart, and from 2 again after one succeeds or the connection recovers", async ({
   browser,
   baseURL,
@@ -195,13 +200,41 @@ test("a tab with nothing to replace asks no more, and its next watch makes a new
   await expect(stage.getByRole("img")).toHaveCount(0);
 
   // Tiago shares again, and the owner's watch asks for a new receiving connection, and shows it.
-  const connects = () =>
-    route.sent.filter((message) => message.request?.type === "connect" && message.request.connection === "receiving").length;
-  expect(connects()).toBe(1);
+  expect(connects(route)).toBe(1);
   await inBar(sharer).getByRole("button", { name: "Share webcam" }).click();
   await here.getByRole("button", { name: "Watch Tiago's webcam" }).click();
   await expect(stage.getByRole("img", { name: "Tiago's webcam, with no picture" })).toBeVisible();
-  expect(connects()).toBe(2);
+  expect(connects(route)).toBe(2);
   expect(await media((control) => control.connections.receiving)).toBe(2);
   expect(replaces(route)).toHaveLength(1);
+});
+test("a tab whose replacement carries nothing lets go of it, and a watch asked for meanwhile makes a new receiving connection and shows on the first click", async ({
+  browser,
+  baseURL,
+}) => {
+  const { owner, route, media } = await ownerAndSharer(browser, baseURL, "Ulla");
+  const here = owner.getByRole("region", { name: "Here" });
+  const stage = owner.getByRole("main", { name: "Stage" });
+
+  // The owner watches Ulla's webcam and stops, so the receiving connection carries nothing.
+  await here.getByRole("button", { name: "Watch Ulla's webcam" }).click();
+  await expect(stage.getByRole("img", { name: "Ulla's webcam, with no picture" })).toBeVisible();
+  await here.getByRole("button", { name: "Stop watching Ulla's webcam" }).click();
+  await expect(stage.getByRole("img")).toHaveCount(0);
+
+  // The browser gives it up, and the owner clicks Watch while its replacement is on its way.
+  route.holding = "replace";
+  await media((control) => control.fail("receiving"));
+  await expect.poll(() => route.holding).toBeNull();
+  await here.getByRole("button", { name: "Watch Ulla's webcam" }).click();
+  route.release();
+
+  // The replacement carried nothing, so it ends dropped, and the watch waiting its turn makes a new connection.
+  await expect(stage.getByRole("img", { name: "Ulla's webcam, with no picture" })).toBeVisible();
+  const changes = route.heard.filter((message) => message.type === "media").map((message) => message.change?.type);
+  expect(changes).toContain("dropped");
+  expect(changes).not.toContain("replaced");
+  expect(changes).not.toContain("pull-refused");
+  expect(replaces(route)).toHaveLength(1);
+  expect(connects(route)).toBe(2);
 });

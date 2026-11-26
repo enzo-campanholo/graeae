@@ -8,11 +8,20 @@
 // connection is never restarted: it is replaced (`replace`), with a new connection the
 // tab's watches are pulled onto one by one (`replaceNext`), and the old one's pulls are
 // closed once they all are. A tab with no receiving connection on record has nothing to
-// replace, which asks the media server nothing. How far a replacement has got is read
-// from the records alone, so it outlasts an eviction between two steps: a watch pulled
-// onto the replacement and waiting for it to be done is one whose pull has returned and
-// that is not yet watching (`carried`). A share handed over meanwhile pulls nothing of its own: its watch goes on
-// the stage with no pull, and the replacement pulls it as one of its steps (`move`).
+// replace, which asks the media server nothing. A replacement that ends carrying nothing
+// is let go of by the instance (`letGo`), since no browser joins a receiving connection
+// until something is pulled there (`docs/media-server.md`). How far a replacement has got
+// is read from the records alone, so it outlasts an eviction between two steps: a watch
+// pulled onto the replacement and waiting for it to be done is one whose pull has returned
+// and that is not yet watching (`carried`). A share handed over meanwhile pulls nothing of
+// its own: its watch goes on the stage with no pull, and the replacement pulls it as one
+// of its steps (`move`). A watch whose share is being closed, by a hand-over or an end, is
+// left to that close: the replacement passes it over, and is not done until every
+// hand-over of a share on the tab's stage is, so a watch the hand-over moves is one more
+// step, and one it closes leaves nothing behind. A pull the replacement made of it
+// meanwhile is still the tab's step, since the media server pulls nothing more onto that
+// connection until its offer is answered, and is closed once it is. Until the tab leaves or asks again, every replacement ends `replaced`, `dropped` or
+// `unavailable`: the tab is never left waiting for its next step.
 //
 // Every call follows one order. The record is written first, with every track name
 // picked here, then the media layer is called. A close is always a forced close, and a
@@ -254,6 +263,12 @@ export class Shares {
   /** Watches whose forced close is under way, likewise. */
   private readonly closingWatches = new Set<string>();
   /**
+   * The hand-overs under way, by the id of the share each replaces: from the close of its
+   * tracks until each of its watchers is moved or closed. `tabs` are those that watched
+   * that share as it began, and `over` settles when it is over.
+   */
+  private readonly handingOver = new Map<string, { tabs: ReadonlySet<string>; over: Promise<unknown> }>();
+  /**
    * Records whose first call to the media server (connect, publish, pull) is under way in
    * this run of the instance, by record id. A sweep leaves them alone. After a restart
    * there are none: whatever was under way never returns.
@@ -475,14 +490,29 @@ export class Shares {
    * next. Once every share on the stage is on the replacement, the replacement is done: it
    * becomes the tab's receiving connection, each pull on it goes on the stage in place of
    * the old one's, and the old connection's pulls are closed, which tells nobody; "done".
-   * "stale" when the replacement was let go of meanwhile, or the tab left. `stillOpen`
-   * says whether the tab is still there once the media server has answered.
+   *
+   * A watch whose share is ending, or is being closed by a hand-over, is passed over: it
+   * is not the replacement's to carry, nor to take off the stage, since the share's end
+   * does that and tells the tab, and the hand-over moves it to the new share once the old
+   * one is closed. So is one whose pull onto the replacement the media server failed as
+   * that close went on, and the step goes on to the next. The replacement is not done
+   * while a hand-over of a share on the tab's stage is under way: it waits for it, then
+   * looks again, so the moved watch is pulled as one more step and a closed one is gone. One whose pull returned as that close went on is returned all the same:
+   * the media server pulls nothing more onto the replacement until the tab answers its
+   * offer, closing the pull or not (`docs/media-server.md`). The next step, which the
+   * tab's answer begins, closes it first. The replacement is kept all the while.
+   *
+   * "stale" only when the tab left, or asked for another replacement in this one's place,
+   * which is then the one it waits for: a tab never waits for a replacement that ends
+   * "stale". `stillOpen` says whether the tab is still there once the media server has
+   * answered.
    */
   async replaceNext(
     tab: Tab,
     replacementId: string,
     stillOpen: () => boolean,
   ): Promise<{ share: LiveShare; offer: string; video: string; audio: string | null } | "done" | "stale"> {
+    const passedOver = new Set<string>();
     for (;;) {
       const replacement = this.replacementOf(tab.id);
       if (replacement?.id !== replacementId || typeof replacement.media_id !== "string") return "stale";
@@ -493,22 +523,37 @@ export class Shares {
         this.forgetIfEmpty(replacementId);
         return "stale";
       }
+      // The tab has answered the last step: a pull of a share that went meanwhile is closed now.
+      for (const watch of this.watches("WHERE connection_id = ? AND watching_at IS NULL", replacementId)) {
+        if (this.carried(watch) && this.gone(watch.shareId)) await this.closeWatch(watch);
+      }
       const current = this.connectionOf(tab.id, "receiving");
       const carried = new Set(this.watches("WHERE connection_id = ?", replacementId).map((watch) => watch.shareId));
       const next = current
         ? this.watches(
             "WHERE connection_id = ? AND watching_at IS NOT NULL AND left_at IS NULL ORDER BY watching_at, rowid",
             current.id,
-          ).find((watch) => !carried.has(watch.shareId) && !this.closingWatches.has(watch.id))
+          ).find((watch) => !carried.has(watch.shareId) && !this.closingWatches.has(watch.id) && !passedOver.has(watch.id))
         : undefined;
       if (!next) {
+        const handOvers = [...this.handingOver.values()].filter(({ tabs }) => tabs.has(tab.id)).map(({ over }) => over);
+        if (handOvers.length > 0) {
+          await Promise.all(handOvers);
+          // What was passed over is moved or closed now, or kept if the hand-over's close failed.
+          passedOver.clear();
+          continue;
+        }
         await this.finishReplacement(tab, replacementId);
         return "done";
       }
 
       const watched = this.records("WHERE id = ? AND live_at IS NOT NULL AND ending_at IS NULL", next.shareId)[0];
-      const sharerMediaId = watched && this.connectionById(watched.connection)?.media_id;
-      if (!watched || typeof sharerMediaId !== "string" || this.gone(watched)) {
+      if (!watched || this.gone(watched.id)) {
+        passedOver.add(next.id);
+        continue;
+      }
+      const sharerMediaId = this.connectionById(watched.connection)?.media_id;
+      if (typeof sharerMediaId !== "string") {
         this.leave(next);
         continue;
       }
@@ -522,16 +567,29 @@ export class Shares {
       }
       if (!pulled) {
         log.warn("watch.refused", { ...tagsOf(tab), share: next.share, why: "the media server failed the pull again" });
-        this.leave(next);
+        if (this.gone(watched.id)) passedOver.add(next.id);
+        else this.leave(next);
         continue;
       }
-      if (!stillOpen() || this.gone(watched) || this.replacementOf(tab.id)?.id !== replacementId) {
+      if (!stillOpen() || this.replacementOf(tab.id)?.id !== replacementId) {
         await this.closeWatch(record);
-        this.forgetIfEmpty(replacementId);
-        if (!stillOpen()) return "stale";
-        continue;
+        if (!stillOpen()) this.forgetIfEmpty(replacementId);
+        return "stale";
       }
-      log.info("watch.pulled-again", { ...tagsOf(tab), share: next.share, watch: record.id, from: next.id, tracks: pulledTracksOf(record) });
+      // A share that went while its pull was made is still the tab's step: the media server
+      // takes no other pull on the replacement until the tab answers this one's offer, and
+      // closing the pull does not change that. Its pull is closed once the tab has answered,
+      // as the next step begins; the hand-over or the end took the share off this pull.
+      const wentMeanwhile = this.gone(watched.id);
+      if (wentMeanwhile) passedOver.add(next.id);
+      log.info("watch.pulled-again", {
+        ...tagsOf(tab),
+        share: next.share,
+        watch: record.id,
+        from: next.id,
+        tracks: pulledTracksOf(record),
+        ...(wentMeanwhile ? { shareGone: true } : {}),
+      });
       return { share: record.share, offer: pulled.offer, video: record.video.mid!, audio: record.audio?.mid ?? null };
     }
   }
@@ -559,7 +617,8 @@ export class Shares {
     // In one go, so the stage never shows a share twice, or loses one in between.
     for (const watch of carried) {
       const before = stage.find((other) => other.shareId === watch.shareId);
-      if (!before) {
+      // A pull of a share that went, whose close failed: not for the stage.
+      if (!before || this.gone(watch.shareId)) {
         stray.push(watch);
         continue;
       }
@@ -575,8 +634,14 @@ export class Shares {
 
     for (const watch of stray) await this.closeWatch(watch);
     if (old) {
-      // A watch still being pulled there finds its connection replaced when the pull returns, and closes itself.
-      for (const watch of this.watches("WHERE connection_id = ?", old.id)) if (!this.inFlight.has(watch.id)) await this.closeWatch(watch);
+      // A watch still being pulled there finds its connection replaced when the pull
+      // returns, and closes itself. One of a share being closed is left to that close: a
+      // hand-over begun as this one ended then moves it onto the replacement, and an end
+      // closes it.
+      const leftToClose = (watch: WatchRecord) => this.closingShares.has(watch.shareId) || this.handingOver.has(watch.shareId);
+      for (const watch of this.watches("WHERE connection_id = ?", old.id)) {
+        if (!this.inFlight.has(watch.id) && !leftToClose(watch)) await this.closeWatch(watch);
+      }
       this.forgetIfEmpty(old.id);
     }
   }
@@ -727,7 +792,7 @@ export class Shares {
       const pulled = await this.pull(record, watcherMediaId, sharerMediaId, watched);
       if (!pulled) return refused("the media server failed");
 
-      if (!stillOpen() || this.gone(watched) || this.receivingTarget(tab.id)?.id !== connection.id) {
+      if (!stillOpen() || this.gone(watched.id) || this.receivingTarget(tab.id)?.id !== connection.id) {
         // The tab left, the share ended, or the connection was replaced, while the media
         // server was answering, and none of them could close a pull that had no mid yet.
         await this.closeWatch(record);
@@ -745,9 +810,12 @@ export class Shares {
     }
   }
 
-  /** Whether `share` is being ended, or has ended: it gains no watcher, even if its own close then fails. */
-  private gone(share: ShareRecord): boolean {
-    return this.closingShares.has(share.id) || !this.records("WHERE id = ? AND ending_at IS NULL", share.id)[0];
+  /**
+   * Whether the share `id` is being ended, or has ended, or is no longer on record: it
+   * gains no watcher, even if its own close then fails.
+   */
+  private gone(id: string): boolean {
+    return this.closingShares.has(id) || !this.records("WHERE id = ? AND ending_at IS NULL", id)[0];
   }
 
   /**
@@ -817,8 +885,21 @@ export class Shares {
     const to = this.records("WHERE id = ? AND live_at IS NOT NULL", id)[0];
     if (!to?.replaces) return [];
     const from = this.records("WHERE id = ? AND live_at IS NOT NULL", to.replaces)[0];
-    if (!from || from.ending || this.closingShares.has(from.id)) return [];
+    if (!from || from.ending || this.closingShares.has(from.id) || this.handingOver.has(from.id)) return [];
 
+    // Under way until each watcher is moved or closed: a replacement of a watcher's receiving connection waits for it.
+    const tabs = new Set(this.watches("WHERE share_id = ? AND left_at IS NULL", from.id).map((watch) => watch.tab));
+    const over = this.carryOver(from, to, connected);
+    this.handingOver.set(from.id, { tabs, over: over.catch(() => undefined) });
+    try {
+      return await over;
+    } finally {
+      this.handingOver.delete(from.id);
+    }
+  }
+
+  /** `handOver`'s close of the old share and moves of its watchers. */
+  private async carryOver(from: ShareRecord, to: ShareRecord, connected: (tabId: string) => boolean): Promise<Ended[]> {
     this.closingShares.add(from.id);
     let closed: boolean;
     try {
@@ -853,9 +934,11 @@ export class Shares {
    * While the tab replaces its receiving connection, every offer it gets is one of the
    * replacement's steps (`replaceNext`), so the move pulls nothing: the new share goes on
    * the stage of the connection being replaced with nothing pulled for it yet, and the
-   * replacement pulls it as one of its steps. A pull that returns to find the tab's
-   * receiving connection replaced, or being replaced, is for a session the tab is letting
-   * go of: it is closed, and the move done again.
+   * replacement pulls it as one of its steps, since it waits for the hand-over to be done.
+   * One that was done just as the hand-over began left the watch on the connection it
+   * replaced, and the move pulls the new share onto the new one. A pull that returns to
+   * find the tab's receiving connection replaced, or being replaced, is for a session the
+   * tab is letting go of: it is closed, and the move done again.
    */
   private async move(watch: WatchRecord, to: ShareRecord, connected: (tabId: string) => boolean) {
     if (!(await this.closeWatch(watch, { moving: true }))) return;
@@ -874,7 +957,7 @@ export class Shares {
       const record = newWatch({ ...watch, connection: current.id }, to, quality);
       if (this.replacementUnderWay(watch.tab)) {
         // The new share may have ended, or the watcher left, while the old pull closed.
-        if (!connected(watch.tab) || this.gone(to)) {
+        if (!connected(watch.tab) || this.gone(to.id)) {
           this.listener.unwatched(watch.tab, watch.share);
           return;
         }
@@ -890,7 +973,7 @@ export class Shares {
           this.listener.unwatched(watch.tab, watch.share);
           return;
         }
-        if (!connected(watch.tab) || this.gone(to)) {
+        if (!connected(watch.tab) || this.gone(to.id)) {
           await this.closeWatch(record);
           this.forgetIfEmpty(record.connection);
           this.listener.unwatched(watch.tab, watch.share);
@@ -1420,17 +1503,23 @@ export class Shares {
 
   /**
    * A start (on the `sending` connection) or watch (on the `receiving` one) of `tabId`'s
-   * did not go live: that connection is forgotten if it now carries nothing and is not
-   * being made. A connection that never carried anything never gets a browser on it, and
-   * the media server drops it within seconds, so the tab makes a new one on its next try.
+   * did not go live, or a replacement of its receiving connection carried nothing: that
+   * connection is forgotten if it now carries nothing and is not being made. A connection
+   * that never carried anything never gets a browser on it, and the media server drops it
+   * within seconds, so the tab makes a new one on its next try.
    * It is forgotten at once, so nothing goes into it meanwhile; then any track the media
    * server made on it although it reported the call failed is force-closed, as the sweep at
    * a cut-off would. A receiving connection being replaced is kept: the replacement
-   * carries its watches over. True when it was forgotten.
+   * carries its watches over, and so is one a watch of the tab's is still on its way to:
+   * a hand-over's pull under way from a connection since replaced, which goes to this one
+   * when it returns. True when it was forgotten.
    */
   letGo(tabId: string, purpose: MediaPurpose): boolean {
     const connection = this.connectionOf(tabId, purpose);
-    if (!connection || this.replacementOf(tabId) && purpose === "receiving") return false;
+    if (!connection) return false;
+    if (purpose === "receiving" && (this.replacementOf(tabId) || this.watches("WHERE tab_id = ? AND left_at IS NULL", tabId).length > 0)) {
+      return false;
+    }
     if (!this.forgetIfEmpty(connection.id)) return false;
     if (typeof connection.media_id === "string") void this.closeLeftOver(tabId, connection.media_id);
     return true;

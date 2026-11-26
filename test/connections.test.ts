@@ -15,6 +15,8 @@ import {
   shareWebcam,
   startScreen,
   startWatching,
+  stopWatching,
+  stopWebcam,
   watch,
 } from "./steps.ts";
 import { addressOf, openRoom, type Tab } from "./sockets.ts";
@@ -198,11 +200,12 @@ describe("a replacement of the receiving connection", () => {
 
     ownerTab.send({ type: "media", request: { type: "replace" } });
     await ownerTab.next(); // connected
-    // Neither could be pulled again: the owner stops watching both, and the replacement ends.
+    // Neither could be pulled again: the owner stops watching both, and the replacement,
+    // carrying nothing, ends dropped.
     const heard: unknown[] = [];
     for (;;) {
       const message = await ownerTab.next();
-      if (message.type === "media" && message.change.type === "replaced") break;
+      if (message.type === "media" && message.change.type === "dropped") break;
       heard.push(message);
     }
     expect(heard).toEqual(
@@ -212,6 +215,44 @@ describe("a replacement of the receiving connection", () => {
       ]),
     );
     await vi.waitFor(() => expect(names(instance)[2]).toEqual([]));
+  });
+
+  it("has the tab answer a pull whose share ended while it was made, then goes on to the next", async () => {
+    const { instance, owner, room, ownerTab, biaTab, biasWebcam } = await eachSharingAndWatching();
+    await alsoShareScreen(biaTab, ownerTab);
+    const biasScreen: LiveShare = { member: biasWebcam.member, kind: "screen" };
+    await watch(ownerTab, biasScreen);
+    await biaTab.next(); // the owner is watching it
+    // As the real media server does: no pull on a connection whose last offer is unanswered.
+    instance.media.oneOfferAtATime();
+    const pull = instance.media.hold("pull", { done: true });
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+    await ownerTab.next(); // connected
+    await pull.reached;
+
+    // Bia stops her webcam while the media server pulls it onto the replacement.
+    stopWebcam(biaTab);
+    await vi.waitFor(() => expect(instance.logs().map((line) => line.event)).toContain("share.ended"));
+    pull.release();
+
+    // The tab still gets that pull, and answers it, before the next.
+    const steps: LiveShare[] = [];
+    for (;;) {
+      const message = await ownerTab.next();
+      if (message.type === "media" && message.change.type === "replaced") break;
+      if (message.type === "media" && message.change.type === "pulled") {
+        steps.push(message.change.share);
+        ownerTab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+      }
+    }
+    expect(steps).toEqual([biasWebcam, biasScreen]);
+    expect(instance.media.answers()[4]).toEqual([FAKE_ANSWER, FAKE_ANSWER]);
+    // The new connection holds the screen alone, the ended webcam's pull closed once answered.
+    await vi.waitFor(() => expect(names(instance)[2]).toEqual([]));
+    expect(names(instance)[4]).toHaveLength(1);
+    await ownerTab.drop();
+    const { state } = await openRoom(owner, room, { tab: ownerTab.id });
+    expect(state.watching.stage).toEqual([biasScreen]);
   });
 });
 
@@ -283,6 +324,46 @@ describe("a replacement that cannot be made", () => {
     expect(instance.media.calls("connect")).toBe(connects);
     expect(instance.media.credentials()).toHaveLength(credentials);
     expect(unavailableLines(instance)).toEqual([]);
+  });
+});
+
+// The media server drops a connection no browser has joined a few seconds after making it,
+// and refuses every pull into it after with a 410 (docs/media-server.md). The tab joins a
+// receiving connection only by answering a pull's offer, so a replacement onto which
+// nothing is pulled is never joined. `disconnectUnjoined` is those seconds passing.
+describe("a receiving connection given up while it carries nothing", () => {
+  const dropped = { type: "media", change: { type: "dropped", connection: "receiving" } };
+
+  it("is replaced by one that is let go of, so the tab's next watch, long after, makes a new one and goes live on the first ask", async () => {
+    const { instance, ownerTab, biaTab, biasWebcam } = await eachSharingAndWatching();
+    stopWatching(ownerTab, biasWebcam);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
+    await biaTab.next(); // the owner stopped watching
+
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await ownerTab.next()).toEqual(dropped);
+    instance.media.disconnectUnjoined();
+
+    await connectMedia(ownerTab, "receiving");
+    startWatching(ownerTab, biasWebcam);
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled", share: biasWebcam } });
+  });
+
+  it("is let go of when every watch left during its replacement, so the tab's next watch, long after, goes live on the first ask", async () => {
+    const { instance, ownerTab, biasWebcam } = await eachSharingAndWatching();
+    // The one watch cannot be pulled again, as though its share had gone from the media server.
+    instance.media.fail("pull");
+
+    ownerTab.send({ type: "media", request: { type: "replace" } });
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "connected", connection: "receiving" } });
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: biasWebcam } });
+    expect(await ownerTab.next()).toEqual(dropped);
+    instance.media.disconnectUnjoined();
+
+    await connectMedia(ownerTab, "receiving");
+    startWatching(ownerTab, biasWebcam);
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled", share: biasWebcam } });
   });
 });
 

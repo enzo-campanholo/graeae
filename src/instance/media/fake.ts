@@ -5,6 +5,15 @@
 // Its state lives in this module, not in the instance, so it outlives a restart of the
 // instance just as the real media server does.
 //
+// It plays one behaviour of the real media server's (`docs/media-server.md`): a media
+// connection no browser has joined is dropped a few seconds after it is made, and every
+// call on it after fails as the media server's 410 does. A browser joins a connection with
+// its first answer to a pull's offer, or its first offer of its own (a publish or a
+// restart). The fake drops such a connection only when a test says those seconds have
+// passed (`disconnectUnjoined`). And, once a test asks (`oneOfferAtATime`), another: a
+// pull's offer must be answered before the next pull on that connection, which otherwise
+// fails as the media server's 406 does, whether or not the tracks it pulled were closed.
+//
 // `fakeMediaControl` lets a test read the tracks and make a call fail or wait. Nothing
 // in the instance uses it, and no request can reach it.
 
@@ -79,6 +88,14 @@ class FakeMediaServer implements MediaLayer {
   readonly faults = new Map<FakeOperation, Fault[]>();
   /** How many times the instance has made each call. */
   readonly calls = new Map<FakeOperation, number>();
+  /** The media connections a browser has joined: it answered a pull's offer, or made an offer of its own. */
+  readonly joined = new Set<MediaConnectionId>();
+  /** The media connections dropped as never joined (`disconnectUnjoined`). */
+  readonly disconnected = new Set<MediaConnectionId>();
+  /** The media connections whose last pull's offer the browser has not answered yet. */
+  readonly offering = new Set<MediaConnectionId>();
+  /** Whether a pull on a connection in `offering` fails, as the media server's 406 does (`oneOfferAtATime`). */
+  oneOfferAtATime = false;
 
   connect(): Promise<MediaConnectionId> {
     return this.call("connect", () => {
@@ -95,6 +112,7 @@ class FakeMediaServer implements MediaLayer {
   publish(connection: MediaConnectionId, offer: string, tracks: readonly Track[]): Promise<string> {
     return this.call("publish", () => {
       const open = this.connection(connection);
+      this.joined.add(connection);
       for (const track of tracks) {
         if ([...open.values()].some((other) => other.name === track.name)) {
           throw new Error(`The fake already has a track called ${track.name}`);
@@ -116,6 +134,9 @@ class FakeMediaServer implements MediaLayer {
     return this.call("pull", () => {
       if (preferred && !names.includes(preferred.name)) throw new Error(`The fake is not pulling ${preferred.name}`);
       const open = this.connection(connection);
+      if (this.oneOfferAtATime && this.offering.has(connection)) {
+        throw Object.assign(new Error(`The fake's media connection ${connection} is expecting a remote answer`), { status: 406 });
+      }
       const source = [...this.connection(from).values()];
       for (const name of names) {
         if (!source.some((track) => track.name === name)) throw new Error(`The fake has no track called ${name} to pull`);
@@ -130,6 +151,7 @@ class FakeMediaServer implements MediaLayer {
         if (preferred?.name === name) this.preferred.get(connection)!.set(track.mid, preferred.quality);
         return { ...track };
       });
+      this.offering.add(connection);
       return { offer: `v=0 a stand-in offer pulling ${tracks.length} track(s)`, tracks };
     });
   }
@@ -150,6 +172,8 @@ class FakeMediaServer implements MediaLayer {
   renegotiate(connection: MediaConnectionId, answer: string): Promise<void> {
     return this.call("renegotiate", () => {
       this.connection(connection);
+      this.joined.add(connection);
+      this.offering.delete(connection);
       this.answers.get(connection)!.push(answer);
     });
   }
@@ -157,6 +181,7 @@ class FakeMediaServer implements MediaLayer {
   restart(connection: MediaConnectionId, offer: string, mid: string): Promise<string> {
     return this.call("restart", () => {
       this.connection(connection);
+      this.joined.add(connection);
       void offer;
       void mid;
       return "v=0 a stand-in answer to a restart";
@@ -165,6 +190,8 @@ class FakeMediaServer implements MediaLayer {
 
   close(connection: MediaConnectionId, tracks: readonly Track[]): Promise<void> {
     return this.call("close", () => {
+      // As `cloudflare.ts` takes the media server's 410: nothing is left open.
+      if (this.disconnected.has(connection)) return;
       const open = this.connection(connection);
       for (const track of tracks) {
         open.delete(track.mid);
@@ -174,7 +201,9 @@ class FakeMediaServer implements MediaLayer {
   }
 
   tracks(connection: MediaConnectionId): Promise<Track[]> {
-    return this.call("tracks", () => [...this.connection(connection).values()].map((track) => ({ ...track })));
+    return this.call("tracks", () =>
+      this.disconnected.has(connection) ? [] : [...this.connection(connection).values()].map((track) => ({ ...track })),
+    );
   }
 
   relayCredential(ttlSeconds: number): Promise<IceServer[]> {
@@ -206,6 +235,14 @@ class FakeMediaServer implements MediaLayer {
     this.identifiers.clear();
     this.faults.clear();
     this.calls.clear();
+    this.joined.clear();
+    this.disconnected.clear();
+    this.offering.clear();
+    this.oneOfferAtATime = false;
+  }
+
+  disconnectUnjoined() {
+    for (const id of this.connections.keys()) if (!this.joined.has(id)) this.disconnected.add(id);
   }
 
   private useMid(connection: MediaConnectionId, mid: string) {
@@ -216,6 +253,9 @@ class FakeMediaServer implements MediaLayer {
   private connection(id: MediaConnectionId): Map<string, Track> {
     const open = this.connections.get(id);
     if (!open) throw new Error(`The fake has no media connection ${id}`);
+    if (this.disconnected.has(id)) {
+      throw Object.assign(new Error(`The fake's media connection ${id} is disconnected: no browser joined it`), { status: 410 });
+    }
     return open;
   }
 
@@ -281,6 +321,27 @@ export const fakeMediaControl = {
 
   /** How many calls of `operation` a test has queued a failure or a hold for, and are still to come. */
   queued: (operation: FakeOperation): number => server.faults.get(operation)?.length ?? 0,
+
+  /**
+   * The seconds have passed in which the media server drops a media connection no browser
+   * has joined (no answer to a pull's offer on it, no publish, no restart): each such
+   * connection is disconnected, and every call on it after fails as the media server's 410
+   * does, but a close, which closes nothing, and the track list, which finds none open.
+   */
+  disconnectUnjoined: () => server.disconnectUnjoined(),
+
+  /**
+   * From now on a pull on a media connection whose last pull's offer the browser has not
+   * answered fails as the media server's 406 does: the session is still expecting that
+   * answer, and closing the pulled tracks does not change that. Off by default, since some
+   * tests pull twice before answering, which no tab does.
+   */
+  oneOfferAtATime: () => {
+    server.oneOfferAtATime = true;
+  },
+
+  /** Whether each media connection is disconnected, oldest connection first. */
+  disconnected: (): boolean[] => [...server.connections.keys()].map((id) => server.disconnected.has(id)),
 
   /** How many times the instance has called `operation` since the test began. */
   calls: (operation: FakeOperation): number => server.calls.get(operation) ?? 0,

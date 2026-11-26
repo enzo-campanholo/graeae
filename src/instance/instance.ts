@@ -609,21 +609,23 @@ export class Instance extends DurableObject<Env> {
 
   /**
    * A share (on the `sending` connection) or watch (on the `receiving` one) of `tab`'s did
-   * not go live, and the tab has heard it refused. That connection, left carrying nothing,
-   * is let go of, and the tab hears `dropped` for it, so its next share or watch makes a
-   * new one: the media server soon drops a connection no browser ever joined, and refuses
-   * every offer into it after.
+   * not go live, and the tab has heard it refused; or a replacement of its receiving
+   * connection is done carrying nothing. That connection, left carrying nothing, is let go
+   * of, and the tab hears `dropped` for it, so its next share or watch makes a new one:
+   * the media server soon drops a connection no browser ever joined, and refuses every
+   * offer into it after. Whether it was let go of.
    */
-  private letGoOfMedia(tab: Tab, connection: MediaPurpose, why: string) {
-    if (!this.shares.letGo(tab.id, connection)) return;
+  private letGoOfMedia(tab: Tab, connection: MediaPurpose, why: string): boolean {
+    if (!this.shares.letGo(tab.id, connection)) return false;
     log.info("media.dropped", { ...tagsOf(tab), connection, why });
     this.signaling.toTab(tab.id, { type: "media", change: { type: "dropped", connection } });
+    return true;
   }
 
   /**
    * The next step of replacing `tab`'s receiving connection with `replacement`: the next
    * pull onto it, which the tab answers before the step after, or, once every watch is on
-   * it, `replaced`.
+   * it, `replaced`, or `dropped` when it carried nothing.
    */
   private async replaceStep(tab: Tab, replacement: string) {
     this.stepping.set(tab.id, replacement);
@@ -634,9 +636,14 @@ export class Instance extends DurableObject<Env> {
       // Not a step of a later replacement's, which may have begun meanwhile.
       if (this.stepping.get(tab.id) === replacement) this.stepping.delete(tab.id);
     }
+    // The tab left, or asked for another replacement, which answers it in this one's place.
     if (step === "stale") return;
     if (step === "done") {
-      this.signaling.toTab(tab.id, { type: "media", change: { type: "replaced" } });
+      // One that carried nothing is never joined (docs/media-server.md): it ends `dropped`
+      // in place of `replaced`, so the tab's next watch makes a new one.
+      if (!this.letGoOfMedia(tab, "receiving", "a replacement carried nothing")) {
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "replaced" } });
+      }
       return;
     }
     const { share, offer, video, audio } = step;

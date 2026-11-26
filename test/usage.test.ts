@@ -32,11 +32,16 @@ async function report(tab: Tab, received: number, { relayed = false, final = fal
   await tab.heartbeat();
 }
 
-/** A replacement of the tab's receiving connection, which watches nothing: a new connection, whose total starts at zero. */
+/**
+ * A replacement of the tab's receiving connection, which watches nothing: it ends dropped,
+ * carrying nothing, and the tab makes a new connection on its next watch, whose total
+ * starts at zero.
+ */
 async function newConnection(tab: Tab) {
   tab.send({ type: "media", request: { type: "replace" } });
   expect(await tab.next()).toEqual({ type: "media", change: { type: "connected", connection: "receiving", iceServers: expect.any(Array) } });
-  expect(await tab.next()).toEqual({ type: "media", change: { type: "replaced" } });
+  expect(await tab.next()).toEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
+  await connectMedia(tab, "receiving");
 }
 
 /** A restart of the tab's sending connection, which receives nothing that is counted. */

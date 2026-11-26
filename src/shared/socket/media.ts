@@ -16,6 +16,12 @@
 // connection that needs a new path is replaced, never restarted (`replace`): the instance
 // makes a new one, pulls each of the tab's watches onto it in turn, then closes the old
 // connection's pulls. Until it is done, every offer the tab gets is one of those steps.
+// A replacement ends `replaced`, `dropped` or `unavailable` unless the tab leaves or asks
+// for another, which then answers in its place.
+// A replacement that carried nothing ends `dropped` in place of `replaced`, before any
+// negotiation waiting its turn: the browser joins a receiving connection only by
+// answering an offer on it, and the media server drops one never joined within seconds
+// (`docs/media-server.md`).
 // A replacement that cannot be made is `unavailable` with why: the media server or the
 // relay failed, and the tab asks again after a wait that doubles up to 30 seconds; or
 // there is nothing to replace, or it is not allowed, and the tab lets go of its receiving
@@ -106,8 +112,9 @@ export type MediaRequest =
    * the relay when its credential is renewed. The instance makes a new one and replies
    * `connected` for it (or `unavailable`, with why), then pulls each of the tab's watches
    * onto it in turn, each with `pulled`, which the tab answers before the next comes;
-   * then it closes the old connection's pulls, and the tab hears `replaced`. The tab sends its
-   * final usage total first: the new connection counts from zero.
+   * then it closes the old connection's pulls, and the tab hears `replaced`; or `dropped`,
+   * when the new one carries nothing. The tab sends its final usage total first: the new
+   * connection counts from zero.
    */
   | { type: "replace" };
 
@@ -143,6 +150,12 @@ export type MediaChange =
    * replacement connection is on the stage already. While a replacement is under way,
    * from its `connected` to its `replaced`, every offer is one of its steps: a share
    * handed over meanwhile arrives as a `pulled` onto the new connection, never a `moved`.
+   * A step whose share went while it was pulled (ended, or handed over, the tab hearing so
+   * first or after) is answered all the same, since the media server pulls nothing more
+   * onto the connection until it is; a tab that no longer watches `share` then lets go of
+   * its picture. A share handed over comes again as a later step, since the replacement
+   * waits for the hand-over; as a `moved` after `replaced` only when the hand-over began
+   * just as the replacement ended.
    */
   | { type: "pulled"; share: LiveShare; offer: string; video: string; audio?: string }
   /** `share` could not be watched on this tab: a check failed, or the media server did. */
@@ -174,12 +187,15 @@ export type MediaChange =
    * The replacement is done: every watch that could be pulled onto the new receiving
    * connection is on it, and the old connection's pulls are closed. A watch that could not
    * be pulled again has left the stage, with the watching area's `unwatched`.
+   * A replacement that carried nothing ends `dropped` instead.
    */
   | { type: "replaced" }
   /**
    * The instance let go of this tab's `connection`. A sending connection: its media
    * faltered for 30 seconds, which ended its shares; or the tab asked it to
    * (`reconnect`). Either connection: a share or watch on it did not go live, and it
-   * carried nothing else. The tab makes a new one the next time it needs it.
+   * carried nothing else. A receiving connection: a replacement carried nothing, which
+   * ends with this in place of `replaced` (see `replace`). The tab makes a new one the
+   * next time it needs it.
    */
   | { type: "dropped"; connection: MediaPurpose };

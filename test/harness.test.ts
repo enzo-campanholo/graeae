@@ -12,7 +12,17 @@ import type { LiveShare } from "../src/shared/socket/index.ts";
 import { USAGE_REPORT_EVERY_MS } from "../src/shared/socket/usage.ts";
 import { startInstance } from "./harness.ts";
 import { openRoom, type Tab } from "./sockets.ts";
-import { addMember, connectMedia, setUpOwner, shareWebcam, watch } from "./steps.ts";
+import {
+  addMember,
+  connectMedia,
+  FAKE_ANSWER,
+  setUpOwner,
+  shareWebcam,
+  startScreen,
+  startWatching,
+  stopWatching,
+  watch,
+} from "./steps.ts";
 
 const START = new Date("2040-03-01T00:00:00Z");
 const MINUTE = 60_000;
@@ -68,6 +78,94 @@ describe("an eviction", () => {
     expect(starts()).toBe(2);
     expect(instance.logs().filter((line) => line.event === "restart.restored").at(-1)).toMatchObject({ woke: true, lost: [] });
     expect(tab.queued()).toEqual([]);
+  });
+});
+
+describe("the fake media server's connections no browser joined", () => {
+  it("are dropped when the test says the seconds have passed, and every pull into one after fails, while joined ones carry on", async () => {
+    const instance = await startInstance({ startAt: START });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: biaTab, state } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // Bia's webcam went live
+    const webcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
+    // The owner's receiving connection carries a watch the owner answered.
+    await connectMedia(ownerTab, "receiving");
+    await watch(ownerTab, webcam);
+    await biaTab.next(); // the owner is watching
+
+    instance.media.disconnectUnjoined();
+    // Bia's sending connection, which published, and the owner's are joined.
+    expect(instance.media.disconnected()).toEqual([false, false]);
+    // A connection the owner's second tab makes and never uses is not.
+    const { tab: second } = await openRoom(owner, room);
+    await connectMedia(second, "receiving");
+    instance.media.disconnectUnjoined();
+    expect(instance.media.disconnected()).toEqual([false, false, true]);
+
+    startWatching(second, webcam);
+    expect(await second.next()).toEqual({ type: "media", change: { type: "pull-refused", share: webcam } });
+    const refused = instance.logs().filter((line) => line.event === "media-server" && line.op === "pull" && line.ok === false);
+    expect(refused).toEqual([expect.objectContaining({ status: 410 })]);
+    // The first tab's watch carries on, and its close goes through.
+    stopWatching(ownerTab, webcam);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: webcam } });
+    expect(instance.media.connections()[1]).toEqual([]);
+  });
+});
+
+describe("the fake media server's offers, once a test asks for one at a time", () => {
+  it("refuse a pull into a connection whose last offer is unanswered, closed or not, and take one once it is answered", async () => {
+    const instance = await startInstance({ startAt: START });
+    const owner = instance.browser();
+    const room = await setUpOwner(owner);
+    const { browser: bia } = await addMember(instance, owner, "Bia");
+    const { tab: ownerTab } = await openRoom(owner, room);
+    const { tab: biaTab, state } = await openRoom(bia, room);
+    await ownerTab.next(); // Bia arrived
+    await shareWebcam(biaTab);
+    await ownerTab.next(); // Bia's webcam went live
+    startScreen(biaTab, { audio: null, video: "2" });
+    expect(await biaTab.next()).toMatchObject({ type: "media", change: { type: "published", kind: "screen" } });
+    await ownerTab.next(); // Bia's screen went live
+    const webcam: LiveShare = { member: state.people.you.id, kind: "webcam" };
+    const screen: LiveShare = { member: state.people.you.id, kind: "screen" };
+    await connectMedia(ownerTab, "receiving");
+    instance.media.oneOfferAtATime();
+
+    // The owner's webcam pull is offered, and left unanswered while the screen is asked for.
+    startWatching(ownerTab, webcam);
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled", share: webcam } });
+    await ownerTab.next(); // watched
+    startWatching(ownerTab, screen);
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: screen } });
+    const refused = () => instance.logs().filter((line) => line.event === "media-server" && line.op === "pull" && line.ok === false);
+    expect(refused()).toEqual([expect.objectContaining({ status: 406 })]);
+    // Once answered, the next pull goes through.
+    ownerTab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "answered" } });
+    await watch(ownerTab, screen);
+
+    // A pull closed before its offer is answered leaves that offer unanswered all the same.
+    // The webcam's watch keeps the connection: one left carrying nothing would be let go of.
+    stopWatching(ownerTab, screen);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: screen } });
+    startWatching(ownerTab, screen);
+    expect(await ownerTab.next()).toMatchObject({ type: "media", change: { type: "pulled", share: screen } });
+    await ownerTab.next(); // watched
+    stopWatching(ownerTab, screen);
+    expect(await ownerTab.next()).toEqual({ type: "watching", change: { type: "unwatched", share: screen } });
+    startWatching(ownerTab, screen);
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "pull-refused", share: screen } });
+    expect(refused()).toHaveLength(2);
+
+    ownerTab.send({ type: "media", request: { type: "answer", answer: FAKE_ANSWER } });
+    expect(await ownerTab.next()).toEqual({ type: "media", change: { type: "answered" } });
+    await watch(ownerTab, screen);
   });
 });
 

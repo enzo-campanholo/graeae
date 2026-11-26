@@ -31,6 +31,23 @@ Built on `v1-build`, with typecheck, lint and `pnpm test` green (508 Vitest test
 - **Left for 64.** A replacement cut short by a lost socket, with the next one answered `unavailable`: the tab's media is already on the new peer, which the instance never took as current, whatever happens to a `moved`. `docs/media-server.md` notes as not yet seen what a close does to a pull whose offer was never answered.
 - **From the review, not done.** The finding that a share pulled twice within one replacement leaves the first transceiver behind does not apply: `drop` in `browser.ts` does nothing, and the media server's next offer settles the transceivers.
 
+**Checked on `graeae-test` (2026-11-24): a hand-over that ends the share a replacement is pulling stalls the watcher for good.** `063611c` deployed (version `f3f2f775`). From this server's virtual desktop, in "First room": Linux R1 shared a 1280x720 game window, and Linux R2 watched it. R1 opened a second tab (`newtab`, `share screen`), then pressed "Share from here" (`handover screen`). 0.3 s later, R2 ran `fail receiving`. R2's picture froze, and it never came back: 1399 frames decoded, then nothing for over 4 minutes. A second try at 14:49:10 UTC froze the same way at 209 frames, so 2 of 2. Unwatching and watching again did nothing. Only a reload brought R2 back.
+
+From the instance's lines (`.logs/graeae-test-1795531200000-1795531680000.jsonl` and `.logs/graeae-test-1795531200000-1795531980000.jsonl`, tab `3c4a9d18`), the first try went like this:
+- 14:44:09.266: `media.replacing`. The replacement (`eff49815…`) gets its media session at 09.390, and the tab hears `connected`.
+- 09.901: the hand-over ends the old share `277be8d1`.
+- 09.914: the replacement's pull of that share returns, and is closed at 09.980 (`watch.ended`, `wasWatching: false`).
+- 10.795: `handover.moved`, with no `step: true`. The new share is pulled onto the old receiving connection `f97ae727…` (mid 1), and the tab is sent `moved` with that offer.
+- After that, the instance sends no `pulled`, `replaced` or `unavailable`. The tab answers nothing, and reports `received` 0 bytes every minute.
+- In R2's page, the replacement `RTCPeerConnection` stays `new`, with no remote description. The old one keeps only mid 0.
+
+The cause, in `Shares.replaceNext` (`src/instance/shares.ts`):
+- When a pull onto the replacement returns and the share has gone, the step closes that pull and calls `forgetIfEmpty(replacementId)`, even though the tab is still open. With nothing else on it, the replacement's row is deleted.
+- The loop's next pass finds no replacement and returns `"stale"`. `Instance.replaceStep` sends nothing for `"stale"`.
+- So `receivingTarget` falls back to the old connection, and the move pulls onto it. The tab never hears that its replacement is over. Its receiving turn waits for a `pulled` or `replaced` that never comes, and later watches queue behind it.
+
+The fakes cannot show this, since there the move's timing never lands between the replacement's pull and its return. Not fixed here; filed and fixed as [67](67-a-hand-over-during-a-replacement-freezes-the-watcher.md), which found two more ways in (the share leaving the stage, and the media server's 406 after an offer never answered). Linux R1 and R2 were removed afterwards.
+
 ## Agent Brief
 
 **Category:** bug

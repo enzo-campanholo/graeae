@@ -43,9 +43,11 @@
 //   `presence.reconnected`, `tab.silent`, `tab.heard` (a tab's own shares' mark)
 // - `media.connected`, `media.unavailable` (`why`: the media server or the relay
 //   failed, nothing to replace, or not allowed), `media.answered`, `media.restarted`,
-//   `media.reconnect`, `media.dropped`, each with the `connection` it is about
-//   (sending or receiving); `media.replacing`, `media.replacement-abandoned`,
-//   `media.replaced` and `watch.pulled-again` (a receiving connection replaced);
+//   `media.reconnect`, `media.dropped` (`why`: a share or watch did not go live, a
+//   replacement carried nothing, asked, or faltered), each with the `connection` it is
+//   about (sending or receiving); `media.replacing`, `media.replacement-abandoned`,
+//   `media.replaced` and `watch.pulled-again` (a receiving connection replaced; with
+//   `shareGone` when the share went while it was pulled, and the tab answers it all the same);
 //   `falter.start`, `falter.end`, `falter.due`
 // - `share.refused` (`why`), `share.live`, `share.ending` (its end began: no longer listed),
 //   `share.ended`, `share.close-failed`

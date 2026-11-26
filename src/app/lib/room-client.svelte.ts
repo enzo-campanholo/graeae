@@ -30,7 +30,11 @@
 // every watch again before closing the old pulls. A replacement the media server or the
 // relay failed is asked for again after a wait that doubles from 2 seconds up to 30; one
 // with nothing to replace, or not allowed, is never asked for again: the tab lets go of
-// its receiving connection as on `dropped`, and its next watch makes a new one.
+// its receiving connection as on `dropped`, and its next watch makes a new one. So does a
+// replacement that carried nothing, which the instance ends `dropped` in place of
+// `replaced`; a watch asked for meanwhile waits its turn, then makes the new one. Every
+// step's offer is answered, even one for a share that left the stage meanwhile, whose
+// picture the tab then lets go of: the media server pulls nothing more until it is.
 //
 // 11 hours after a connection's relay credential was minted, the instance hands it a
 // fresh one. On a direct path the tab takes it silently. On the relay a sending
@@ -526,6 +530,12 @@ export class RoomClient {
       this.timed(share, "media connection");
       await this.negotiate("receiving", async () => {
         this.timed(share, "turn");
+        // Let go of while this waited its turn, behind a replacement that carried nothing
+        // or had nothing to replace: a new one first.
+        if (!this.sides.receiving.made && !(await this.connected("receiving"))) {
+          tabLog.warn("watch.failed", { share, why: "no receiving connection" });
+          return;
+        }
         const pulled = await this.request(
           { type: "watching", request: { type: "watch", share } },
           (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
@@ -996,11 +1006,7 @@ export class RoomClient {
         const reason = made.type === "unavailable" ? made.reason : "failed";
         tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement", reason });
         if (reason !== "failed") {
-          // Unless a `dropped` heard meanwhile let go of it already, and a watch since asked for another.
-          if (this.sides.receiving === side) {
-            for (const picture of this.pictures) this.dropPicture(picture.share);
-            this.resetMedia("receiving");
-          }
+          this.letGoOfReceiving(side);
           return false;
         }
         // The instance kept the old connection: its watches stay on it, as do the reports.
@@ -1013,9 +1019,22 @@ export class RoomClient {
       this.media.replace(made.iceServers, (health) => this.healthChanged("receiving", health));
       this.usage.start();
       for (;;) {
-        const step = await this.awaitChange((change) => change.type === "pulled" || change.type === "replaced");
+        const step = await this.awaitChange(
+          (change) =>
+            change.type === "pulled" || change.type === "replaced" || (change.type === "dropped" && change.connection === "receiving"),
+        );
+        if (step.type === "dropped") {
+          // It carried nothing, so the instance let go of it: before any watch waiting its turn.
+          tabLog.warn("media.dropped", { connection: "receiving", during: "a replacement" });
+          this.usage.report({ final: true });
+          this.letGoOfReceiving(side);
+          return false;
+        }
         if (step.type !== "pulled") break;
         await this.takePull(step.share, step);
+        // Its share ended while the media server pulled it: answered all the same, since
+        // the media server takes no other offer until it is, and let go of.
+        if (!this.watches(step.share)) this.dropPicture(step.share);
       }
       this.replaceAgain = false;
       this.media.retire();
@@ -1026,6 +1045,17 @@ export class RoomClient {
       tabLog.warn("media.replace-failed", { connection: "receiving", error });
       return false;
     });
+  }
+
+  /**
+   * Lets go of the receiving connection `side` and the pictures on it, the instance holding
+   * none for the tab any more: the next watch makes a new one. Unless a `dropped` heard
+   * meanwhile let go of it already, and a watch since asked for another.
+   */
+  private letGoOfReceiving(side: Side) {
+    if (this.sides.receiving !== side) return;
+    for (const picture of this.pictures) this.dropPicture(picture.share);
+    this.resetMedia("receiving");
   }
 
   /** Lets go of `connection`, keeping the captures: the next share or watch makes a new one. */

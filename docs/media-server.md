@@ -85,6 +85,16 @@ sections.
 - **410 means the session is gone.** Once a session is disconnected, every call on it
   answers 410. `cloudflare.ts` treats a 410 on close and on listing tracks as nothing
   left open.
+- **A session no browser joins is dropped within seconds.** A receiving connection's
+  browser joins it only by answering a pull's offer. A replacement made while the tab
+  watched nothing got no offer, and a pull into it 3 s after it was made went through,
+  while one 15, 20 or 23 s after answered `410 Session appears to be disconnected`,
+  about 5 s after it was asked. A session the browser joined and that then carried
+  nothing for 30 s, 2, 5 or 10 minutes took its next pull as ever. So the instance lets
+  go of a replacement that carried nothing (`instance.ts`, `replaceStep`), as it did a
+  connection whose first share or watch failed. *Ticket 66,
+  `scripts/real-media/repro-66.ts`.* The stand-in never drops a session; the fake media
+  server of Seam 1 plays it when a test calls `disconnectUnjoined`.
 
 ## Closing
 
@@ -93,13 +103,25 @@ sections.
   closed`. The session's track list still names it, so the instance retries the close
   every 30 s until the tab leaves. *Ticket 57, run 2; ticket 58.* The stand-in has no
   calls to fail.
-- **Not seen yet: closing a pull whose offer was never answered.** A hand-over's `moved`
-  that reaches a tab just as its receiving connection is replaced is left unanswered
-  (ticket 62): the replacement pulls the new share onto the new connection instead, and
-  closes the old connection's pull of it with the rest. If that close fails as above, it
-  is retried on its backoff, and the old connection's record stays until a sweep shows
-  the track gone or the tab leaves. The stand-in never closes a track, so a real-media
-  run is the only check.
+- **A pull's offer must be answered before the session takes another pull.** Until the
+  browser's answer to it reaches the media server, the next `tracks/new` pulling into
+  that session answers `406 The current signaling state is expecting a remote answer:
+  renegotiation is expected`. Closing the pulled track does not change that: the
+  replacement's pull of a share a hand-over had just ended was force-closed (the close
+  went through) without its offer reaching the tab, and 5 s later the hand-over's pull of
+  the new share into the same session answered 406. So a replacement's pull of a share
+  that went meanwhile still goes to the tab as a step, and is closed once answered
+  (`shares.ts`, `replaceNext`). *Ticket 67, `scripts/real-media/repro-67.ts`.* The
+  stand-in takes any pull; the fake media server of Seam 1 plays the 406 when a test
+  calls `oneOfferAtATime`.
+- **Not seen yet: closing a pull whose offer was never answered, on a session let go
+  of.** A hand-over's `moved` that reaches a tab just as its receiving connection is
+  replaced is left unanswered (ticket 62): the replacement pulls the new share onto the
+  new connection instead, and closes the old connection's pull of it with the rest. That
+  session takes no pull again, so the 406 above cannot follow. If the close fails as
+  above, it is retried on its backoff, and the old connection's record stays until a
+  sweep shows the track gone or the tab leaves. The stand-in never closes a track, so a
+  real-media run is the only check.
 
 ## Failures seen once
 
