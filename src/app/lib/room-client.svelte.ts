@@ -32,7 +32,10 @@
 // with nothing to replace, or not allowed, is never asked for again: the tab lets go of
 // its receiving connection as on `dropped`, and its next watch makes a new one. So does a
 // replacement that carried nothing, which the instance ends `dropped` in place of
-// `replaced`; a watch asked for meanwhile waits its turn, then makes the new one. Every
+// `replaced`; a watch asked for meanwhile waits its turn, then makes the new one. A watch
+// refused because the receiving connection is blocked (an offer that never reached the
+// tab, so the media server takes no other pull) replaces it first, then asks again; when
+// the replacement cannot be made, the watch fails, and the next click tries again. Every
 // step's offer is answered, even one for a share that left the stage meanwhile, whose
 // picture the tab then lets go of: the media server pulls nothing more until it is.
 //
@@ -503,6 +506,8 @@ export class RoomClient {
    * pull and the media server's offer, the browser's answer. The share is on the stage
    * once the instance says `watched`. A refused watch leaves the stage as it was. One
    * asked for while the receiving connection is being replaced waits until it is done.
+   * One refused because that connection is blocked replaces it, in its own turn, or makes
+   * a new one if the instance let go of it, and asks once more.
    */
   private async watch(share: LiveShare) {
     if (this.unwanted.some((candidate) => sameShare(candidate, share)))
@@ -536,10 +541,29 @@ export class RoomClient {
           tabLog.warn("watch.failed", { share, why: "no receiving connection" });
           return;
         }
-        const pulled = await this.request(
-          { type: "watching", request: { type: "watch", share } },
-          (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
-        );
+        const ask = () =>
+          this.request(
+            { type: "watching", request: { type: "watch", share } },
+            (change) => (change.type === "pulled" || change.type === "pull-refused") && sameShare(change.share, share),
+          );
+        let pulled = await ask();
+        if (pulled.type === "pull-refused" && pulled.blocked) {
+          // The receiving connection takes no pull until an offer that never reached the tab is
+          // answered: replaced first, or made anew if the instance let go of it, then asked once more.
+          // A replacement that could not be made leaves it blocked: the watch fails, and the
+          // next click asks again.
+          tabLog.info("watch.blocked", { share, made: this.sides.receiving.made });
+          const replaced = this.sides.receiving.made ? await this.replacing("blocked") : false;
+          if (this.sides.receiving.made && !replaced) {
+            tabLog.warn("watch.failed", { share, why: "the blocked receiving connection was not replaced" });
+            return;
+          }
+          if (!this.sides.receiving.made && !(await this.connected("receiving"))) {
+            tabLog.warn("watch.failed", { share, why: "no receiving connection" });
+            return;
+          }
+          pulled = await ask();
+        }
         this.timed(share, "pull");
         if (pulled.type !== "pulled") {
           tabLog.warn("watch.refused", { share });
@@ -718,7 +742,7 @@ export class RoomClient {
           this.send({ type: "watching", request: { type: "unwatch", share } });
         }
         // A replacement the lost socket cut short starts again.
-        if (this.replaceAgain) void this.replace();
+        if (this.replaceAgain) void this.replace("again");
       }
     }
 
@@ -791,7 +815,7 @@ export class RoomClient {
       return;
     }
     if (connection === "receiving") {
-      await this.replace();
+      await this.replace("renewed");
       return;
     }
     if (how === "restart" && (await this.restart(iceServers))) return;
@@ -987,64 +1011,71 @@ export class RoomClient {
    * connection as on `dropped`, the final total having gone already, and its next watch
    * makes a new one.
    */
-  private replace(): Promise<boolean> {
+  private replace(why: ReplaceWhy = "failed"): Promise<boolean> {
     this.replaceAgain = false;
-    return this.negotiate("receiving", async () => {
-      const side = this.sides.receiving;
-      if (!side.made) return false;
-      tabLog.info("media.replace", { connection: "receiving", watching: this.pictures.length });
-      this.usage.stop();
-      this.usage.report({ final: true });
-      await this.usage.sent();
-      this.replaceAgain = true;
-      const made = await this.request(
-        { type: "media", request: { type: "replace" } },
-        (change) => (change.type === "connected" || change.type === "unavailable") && change.connection === "receiving",
-      );
-      if (made.type !== "connected") {
-        this.replaceAgain = false;
-        const reason = made.type === "unavailable" ? made.reason : "failed";
-        tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement", reason });
-        if (reason !== "failed") {
-          this.letGoOfReceiving(side);
-          return false;
-        }
-        // The instance kept the old connection: its watches stay on it, as do the reports.
-        this.usage.start();
-        return false;
-      }
-      this.replacements += 1;
-      side.iceServers = made.iceServers;
-      side.health = "fine";
-      this.media.replace(made.iceServers, (health) => this.healthChanged("receiving", health));
-      this.usage.start();
-      for (;;) {
-        const step = await this.awaitChange(
-          (change) =>
-            change.type === "pulled" || change.type === "replaced" || (change.type === "dropped" && change.connection === "receiving"),
-        );
-        if (step.type === "dropped") {
-          // It carried nothing, so the instance let go of it: before any watch waiting its turn.
-          tabLog.warn("media.dropped", { connection: "receiving", during: "a replacement" });
-          this.usage.report({ final: true });
-          this.letGoOfReceiving(side);
-          return false;
-        }
-        if (step.type !== "pulled") break;
-        await this.takePull(step.share, step);
-        // Its share ended while the media server pulled it: answered all the same, since
-        // the media server takes no other offer until it is, and let go of.
-        if (!this.watches(step.share)) this.dropPicture(step.share);
-      }
-      this.replaceAgain = false;
-      this.media.retire();
-      tabLog.info("media.replaced", { connection: "receiving", watching: this.pictures.length });
-      return true;
-    }).catch((error: unknown) => {
+    return this.negotiate("receiving", () => this.replacing(why)).catch((error: unknown) => {
       // The socket was lost on the way: asked for again once the next one has the room.
       tabLog.warn("media.replace-failed", { connection: "receiving", error });
       return false;
     });
+  }
+
+  /**
+   * `replace`'s replacement, run in the receiving connection's turn that is already this
+   * one's: a watch refused as blocked runs it before asking again. Throws when the socket
+   * is lost on the way.
+   */
+  private async replacing(why: ReplaceWhy): Promise<boolean> {
+    const side = this.sides.receiving;
+    if (!side.made) return false;
+    tabLog.info("media.replace", { connection: "receiving", watching: this.pictures.length, why });
+    this.usage.stop();
+    this.usage.report({ final: true });
+    await this.usage.sent();
+    this.replaceAgain = true;
+    const made = await this.request(
+      { type: "media", request: { type: "replace" } },
+      (change) => (change.type === "connected" || change.type === "unavailable") && change.connection === "receiving",
+    );
+    if (made.type !== "connected") {
+      this.replaceAgain = false;
+      const reason = made.type === "unavailable" ? made.reason : "failed";
+      tabLog.warn("media.unavailable", { connection: "receiving", during: "a replacement", reason });
+      if (reason !== "failed") {
+        this.letGoOfReceiving(side);
+        return false;
+      }
+      // The instance kept the old connection: its watches stay on it, as do the reports.
+      this.usage.start();
+      return false;
+    }
+    this.replacements += 1;
+    side.iceServers = made.iceServers;
+    side.health = "fine";
+    this.media.replace(made.iceServers, (health) => this.healthChanged("receiving", health));
+    this.usage.start();
+    for (;;) {
+      const step = await this.awaitChange(
+        (change) =>
+          change.type === "pulled" || change.type === "replaced" || (change.type === "dropped" && change.connection === "receiving"),
+      );
+      if (step.type === "dropped") {
+        // It carried nothing, so the instance let go of it: before any watch waiting its turn.
+        tabLog.warn("media.dropped", { connection: "receiving", during: "a replacement" });
+        this.usage.report({ final: true });
+        this.letGoOfReceiving(side);
+        return false;
+      }
+      if (step.type !== "pulled") break;
+      await this.takePull(step.share, step);
+      // Its share ended while the media server pulled it: answered all the same, since
+      // the media server takes no other offer until it is, and let go of.
+      if (!this.watches(step.share)) this.dropPicture(step.share);
+    }
+    this.replaceAgain = false;
+    this.media.retire();
+    tabLog.info("media.replaced", { connection: "receiving", watching: this.pictures.length });
+    return true;
   }
 
   /**
@@ -1196,6 +1227,13 @@ function startRequest(kind: ShareKind, offer: Offer, media: MediaClient, handOve
   const browser = media.browser;
   return { type: "start", kind, offer: offer.sdp, video: offer.video, browser, ...audio, ...twoQualities, ...replacing };
 }
+
+/**
+ * Why the tab replaces its receiving connection, as its `media.replace` line says: the
+ * browser gave up on it, its relay credential was renewed while on the relay, a lost socket
+ * cut the last replacement short, or a watch found it blocked.
+ */
+type ReplaceWhy = "failed" | "renewed" | "again" | "blocked";
 
 /** A step of a watch's arrival, as `RoomClient.timed` measures it. */
 type WatchStep = "media connection" | "turn" | "pull" | "answer" | "first frame";

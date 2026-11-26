@@ -23,6 +23,16 @@
 // connection until its offer is answered, and is closed once it is. Until the tab leaves or asks again, every replacement ends `replaced`, `dropped` or
 // `unavailable`: the tab is never left waiting for its next step.
 //
+// Outside a replacement, a pull can return with an offer that never reaches the tab: its
+// share ended, or the tab's socket closed, while the media server made it, or the
+// instance stopped then. Its pull is closed, but the media server takes no other pull into
+// that session until the browser answers the offer (`docs/media-server.md`). So the tab's
+// receiving connection is blocked (`block`), in storage, so the block outlasts a restart.
+// Its watches play on untouched; the tab's next watch pulls nothing into it and is
+// refused as blocked, which has the tab replace it and ask again (`watch`). One that
+// carries nothing is let go of instead, as any connection a watch leaves empty. A
+// replacement of a blocked connection, for whatever reason, clears the block.
+//
 // Every call follows one order. The record is written first, with every track name
 // picked here, then the media layer is called. A close is always a forced close, and a
 // record is dropped only once its close has returned. So a call that fails, or a crash in
@@ -118,6 +128,9 @@ interface WatchRecord {
 /** The media connections, by id, made after their tab's socket was lost, so the tab never heard of them. */
 const UNANSWERED_KEY = "shares:unanswered";
 
+/** The receiving connections, by id, left with an offer nobody will answer (`block`). */
+const BLOCKED_KEY = "shares:blocked";
+
 /** What a cut-off covers: the shares it ends and the watching it closes. */
 export type Covered =
   /** A member's in the room at `room`, or everywhere without it. */
@@ -202,14 +215,20 @@ export interface WatchingListener {
   moved(tabId: string, share: LiveShare, moved: Moved): void;
   /** A hand-over left the tab `tabId` watching `share` at `quality`, not the one it chose: the new share has one quality. */
   requalified(tabId: string, share: LiveShare, quality: QualityChoice): void;
+  /** The tab `tabId`'s receiving connection was let go of, carrying nothing, for `why`: the tab hears `dropped`. */
+  dropped(tabId: string, why: string): void;
 }
 
 /** What became of a request to watch a share. */
 export type Watched =
   /** It is on the tab's stage: `offer`, `video` and `audio` go to the watcher's tab. */
   | { watching: true; offer: string; video: string; audio: string | null }
-  /** It was refused, or the media server failed it. */
-  | { watching: false };
+  /**
+   * It was refused, or the media server failed it. `blocked`: the tab's receiving
+   * connection is blocked (`block`), so nothing was pulled into it; the tab replaces it,
+   * or makes a new one once it is let go of, and asks again.
+   */
+  | { watching: false; blocked?: true };
 
 /** What became of a request to start a share. */
 export type Started =
@@ -452,9 +471,11 @@ export class Shares {
     tab: Tab,
     mint: () => Promise<IceServer[]>,
   ): Promise<{ id: string; iceServers: IceServer[] } | "stale" | "nothing to replace" | null> {
-    if (!this.connectionOf(tab.id, "receiving")) return "nothing to replace";
+    const current = this.connectionOf(tab.id, "receiving");
+    if (!current) return "nothing to replace";
     await this.abandonReplacement(tab.id);
-    log.info("media.replacing", { ...tagsOf(tab) });
+    // Told apart from the replacement of a connection that failed or is on the relay.
+    log.info("media.replacing", { ...tagsOf(tab), ...(this.isBlocked(current.id) ? { blocked: true } : {}) });
     const made = await this.makeConnection(tab, "receiving", "replacement", mint);
     if (made && made !== "stale" && this.connectionById(made.id)?.role !== "replacement") {
       this.forgetIfEmpty(made.id);
@@ -628,7 +649,11 @@ export class Shares {
       const share = this.records("WHERE id = ?", watch.shareId)[0];
       this.listener.began(watch.id, tab.id, share?.maxBitrate ?? 0);
     }
-    if (old) this.sql.exec("UPDATE media_connection SET role = 'replaced' WHERE id = ?", old.id);
+    if (old) {
+      this.sql.exec("UPDATE media_connection SET role = 'replaced' WHERE id = ?", old.id);
+      // Nothing is pulled into it again.
+      this.unblock(old.id);
+    }
     this.sql.exec("UPDATE media_connection SET role = 'current' WHERE id = ?", replacementId);
     log.info("media.replaced", { ...tagsOf(tab), connection: replacementId, watches: carried.length - stray.length });
 
@@ -759,6 +784,11 @@ export class Shares {
    * ending, and the tab is not the one sending it. Null when the tab already watches it,
    * or is starting to. `stillOpen` says whether the tab is still there once the media
    * server has answered.
+   *
+   * Refused as `blocked`, asking the media server nothing, while the tab's receiving
+   * connection is blocked (`block`). A pull that returns once its share has ended, its tab
+   * has gone, or its connection has been replaced, is closed with its offer never sent,
+   * which blocks the connection if it is still the tab's.
    */
   async watch(tab: Tab, share: LiveShare, stillOpen: () => boolean): Promise<Watched | null> {
     const refused = (why: string): Watched => {
@@ -781,6 +811,10 @@ export class Shares {
     const sharerMediaId = this.connectionById(watched.connection)?.media_id;
     if (typeof sharerMediaId !== "string") return refused("the sharer has no sending connection");
     if (this.watches("WHERE tab_id = ? AND share_id = ? AND left_at IS NULL", tab.id, watched.id).length > 0) return null;
+    if (connection.role === "current" && this.isBlocked(connection.id)) {
+      log.warn("watch.refused", { ...tagsOf(tab), share, why: "the receiving connection is blocked", blocked: true });
+      return { watching: false, blocked: true };
+    }
 
     const record = newWatch(
       { tab: tab.id, connection: connection.id, member: tab.member, device: tab.device, room: tab.room },
@@ -795,9 +829,11 @@ export class Shares {
       if (!stillOpen() || this.gone(watched.id) || this.receivingTarget(tab.id)?.id !== connection.id) {
         // The tab left, the share ended, or the connection was replaced, while the media
         // server was answering, and none of them could close a pull that had no mid yet.
+        // The instance then lets go of the connection if it carries nothing.
+        const why = stillOpen() ? "the share ended or the connection was replaced meanwhile" : "the tab left meanwhile, or the budget ran out";
+        this.block(record, why);
         await this.closeWatch(record);
-        this.forgetIfEmpty(connection.id);
-        return refused(stillOpen() ? "the share ended or the connection was replaced meanwhile" : "the tab left meanwhile, or the budget ran out");
+        return refused(why);
       }
       this.changeWatchers(record, () =>
         this.sql.exec("UPDATE watch SET watching_at = ? WHERE id = ?", Date.now(), record.id),
@@ -929,7 +965,8 @@ export class Shares {
    * watcher's stage keeps the share, and the tab hears `moved`. If the old pull's close
    * fails, the watcher stays on the old share until a try succeeds, and is not moved. If
    * the new pull fails, or the tab leaves or the new share ends meanwhile, the share
-   * leaves the stage.
+   * leaves the stage. A new pull closed that way never reached the tab, so it blocks the
+   * connection (`block`), and a connection then left carrying nothing is let go of.
    *
    * While the tab replaces its receiving connection, every offer it gets is one of the
    * replacement's steps (`replaceNext`), so the move pulls nothing: the new share goes on
@@ -974,13 +1011,16 @@ export class Shares {
           return;
         }
         if (!connected(watch.tab) || this.gone(to.id)) {
+          this.block(record, connected(watch.tab) ? "the new share ended while the watch was moved to it" : "the tab left while its watch was moved");
           await this.closeWatch(record);
-          this.forgetIfEmpty(record.connection);
           this.listener.unwatched(watch.tab, watch.share);
+          if (this.letGo(watch.tab, "receiving")) this.listener.dropped(watch.tab, "a moved watch did not go live");
           return;
         }
         if (this.receivingTarget(watch.tab)?.id !== current.id) {
           log.info("handover.pulled-again", { tab: watch.tab, member: watch.member, watch: record.id, share: to.id, why: "the connection was replaced meanwhile" });
+          // The replacement clears the block, unless the tab lets go of the replacement.
+          this.block(record, "the connection was replaced meanwhile");
           await this.closeWatch(record);
           continue;
         }
@@ -1373,6 +1413,8 @@ export class Shares {
         if (!track) await this.closeWatch(watch, { gone: true });
       } else {
         const found = { ...watch, video: track ?? watch.video, audio: audio ?? watch.audio };
+        // The media server made the pull, and its offer never reached the tab.
+        if (track || audio) this.block(watch, "the instance stopped while the media server made the pull");
         await this.closeWatch(found, { gone: !track && !audio });
       }
     }
@@ -1552,13 +1594,47 @@ export class Shares {
         id,
         id,
       ).rowsWritten > 0;
-    const unanswered = this.kv.get<string[]>(UNANSWERED_KEY) ?? [];
-    if (forgotten && unanswered.includes(id)) {
-      const left = unanswered.filter((other) => other !== id);
-      if (left.length > 0) this.kv.put(UNANSWERED_KEY, left);
-      else this.kv.delete(UNANSWERED_KEY);
+    if (forgotten) {
+      this.dropId(UNANSWERED_KEY, id);
+      this.unblock(id);
     }
     return forgotten;
+  }
+
+  /** Takes `id` off the list of connection ids kept at `key`. */
+  private dropId(key: string, id: string) {
+    const ids = this.kv.get<string[]>(key) ?? [];
+    if (!ids.includes(id)) return;
+    const left = ids.filter((other) => other !== id);
+    if (left.length > 0) this.kv.put(key, left);
+    else this.kv.delete(key);
+  }
+
+  /**
+   * A pull onto `watch`'s connection returned with an offer the tab will never get, and is
+   * about to be closed. The media server takes no other pull into that connection until
+   * the browser answers the offer, and closing the pull does not change that
+   * (`docs/media-server.md`). If it is the tab's current receiving connection, it is
+   * blocked, for `why`, until it is replaced or forgotten: the tab's next watch has it
+   * replaced first (`watch`). A replacement, or a replaced connection, takes no pull
+   * again, so it is never blocked. Written before the close, as every record is.
+   */
+  private block(watch: WatchRecord, why: string) {
+    const connection = this.connectionById(watch.connection);
+    if (connection?.role !== "current" || connection.purpose !== "receiving") return;
+    const blocked = this.kv.get<string[]>(BLOCKED_KEY) ?? [];
+    if (!blocked.includes(connection.id)) this.kv.put(BLOCKED_KEY, [...blocked, connection.id]);
+    log.warn("media.blocked", { ...watchFields(watch), connection: connection.media_id, why });
+  }
+
+  /** The connection `id` is blocked no more: replaced, or forgotten. */
+  private unblock(id: string) {
+    this.dropId(BLOCKED_KEY, id);
+  }
+
+  /** Whether the connection `id` is blocked (`block`). */
+  private isBlocked(id: string): boolean {
+    return (this.kv.get<string[]>(BLOCKED_KEY) ?? []).includes(id);
   }
 
   /** `tabId`'s current connection for `purpose`. */

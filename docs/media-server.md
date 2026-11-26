@@ -114,6 +114,19 @@ sections.
   (`shares.ts`, `replaceNext`). *Ticket 67, `scripts/real-media/repro-67.ts`.* The
   stand-in takes any pull; the fake media server of Seam 1 plays the 406 when a test
   calls `oneOfferAtATime`.
+  Outside a replacement, a pull closed with its offer never sent to the tab (its share
+  ended, or the tab's socket closed, while the media server made it; a hand-over's move
+  whose new share ended meanwhile; the sweep after the instance stopped mid-pull) leaves
+  the tab's receiving connection **blocked**: the instance records it so (`shares.ts`,
+  `block`), keeps its watches, and refuses the tab's next watch as `blocked` before
+  asking the media server anything, so the tab replaces the connection, then asks again;
+  one carrying nothing is let go of instead. *Ticket 68,
+  `scripts/real-media/repro-68.ts`.* The stand-in takes any pull, so it never needs the
+  block; Seam 1 shows it with `oneOfferAtATime`.
+- **Not seen yet: a pull the media server made but reported failed.** Whether its offer
+  waits for an answer as above is unknown: the instance never had the offer, and does
+  not block the connection for it. The sweep closes the track. *Ticket 68.* The stand-in
+  fails no pull, so a real-media run is the only check.
 - **Not seen yet: closing a pull whose offer was never answered, on a session let go
   of.** A hand-over's `moved` that reaches a tab just as its receiving connection is
   replaced is left unanswered (ticket 62): the replacement pulls the new share onto the

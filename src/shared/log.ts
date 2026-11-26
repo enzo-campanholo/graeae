@@ -43,16 +43,20 @@
 //   `presence.reconnected`, `tab.silent`, `tab.heard` (a tab's own shares' mark)
 // - `media.connected`, `media.unavailable` (`why`: the media server or the relay
 //   failed, nothing to replace, or not allowed), `media.answered`, `media.restarted`,
-//   `media.reconnect`, `media.dropped` (`why`: a share or watch did not go live, a
-//   replacement carried nothing, asked, or faltered), each with the `connection` it is
-//   about (sending or receiving); `media.replacing`, `media.replacement-abandoned`,
-//   `media.replaced` and `watch.pulled-again` (a receiving connection replaced; with
-//   `shareGone` when the share went while it was pulled, and the tab answers it all the same);
+//   `media.reconnect`, `media.dropped` (`why`: a share, watch or hand-over's move did not
+//   go live, a replacement carried nothing, a watch found it blocked carrying nothing,
+//   asked, or faltered), each with the `connection` it is about (sending or receiving);
+//   `media.blocked` (a pull closed with its offer never sent to the tab, which blocks the
+//   tab's receiving connection until it is replaced: the watch's fields, the media
+//   `connection` and `why`); `media.replacing` (with `blocked` when the connection
+//   replaced was blocked), `media.replacement-abandoned`, `media.replaced` and
+//   `watch.pulled-again` (a receiving connection replaced; with `shareGone` when the
+//   share went while it was pulled, and the tab answers it all the same);
 //   `falter.start`, `falter.end`, `falter.due`
 // - `share.refused` (`why`), `share.live`, `share.ending` (its end began: no longer listed),
 //   `share.ended`, `share.close-failed`
-// - `watch.refused` (`why`), `watch.started`, `watch.ended`, `watch.close-failed`,
-//   `quality.set`, `quality.failed`
+// - `watch.refused` (`why`; `blocked` when the receiving connection is),
+//   `watch.started`, `watch.ended`, `watch.close-failed`, `quality.set`, `quality.failed`
 // - `handover.started`, `handover.done`, `handover.moved`
 // - `retry.scheduled`, `retry.confirmed`, `cutoff.start`, `cutoff.done`, `sweep.closed`
 //   (a track no record named), `sweep.gone` (a record whose track was gone),
@@ -89,12 +93,15 @@
 //   its label)
 // - `share.asked`, `share.offered`, `share.confirmed`, `share.failed`, `share.stopped`,
 //   `share.handed-over`, `watch.asked`, `watch.pulled`, `watch.confirmed`, `watch.shown`
-//   (its first frame), `watch.refused`, `watch.failed`, `watch.left`, `watch.moved`,
+//   (its first frame), `watch.refused`, `watch.blocked` (refused as blocked, so the tab
+//   replaces its receiving connection, or makes a new one once it was dropped, and asks
+//   again; `made` whether it still had one), `watch.failed`, `watch.left`, `watch.moved`,
 //   `quality.chosen`
 // - `media.connected`, `media.unavailable` (with the instance's `reason`, when it gave
 //   one), `media.health`, `media.dropped`, `media.rejoined`, `media.rebuild`,
-//   `media.reconnect`, `media.reconnect-failed`, `media.renew`, `media.replace`,
-//   `media.replaced`, `media.replace-failed`, each with its `connection`;
+//   `media.reconnect`, `media.reconnect-failed`, `media.renew`, `media.replace` (`why`:
+//   failed, renewed, again or blocked), `media.replaced`, `media.replace-failed`, each
+//   with its `connection`;
 //   `pc.*` lines too
 // - `stats`: every 15 seconds while sharing or watching, one line per stream:
 //   `direction`, `kind`, `mid`, `rid`, `bitrate`, `fps`, `width`, `height`,

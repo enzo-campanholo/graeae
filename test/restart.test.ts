@@ -153,6 +153,8 @@ describe("the sweep after a restart", () => {
 
   it("closes a pull the media server made just as the instance stopped, and the share stays off the stage", async () => {
     const { instance, owner, room, ownerTab, biaTab, biasWebcam } = await ownerAndBia();
+    // The media server takes no other pull into the owner's connection until the pull's offer is answered.
+    instance.media.oneOfferAtATime();
     await goLive(biaTab, ownerTab);
     const pull = instance.media.hold("pull", { done: true });
     startWatching(ownerTab, biasWebcam);
@@ -164,7 +166,12 @@ describe("the sweep after a restart", () => {
 
     expect(state.watching.stage).toEqual([]);
     await vi.waitFor(() => expect(instance.media.connections().map((tracks) => tracks.length)).toEqual([1, 0]));
-    // And the owner can watch it afresh.
+    // And the owner can watch it afresh, on a new connection: the old one is blocked
+    // by the offer nobody will answer, and carries nothing, so it is let go of.
+    startWatching(back, biasWebcam);
+    expect(await back.next()).toEqual({ type: "media", change: { type: "dropped", connection: "receiving" } });
+    expect(await back.next()).toEqual({ type: "media", change: { type: "pull-refused", share: biasWebcam, blocked: true } });
+    await connectMedia(back, "receiving");
     await watch(back, biasWebcam);
   });
 });

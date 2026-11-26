@@ -26,6 +26,11 @@
 // relay failed, and the tab asks again after a wait that doubles up to 30 seconds; or
 // there is nothing to replace, or it is not allowed, and the tab lets go of its receiving
 // connection instead.
+// A receiving connection is also replaced when it is blocked: a pull into it was closed
+// with its offer never sent to the tab (its share ended, or the tab's socket closed, while
+// it was made, or the instance stopped), and the media server takes no other pull into it
+// until that offer is answered. Its watches play on; the tab's next watch is refused as
+// `blocked`, and the tab replaces the connection, then asks again.
 //
 // A tab runs one negotiation at a time on each connection, and waits for `answered`
 // before it starts the next on the receiving one.
@@ -108,8 +113,8 @@ export type MediaRequest =
    */
   | { type: "reconnect" }
   /**
-   * Replace the tab's receiving connection, which the browser gave up on, or which is on
-   * the relay when its credential is renewed. The instance makes a new one and replies
+   * Replace the tab's receiving connection, which the browser gave up on, which is on the
+   * relay when its credential is renewed, or which is blocked (`pull-refused`). The instance makes a new one and replies
    * `connected` for it (or `unavailable`, with why), then pulls each of the tab's watches
    * onto it in turn, each with `pulled`, which the tab answers before the next comes;
    * then it closes the old connection's pulls, and the tab hears `replaced`; or `dropped`,
@@ -158,8 +163,16 @@ export type MediaChange =
    * just as the replacement ended.
    */
   | { type: "pulled"; share: LiveShare; offer: string; video: string; audio?: string }
-  /** `share` could not be watched on this tab: a check failed, or the media server did. */
-  | { type: "pull-refused"; share: LiveShare }
+  /**
+   * `share` could not be watched on this tab: a check failed, or the media server did.
+   * With `blocked`, nothing was asked of the media server: the tab's receiving connection
+   * is left with an offer of a pull that was closed before it reached the tab, so the
+   * media server takes no other pull into it. The tab replaces it (`replace`), its other
+   * watches carried onto the new one, then asks for `share` again. One that carried
+   * nothing else was let go of instead, with `dropped` just before this, and the tab makes
+   * a new one and asks again.
+   */
+  | { type: "pull-refused"; share: LiveShare; blocked?: true }
   /**
    * The share `share` this tab watches was handed over to another tab or device of its
    * sharer in this room: its old pull is closed, and the new share is pulled in its place.
@@ -195,7 +208,8 @@ export type MediaChange =
    * faltered for 30 seconds, which ended its shares; or the tab asked it to
    * (`reconnect`). Either connection: a share or watch on it did not go live, and it
    * carried nothing else. A receiving connection: a replacement carried nothing, which
-   * ends with this in place of `replaced` (see `replace`). The tab makes a new one the
-   * next time it needs it.
+   * ends with this in place of `replaced` (see `replace`); a hand-over's move of the
+   * tab's one watch did not go live; or a watch found it blocked, carrying nothing (see
+   * `pull-refused`). The tab makes a new one the next time it needs it.
    */
   | { type: "dropped"; connection: MediaPurpose };

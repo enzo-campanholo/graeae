@@ -118,6 +118,10 @@ export class Instance extends DurableObject<Env> {
         },
         requalified: (tab, share, quality) =>
           this.signaling.toTab(tab, { type: "watching", change: { type: "quality", share, quality } }),
+        dropped: (tab, why) => {
+          log.info("media.dropped", { tab, connection: "receiving", why });
+          this.signaling.toTab(tab, { type: "media", change: { type: "dropped", connection: "receiving" } });
+        },
       },
       () => this.schedule(),
     );
@@ -551,6 +555,12 @@ export class Instance extends DurableObject<Env> {
           ? await this.shares.watch(tab, share, () => this.signaling.isOpen(tab.id) && budgetAllows())
           : { watching: false as const };
       if (watched === null) return;
+      if (watched.watching === false && watched.blocked) {
+        // Blocked, carrying nothing: let go of first, so the tab makes a new one rather than replacing it.
+        this.letGoOfMedia(tab, "receiving", "it was blocked, carrying nothing");
+        this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share, blocked: true } });
+        return;
+      }
       if (!watched.watching) {
         this.signaling.toTab(tab.id, { type: "media", change: { type: "pull-refused", share } });
         this.letGoOfMedia(tab, "receiving", "a watch did not go live");
