@@ -120,12 +120,20 @@ sections.
   the tab's receiving connection **blocked**: the instance records it so (`shares.ts`,
   `block`), keeps its watches, and refuses the tab's next watch as `blocked` before
   asking the media server anything, so the tab replaces the connection, then asks again;
-  one carrying nothing is let go of instead. *Ticket 68,
-  `scripts/real-media/repro-68.ts`.* The stand-in takes any pull, so it never needs the
-  block; Seam 1 shows it with `oneOfferAtATime`.
+  one carrying nothing is let go of instead. A session waiting for that answer still
+  delivers the tracks pulled into it before (30 fps on, over 5 s after the block), and
+  closes one without the answer: so the block waits for the tab's next watch. *Ticket 68,
+  `scripts/real-media/repro-68.ts`: 13 blocks in 25 tries, every next watch live with no
+  406.* The stand-in takes any pull, so it never needs the block; Seam 1 shows it with
+  `oneOfferAtATime`.
+- **A pull of a track the sharer has just closed is refused with no offer left waiting.**
+  `tracks/new` answers 200 with `not_found_track_error Track not found on remote peer` on
+  the track, and the next pull into the same session goes through. The instance refuses the
+  watch ("the media server failed") and blocks nothing. *Ticket 68, 5 of 25 tries.* The
+  stand-in has no such error.
 - **Not seen yet: a pull the media server made but reported failed.** Whether its offer
   waits for an answer as above is unknown: the instance never had the offer, and does
-  not block the connection for it. The sweep closes the track. *Ticket 68.* The stand-in
+  not block the connection for it. Unlike the refusal above, the track was made. The sweep closes the track. *Ticket 68.* The stand-in
   fails no pull, so a real-media run is the only check.
 - **Not seen yet: closing a pull whose offer was never answered, on a session let go
   of.** A hand-over's `moved` that reaches a tab just as its receiving connection is
