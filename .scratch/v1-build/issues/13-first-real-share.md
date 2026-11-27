@@ -2,9 +2,9 @@
 
 **What to build:** Nothing. The owner deploys the integration branch and proves that real media flows before the rest of the media work is built on it.
 
-**Blocked by:** 12
+Blocked by: 12
 
-**Status:** resolved
+Status: resolved
 
 - [x] Deploy once with one secret left out: the deploy fails and names it
 - [x] Deploy the integration branch with real secrets, under a different Worker name to keep it apart from anything else deployed

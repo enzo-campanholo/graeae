@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18, on the dev server over Tailscale): "The whole app is not very fast. I can see loading animations for brief periods."
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

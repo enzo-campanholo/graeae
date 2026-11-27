@@ -6,9 +6,9 @@
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality). User story 63.
 
-**Blocked by:** 18
+Blocked by: 18
 
-**Status:** ready-for-human (after 0.1)
+Status: ready-for-human (after 0.1)
 
 - [ ] Why Chrome's estimate sits at 5 to 10 Mbps on a 288 Mbps upload to the media server: the media server's feedback, Chrome's own congestion control, or the path. Compare a share to a second Chrome directly, or with `chrome://webrtc-internals`'s event log
 - [ ] A sign, measured on the owner's link and under caps of 10 and 3 Mbps, that holds under the cap and never on the healthy upload over a whole match. Ticket 18's candidates: the estimate's peak over a long window, loss, a growing round trip

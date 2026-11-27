@@ -6,9 +6,9 @@ Spec: [Cut-off](../spec.md#cut-off). ADR 0003.
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 06, 09, 11
+Blocked by: 06, 09, 11
 
-**Status:** resolved
+Status: resolved
 
 - [x] One cut-off routine serves every case, in this order: change storage; force-close the covered shares' tracks; force-close every other member's pulls of those shares; force-close the covered pulls; tell the affected tabs and close the connection where the device is gone
 - [x] Removed from a room: their shares and watching in that room

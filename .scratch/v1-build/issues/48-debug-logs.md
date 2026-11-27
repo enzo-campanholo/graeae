@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-19, after testing on `graeae-test` with a friend): "We hit a ton of bad states and things not working, that was very useful data we did not keep. I know we cannot keep all data, but we should collect everything so that this can be used to debug later."
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## What is known
 

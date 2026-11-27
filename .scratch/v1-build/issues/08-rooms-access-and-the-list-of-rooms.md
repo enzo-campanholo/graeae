@@ -6,9 +6,9 @@ Spec: [Rooms and access](../spec.md#rooms-and-access), [Other pages](../spec.md#
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] Rooms section: create a room, rename a room, see each room's address; the address is fixed at creation and survives a rename
 - [x] The invite form's room ticks grant access to exactly those rooms

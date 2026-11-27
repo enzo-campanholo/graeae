@@ -6,9 +6,9 @@ Found by ticket 22's real-media check on `graeae-test`. Chrome reports "disconne
 
 Spec: [Shares](../spec.md#shares) ("If media falters while the signaling connection is fine…").
 
-**Blocked by:** 22, 25
+Blocked by: 22, 25
 
-**Status:** resolved
+Status: resolved
 
 - [x] A media connection that reaches "failed" is restarted through the instance (`media.restart`), keeping every share and watch
 - [x] A restart that finds no path is tried again while the connection stays failed and the tab still holds it

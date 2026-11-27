@@ -4,9 +4,9 @@
 
 ~~Shorten the relay credential constants from ticket 25 for this deploy, so the renewal can be watched in minutes.~~ Done in ticket 25's check; `graeae-test` is back on the 12 and 11 hours.
 
-**Blocked by:** 17, 18, 19, 21, 22, 25
+Blocked by: 17, 18, 19, 21, 22, 25
 
-**Status:** resolved
+Status: resolved
 
 Most boxes were already met by the owner's checks on tickets 15, 17 and 18, or by an agent on `graeae-test` (see the comments). What is left for the owner is under "The owner's last sitting" in the comments.
 

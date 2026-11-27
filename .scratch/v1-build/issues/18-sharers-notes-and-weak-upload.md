@@ -6,9 +6,9 @@ Spec: [Encoding and quality](../spec.md#encoding-and-quality), [The room's scree
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 17
+Blocked by: 17
 
-**Status:** resolved
+Status: resolved
 
 - [x] A capture that settles near 48 fps shows a dismissible note: "Capturing at 48 fps. Windows limits capture on a 144 Hz monitor; setting it to 120 Hz gives 60"
 - [x] That note is driven by the measured rate, so it stops appearing when the browser captures 60

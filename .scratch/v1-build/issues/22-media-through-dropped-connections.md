@@ -6,9 +6,9 @@ Spec: [Presence and the signaling connection](../spec.md#presence-and-the-signal
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 06, 15, 20
+Blocked by: 06, 15, 20
 
-**Status:** resolved
+Status: resolved
 
 - [x] Sharer's connection drops while media flows: the share stays live through the grace period, current viewers keep watching and new viewers can start
 - [x] If the sharer reconnects in time it is the same share

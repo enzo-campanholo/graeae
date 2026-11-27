@@ -6,9 +6,9 @@ Owner's note (2026-11-18): "It is weird how this is laid out."
 
 This touches a locked call. `ignore.md` keeps "the dim 'Watch' label before Webcams / Everything / Nothing". Update that line when this is decided.
 
-**Blocked by:** 34 (options can be shown before then; building waits on it)
+Blocked by: 34 (options can be shown before then; building waits on it)
 
-**Status:** resolved
+Status: resolved
 
 ## Options first
 

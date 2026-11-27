@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18): "I like how the settings are divided, but I don't like the layout inside each settings page, there are better ways to visualize that data."
 
-**Blocked by:** 34, 36 (options can be shown before then; building waits on them)
+Blocked by: 34, 36 (options can be shown before then; building waits on them)
 
-**Status:** resolved
+Status: resolved
 
 ## Options first
 

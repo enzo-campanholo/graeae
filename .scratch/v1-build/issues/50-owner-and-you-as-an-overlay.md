@@ -6,9 +6,9 @@
 
 Spec: The room's screen (Bar header, Bar body), Other pages, and Seam 2.
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 - [x] **Router.** `/you`, `/owner` and `/owner/<section>` draw over the page under them.
   - Each history entry records that page and the number of steps since the overlay opened, and a reload keeps both.

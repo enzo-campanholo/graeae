@@ -6,9 +6,9 @@ Spec: [Presence and the signaling connection](../spec.md#presence-and-the-signal
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 04
+Blocked by: 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] Each open tab holds one WebSocket to the instance and says which room it is showing; the instance uses hibernating connections
 - [x] The socket is refused for an unremembered device and for a room the member has no access to

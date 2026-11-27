@@ -1,8 +1,8 @@
 # 62: A hand-over, or a lost instance, during a replacement of the receiving connection
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **Why:** ticket 61's review found edge cases in replacing a receiving connection. A replacement lasts a few seconds, happens at an 11-hour renewal on the relay or after the browser gives the connection up, and nothing here has been seen on `graeae-test`. Each case below needs a decision before it is built.
 

@@ -8,9 +8,9 @@ Spec: [Modules](../spec.md#modules), [Media connections and records](../spec.md#
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 05, 08
+Blocked by: 05, 08
 
-**Status:** resolved
+Status: resolved
 
 - [x] The media layer is one seam between the instance and the media server. This ticket defines only the operations it uses: make a media connection, publish a share's tracks, force-close named tracks, mint a relay credential. Tickets 11, 17 and 21 add pull, change of quality and the listing of a connection's tracks
 - [x] An in-memory fake media server implements it for Seam 1: it keeps tracks per media connection, lets a test read them, and can be told by a test to fail or delay a call, through a control that exists only in tests. Its state lives outside the instance, so it outlives a restart of the instance

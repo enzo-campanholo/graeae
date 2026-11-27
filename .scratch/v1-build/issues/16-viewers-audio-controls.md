@@ -6,9 +6,9 @@ Spec: [The room's screen](../spec.md#the-rooms-screen). User stories 35 to 40.
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 15
+Blocked by: 15
 
-**Status:** resolved
+Status: resolved
 
 - [x] Every watched share with audio plays at once; there is no automatic ducking
 - [x] Hover controls gain mute, volume and "hear only this one"

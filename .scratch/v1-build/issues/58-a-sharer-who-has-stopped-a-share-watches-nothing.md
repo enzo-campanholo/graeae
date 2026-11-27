@@ -1,8 +1,8 @@
 # 58: A sharer who has stopped a share watches nothing
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** in ticket 57's checks on `graeae-test` (2026-11-23, from this server, two Linux Chromium 158 members, `scripts/real-media/member.ts` with fake webcams), a sharer made 14 webcam shares in turn from one page load. After each stop, it watched the other member's one webcam share for 6 s, then stopped watching. The watches ran as follows:
 - The first watch, after one share, decoded 149 frames.

@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18): "I hate these buttons. The text is misaligned because we put the hotkey there, it looks terrible."
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

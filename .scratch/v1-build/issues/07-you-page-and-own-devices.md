@@ -6,9 +6,9 @@ Spec: [People, devices and invites](../spec.md#people-devices-and-invites), [Oth
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] The "You" page is the same for every member and the owner
 - [x] Changing the display name reaches present members live

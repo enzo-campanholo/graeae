@@ -10,9 +10,9 @@
 
 The split was decided in [The final Windows check](../../share-reliability/issues/16-the-final-windows-check.md). Agents take every reading. The owner's eye goes into the wizard's existing `t32-game` check, which already asks whether a real game shared from Chrome looks "smooth, sharp, colours true". The owner adds nothing else.
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** 54
+Blocked by: 54
 
 - [x] **Before the run, a session here:**
   - Checks that `graeae-test` runs a build holding 52, 53 and 54 (the version in its footer or `wrangler deployments list`), and deploys `v1-build` if not.

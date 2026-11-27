@@ -6,9 +6,9 @@ Owner's note (2026-11-18): "Every letter inside the icon is slightly moved up, n
 
 `Avatar.svelte` centres the glyph box with `place-items: center` and `line-height: 1`. Geist's capitals sit above the middle of that box, so the letter looks high. Optical centring is needed: `text-box: trim-both cap alphabetic` where supported, or a measured nudge.
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** wontfix
+Status: wontfix
 
 ## Comments
 

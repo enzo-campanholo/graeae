@@ -6,9 +6,9 @@ Spec: [Screen audio](../spec.md#screen-audio), [Shares](../spec.md#shares), [The
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 13, 14
+Blocked by: 13, 14
 
-**Status:** resolved
+Status: resolved
 
 - [x] "Share screen" goes straight to the browser's picker: 3 clicks, 4 the first time on a device
 - [x] The first time on a device a short notice comes first, once: a tab or a game's window sends sound, a whole screen is video only. No borderless-mode tip

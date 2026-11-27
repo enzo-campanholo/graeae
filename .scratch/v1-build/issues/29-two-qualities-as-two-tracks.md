@@ -8,9 +8,9 @@ Spec: [Encoding and quality](../spec.md#encoding-and-quality). User stories 41 t
 
 UI: the choice and the mark are built (ticket 17) and stay, tested, behind the switch.
 
-**Blocked by:** 17
+Blocked by: 17
 
-**Status:** ready-for-agent (after 0.1)
+Status: ready-for-agent (after 0.1)
 
 - [ ] A Chromium screen share publishes two tracks, 1080p60 at 12 Mbps and 720p60 at 4 Mbps, each H.264 baseline on the hardware encoder; a viewer pulls one
 - [ ] A viewer's choice of "1080p" or "720p" moves their pull to the other track mid-watch, with the shortest freeze the media server allows

@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18): "If you are not watching anything this appears, the only option is to watch everything. If nobody is sharing anything, it only shows a text… First, it looks weird because there is little stuff around… Second, if no one is sharing it is probably because that person is going to start sharing, which means we probably should have the share button there as well. This would maybe make it more cluttered, since we have the share button somewhere else as well, but I still want to see it."
 
-**Blocked by:** 34
+Blocked by: 34
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

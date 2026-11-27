@@ -1,8 +1,8 @@
 # 66: A watch after an empty replacement does nothing
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** on `graeae-test` (ticket 64's check, 2026-11-24), R3 watched R1's share, stopped watching it, then its receiving connection reported failed (`fail receiving`). The tab asked once for a replacement, and the instance answered `connected` and then `replaced`, with nothing pulled onto the new connection. R3's next watch, 23 s later, was pulled onto that connection, and the media server answered `410 Session appears to be disconnected. Please check if the PeerConnection is connected.` The instance logged `watch.refused` ("the media server failed") and `media.dropped` ("a watch did not go live"), and the stage said "You're not watching anything yet": the first click on Watch did nothing, and the second, on a new connection, worked. With a 3 s gap the watch worked; with 15 s and 23 s it was lost.
 

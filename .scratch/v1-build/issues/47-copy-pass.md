@@ -4,9 +4,9 @@
 
 Owner's request (2026-11-19): "Let's do a pass over the text in the app. … All the text."
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## Comments
 

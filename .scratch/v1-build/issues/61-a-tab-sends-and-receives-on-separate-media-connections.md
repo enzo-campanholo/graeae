@@ -1,8 +1,8 @@
 # 61: A tab sends on one media connection and receives on another
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **Why:** tickets 57, 58 and 60 had one cause: a section the tab narrowed for sending was later reused by the media server for a watch. ADR 0005 splits the tab's one media connection in two, a sending connection and a receiving connection. This ticket builds that. It supersedes 60.
 

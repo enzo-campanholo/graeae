@@ -18,9 +18,9 @@ The owner chose these fixes in [Starting again after a reload](../../share-relia
 
 Spec: Cut-off, Shares, Seam 1.
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 - [x] **A share whose end has begun no longer counts** (`src/instance/shares.ts`, `src/instance/instance.ts`).
   - **When the room hears.** For every end (an ordinary stop, a clean leave, a grace period running out, a removal, a forgotten device), the room and the lists of rooms hear that the share ended when its close begins, not once the cut-off's calls have returned.

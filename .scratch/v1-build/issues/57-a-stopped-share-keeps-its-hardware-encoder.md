@@ -1,8 +1,8 @@
 # 57: A stopped share keeps its hardware encoder
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** in ticket 55's rerun on MONSTRAO (2026-11-23, `evidence/windows-2026-11-23-2`, commit `353621b`, check 7), Win Chrome made 32 tab shares in turn from one page load of `graeae-test` at `b2a396c`, with no reload. Each share was stopped before the next started. Chrome 158, Windows 11, RTX 5070 Ti, NVIDIA 621.24. The sharer's readings are in `docs/evidence/windows-2026-11-23/repeat-NN-sender.jsonl` and `repeated-chrome-stats.jsonl`:
 - shares 1 to 12 (mids 0 to 22) went out on `D3D12VideoEncodeAccelerator`, `hardware: true`;

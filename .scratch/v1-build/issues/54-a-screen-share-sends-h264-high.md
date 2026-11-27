@@ -13,9 +13,9 @@ The owner chose this in [Whether a share sends H.264 high](../../share-reliabili
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 - [x] **First, before any code changes: a Linux Chromium watcher decodes high under the `42e01f` label.** A Linux sharer cannot make high, since Chrome's software H.264 encoder (OpenH264) makes only constrained baseline. So a throwaway rig fakes it.
   - Add the rig to `scripts/real-media/` as an option of the sharing member, like `--max-bitrate`. A sender transform (`RTCRtpScriptTransform`, or `createEncodedStreams` if that is what this Chromium has) swaps each encoded video frame for the next frame of an x264 high-profile clip.

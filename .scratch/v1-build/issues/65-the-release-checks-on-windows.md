@@ -1,8 +1,8 @@
 # 65: The release checks on Windows
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none. The run waits for `graeae-test` to be deployed at `063611c` or later (tickets 62 to 64), and for the Linux partner below to be started on the Linux machine.
+Blocked by: none. The run waits for `graeae-test` to be deployed at `063611c` or later (tickets 62 to 64), and for the Linux partner below to be started on the Linux machine.
 
 **What to do:** the readings left before v0.1 that need a Windows machine, taken by an agent on MONSTRAO as in [The final Windows check](55-the-final-windows-check.md). They cover [57](57-a-stopped-share-keeps-its-hardware-encoder.md)'s rerun, [Remaining browser checks](../../v1/issues/21-remaining-browser-checks.md) (Brave, Zen, a launcher-started game), steps 3 and 5 of the Linux pass in [Owner's verification](../../v1/issues/25-owners-verification.md), and the screenshots for [32](32-second-critique-pass.md)'s Windows look. Agents take every reading; the owner only looks afterwards.
 

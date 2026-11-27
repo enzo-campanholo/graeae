@@ -15,9 +15,9 @@ The owner chose this in [A share that opens small](../../share-reliability/issue
 
 Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 - [x] **The rule.**
   - A Chromium screen share sends under "maintain-resolution" at every step except its last.

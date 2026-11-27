@@ -6,9 +6,9 @@ Owner's note (2026-11-18): "The alignments in the settings page are weird, some 
 
 This reverses a locked call. `.impeccable/critique/ignore.md` keeps "the owner page's 880px column centred in its panel". Remove that line when this is decided.
 
-**Blocked by:** 34
+Blocked by: 34
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

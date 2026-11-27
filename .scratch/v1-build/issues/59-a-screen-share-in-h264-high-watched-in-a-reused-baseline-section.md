@@ -1,8 +1,8 @@
 # 59: A screen share in H.264 high, watched in a reused section that lists only baseline
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What is suspected:** ticket 58 found that the media server sends a watch on a payload type the tab offered for its codec, in any section, even one the watch's own section never listed. Chrome then counts the packets and drops them all, so the watch shows nothing. A reused section lists only what the tab last gave it. After the tab has watched a webcam, or made its own webcam share, that is baseline H.264 alone (102, and 103 for retransmissions).
 

@@ -8,9 +8,9 @@ Spec: [Encoding and quality](../spec.md#encoding-and-quality).
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 15
+Blocked by: 15
 
-**Status:** resolved
+Status: resolved
 
 - [x] Chromium screen share: 1080p at 60 fps limited to 12 Mbps, and 720p at 60 fps limited to 4 Mbps; a larger monitor is scaled down to 1080p (both on the hardware encoder on Cloudflare; then switched off, below. The scale-down is unit-tested only: the owner's monitor is 1080p)
 - [x] Codec order: H.264 baseline profile (`42001f`), then one software codec last so a share always starts; never constrained baseline, main or high, never HEVC (changed from "high, then main" by the owner's check below; the browser offers the first it has, alone)

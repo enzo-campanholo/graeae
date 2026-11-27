@@ -4,9 +4,9 @@
 
 Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md#other-pages).
 
-**Blocked by:** 28
+Blocked by: 28
 
-**Status:** ready-for-human
+Status: ready-for-human
 
 The agent passes covered the fakes, real media on Linux, and Windows screenshots. What remains needs the owner's Windows Chrome, real webcam and game, and physical screen on `graeae-test`. Run `scripts/owner-checks.sh` for the panel and autoplay checks, the webcam and game tiles, and fullscreen and the strip. Record findings here before resolving the ticket.
 

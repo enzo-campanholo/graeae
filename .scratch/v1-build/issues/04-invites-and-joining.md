@@ -6,9 +6,9 @@ Spec: [People, devices and invites](../spec.md#people-devices-and-invites), [Oth
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 03
+Blocked by: 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] The gear shows only to the owner and opens the owner page; a member requesting any owner route or action is refused
 - [x] Invites section: a form with display name and room ticks, and the button "Create and copy link"; the link is copied at the press and also shown with a copy-again button

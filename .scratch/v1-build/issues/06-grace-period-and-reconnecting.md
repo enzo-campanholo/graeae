@@ -6,9 +6,9 @@ Spec: [Presence and the signaling connection](../spec.md#presence-and-the-signal
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] The browser sends a heartbeat every 5 seconds; there is no idle detection
 - [x] A lost connection gets a grace period of 30 seconds from the last heartbeat heard; the member stays present throughout

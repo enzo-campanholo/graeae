@@ -6,9 +6,9 @@ Spec: [Cut-off](../spec.md#cut-off), [Presence and the signaling connection](../
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 20
+Blocked by: 20
 
-**Status:** resolved
+Status: resolved
 
 - [x] A failed forced close keeps its record and is retried on a backoff: 1s, 2s, 4s, up to 30s between tries
 - [x] Retrying ends when the close succeeds or a sweep shows the track gone

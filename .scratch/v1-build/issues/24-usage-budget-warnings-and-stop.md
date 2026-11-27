@@ -6,9 +6,9 @@ Spec: [Usage and the usage budget](../spec.md#usage-and-the-usage-budget), [Cut-
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 20, 23
+Blocked by: 20, 23
 
-**Status:** resolved
+Status: resolved
 
 - [x] One usage budget for the instance, in GB per month, default 1,000, with no upper limit
 - [x] The setting shows the dollar equivalent beside it: $0.05 per GB past 1,000

@@ -4,9 +4,9 @@
 
 Spec: [Shape](../spec.md#shape), [Deploying](../spec.md#deploying), [Seam 1](../spec.md#seam-1-the-instances-protocol-most-tests-live-here). ADRs 0001 and 0002.
 
-**Blocked by:** None (can start immediately).
+Blocked by: None (can start immediately).
 
-**Status:** resolved
+Status: resolved
 
 - [x] One package, TypeScript on both sides, built with Vite; plain Svelte with a small client-side router, not SvelteKit
 - [x] shadcn-svelte is installed and one component renders (theming comes in ticket 02)

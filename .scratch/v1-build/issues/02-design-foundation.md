@@ -6,9 +6,9 @@ This ticket is driven by the owner, because the direction is a matter of taste.
 
 Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md#other-pages), [Left to the build](../spec.md#left-to-the-build). Primary sources for layout: the prototype branches `prototype/room-experience` (variant D) and `prototype/owners-admin-surface` (variant B).
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] `PRODUCT.md` at the repo root, written with impeccable's `init` from the spec and the glossary
 - [x] `DESIGN.md` at the repo root, recording the chosen direction and its tokens

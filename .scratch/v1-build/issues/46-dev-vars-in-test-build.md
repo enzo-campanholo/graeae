@@ -6,9 +6,9 @@
 
 **Workaround meanwhile.** Run the steps of the script by hand and delete `dist/graeae/.dev.vars` between the build and `playwright test`. Tickets 40 and 41 ran their journeys this way.
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

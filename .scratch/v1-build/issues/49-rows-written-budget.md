@@ -6,7 +6,7 @@
 
 Spec: [Usage budget](../spec.md) and the platform's free-plan promise. This blocks the 0.1 release.
 
-**Status:** resolved
+Status: resolved
 
 - [x] Byte reports write far fewer rows. A report carries the tab's running total, so reporting less often loses nothing a report covers; the candidates are a longer `USAGE_REPORT_EVERY_MS` (for example 60 s), holding totals in memory and writing them less often, or both. Weigh what each loses when a tab vanishes or the object restarts (the watch ceiling in `usage_watch` already charges a vanished tab's watches), and how late the owner's meter and the budget's warnings and stop may then react
 - [x] The alarm is set only when its time changes, or its schedule is otherwise made to write rarely, with grace periods and the "reconnecting" marks keeping their timings

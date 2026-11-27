@@ -6,9 +6,9 @@ Owner's note (2026-11-18): "The size of the bar changes when you are in the conf
 
 The room's bar is 288px (`Bar.svelte`, `w-[288px]`), and the owner page's nav is 224px (`Owner.svelte`, `w-56`).
 
-**Blocked by:** none (follow 34's scale if it lands first)
+Blocked by: none (follow 34's scale if it lands first)
 
-**Status:** resolved
+Status: resolved
 
 ## Comments
 

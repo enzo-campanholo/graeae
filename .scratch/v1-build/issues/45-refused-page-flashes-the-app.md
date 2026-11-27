@@ -6,9 +6,9 @@ Owner's note (2026-11-18, on `graeae-test`, from a NixOS browser that is not a d
 
 Spec: [17](../spec.md) and "One plain page for every refused address" (`spec.md`, "Nothing here" page). The instance must reveal nothing about itself. No data leaks here, but the page still shows that this address is an app with a list of rooms, and the switch reads as a glitch.
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## What is known (not yet confirmed)
 

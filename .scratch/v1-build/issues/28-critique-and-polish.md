@@ -4,9 +4,9 @@
 
 Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md#other-pages).
 
-**Blocked by:** 14, 16, 24, 27
+Blocked by: 14, 16, 24, 27
 
-**Status:** resolved
+Status: resolved
 
 - [x] Critique, audit and polish the room: bar, rail, stage in grid and focus, hover controls, the sharer's previews and notes, the strips
 - [x] The same for the owner page's four sections and the removal modal

@@ -6,9 +6,9 @@ Spec: [Other pages](../spec.md#other-pages) (People, Removal confirm), [People, 
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 07, 08
+Blocked by: 07, 08
 
-**Status:** resolved
+Status: resolved
 
 - [x] People lists every member with their access to each room, device count and last visit
 - [x] Picking a member shows access as one tick per room, their devices with "Forget", "Let back in" and "Remove from graeae"

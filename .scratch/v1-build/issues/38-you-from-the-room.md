@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18): "Accessing your profile from inside a room is still weird. If there are multiple rooms to select from it gets clearer, but clicking on your name in the list should not be the only way of doing this."
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

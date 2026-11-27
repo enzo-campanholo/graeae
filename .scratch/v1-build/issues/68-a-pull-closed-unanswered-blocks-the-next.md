@@ -1,8 +1,8 @@
 # 68: A pull closed without its offer reaching the tab blocks that connection's next pull
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** ticket 67, on `graeae-test` (2026-11-24). A replacement's pull returned after its share had gone. The instance force-closed it without sending its offer to the tab. 5 s later the next pull into the same session got `406 The current signaling state is expecting a remote answer: renegotiation is expected`. The media server takes no other pull into a session until the browser answers the last offer, and closing the pulled track does not change that (`docs/media-server.md`). Ticket 67 fixed this for a replacement's steps only.
 

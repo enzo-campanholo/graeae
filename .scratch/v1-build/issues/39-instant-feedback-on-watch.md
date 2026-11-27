@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18), on real media: "Selecting which transmission to watch is slow (you click on the screen or the webcam and nothing happens for some time), this makes users think they misclicked and click again, which, in turn, makes the screen disappear."
 
-**Blocked by:** none. Needs `graeae-test` to verify, since the fakes are instant.
+Blocked by: none. Needs `graeae-test` to verify, since the fakes are instant.
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

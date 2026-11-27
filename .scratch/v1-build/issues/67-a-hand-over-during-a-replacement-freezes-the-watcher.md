@@ -1,8 +1,8 @@
 # 67: A hand-over during a replacement freezes the watcher
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** on `graeae-test` (ticket 62's check, 2026-11-24), a watcher's receiving connection was replaced while the share it watched was handed over to the sharer's other tab. The watcher's picture froze for good. Only a reload brought it back; unwatching and watching again did nothing (ticket 62's comment has the timeline). `scripts/real-media/repro-67.ts` reproduced it on version `2a729393` (build `063611c-dirty`, ticket 66's fix). With `fail receiving` 0.1 to 0.5 s after "Share from here", 5 of 7 tries were red. In two of them the picture froze on the stage. In the other three the share left the stage altogether.
 

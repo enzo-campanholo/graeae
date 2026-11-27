@@ -1,8 +1,8 @@
 # 60: A first watch leaves 42e01f in the tab's offers, and a later watch in a stopped share's section shows nothing
 
-**Status:** wontfix
+Status: wontfix
 
-**Blocked by:** none
+Blocked by: none
 
 **What was seen:** in ticket 59's checks on `graeae-test` (2026-11-23, version `aaff375f`, built from `034d09b` with 58's fix), three Linux Chromium 158 members ran in "First room" with `scripts/real-media/repro-59.ts`. Watcher59 reloaded, then:
 1. watched Cam59's webcam and stopped watching;

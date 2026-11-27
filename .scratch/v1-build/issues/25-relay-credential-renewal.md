@@ -4,9 +4,9 @@
 
 Spec: [Relay](../spec.md#relay).
 
-**Blocked by:** 13, 22, 23
+Blocked by: 13, 22, 23
 
-**Status:** resolved
+Status: resolved
 
 - [x] At 11 hours after a media connection's credential was minted, the backend mints a fresh one for that tab
 - [x] A tab on a direct path takes it silently

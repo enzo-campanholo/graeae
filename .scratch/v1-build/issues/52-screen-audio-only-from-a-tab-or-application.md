@@ -8,9 +8,9 @@ The owner chose this rule in [Screen audio that is not the tab's or the applicat
 
 Spec: Screen audio, Platforms.
 
-**Status:** resolved
+Status: resolved
 
-**Blocked by:** none
+Blocked by: none
 
 - [x] **The rule, in `src/app/lib/media/capture.ts`.**
   - A pure function that keeps an audio track's label only when it is exactly `Tab audio` or `Application Audio`. These are the strings Chromium names them by (`GetAudioMediaStreamDeviceName`), read on Windows 11 with Chrome 158 and Helium in [Windows evidence run on MONSTRAO](../../share-reliability/issues/09-windows-evidence-run.md).

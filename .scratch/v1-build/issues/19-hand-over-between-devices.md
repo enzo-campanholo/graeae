@@ -6,9 +6,9 @@ Spec: [Shares](../spec.md#shares). User stories 57 to 59.
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 15
+Blocked by: 15
 
-**Status:** resolved
+Status: resolved
 
 - [x] One screen share and one webcam share per member across the whole instance, not per room and not per device
 - [x] Starting a kind that is already live offers to stop the live one and share from here

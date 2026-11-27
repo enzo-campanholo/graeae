@@ -6,9 +6,9 @@ Spec: [Checks on every request](../spec.md#checks-on-every-request), [Media conn
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 10
+Blocked by: 10
 
-**Status:** resolved
+Status: resolved
 
 - [x] The media layer seam and its fake gain "pull a share's tracks"
 - [x] The browser asks for "this member's webcam"; the backend finds the sharer's media connection and tracks in its own records and builds the pull

@@ -6,9 +6,9 @@ Spec: [The setup secret](../spec.md#the-setup-secret), [People, devices and invi
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 01, 02
+Blocked by: 01, 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] The setup page sends the part after `#` to the backend itself; it is never in a request address
 - [x] First use creates the owner, their first device and the first room, and lands the owner in that room

@@ -4,9 +4,9 @@
 
 Spec: [The README](../spec.md#the-readme), [Deploying](../spec.md#deploying), [Platform promises](../spec.md#platform-promises).
 
-**Blocked by:** 03, 24
+Blocked by: 03, 24
 
-**Status:** resolved
+Status: resolved
 
 - [x] Steps from an empty account to a working instance: the dashboard work (card and Realtime, media server application, relay key), clone and install, the secrets file with the command that generates a setup secret, deploy, open the setup address, set the reset day to match the Cloudflare billing date, create invites
 - [x] Every command that needs no Cloudflare login has been run against the repo as it stands; the rest are checked against Cloudflare's current documentation

@@ -6,9 +6,9 @@ Spec: [Usage and the usage budget](../spec.md#usage-and-the-usage-budget), [Othe
 
 UI: build with the impeccable skill, following `DESIGN.md`.
 
-**Blocked by:** 12, 17
+Blocked by: 12, 17
 
-**Status:** resolved
+Status: resolved
 
 - [x] Each tab with a media connection reports, every few seconds over the signaling connection, the running total of bytes its media connection's transport has received since it opened
 - [x] The backend charges the difference between reports, so a lost report is made up by the next and nothing is skipped at the start

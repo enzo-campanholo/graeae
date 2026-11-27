@@ -6,9 +6,9 @@ Owner's note (2026-11-18): "Every single text, component, etc. is too small and 
 
 Today the body text is 13px (`app.css`: `--text-sm` 13/19, `--text-base` 15/22, `--text-xs` 12/16), bar rows are one line with 20px avatars, and the plain pages are one narrow centred column.
 
-**Blocked by:** none. 36, 37 and 42 wait on the scale this one picks.
+Blocked by: none. 36, 37 and 42 wait on the scale this one picks.
 
-**Status:** resolved
+Status: resolved
 
 ## Open questions
 

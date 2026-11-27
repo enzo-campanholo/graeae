@@ -4,9 +4,9 @@
 
 Owner's note (2026-11-18): "I don't like how the title is displayed."
 
-**Blocked by:** 34 (options can be shown before then; building waits on it)
+Blocked by: 34 (options can be shown before then; building waits on it)
 
-**Status:** resolved
+Status: resolved
 
 ## Options first
 

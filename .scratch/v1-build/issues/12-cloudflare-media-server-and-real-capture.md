@@ -6,9 +6,9 @@ Nothing here is automated against Cloudflare. Port from what was proven: the pro
 
 Spec: [Media connections and records](../spec.md#media-connections-and-records), [Relay](../spec.md#relay), [Encoding and quality](../spec.md#encoding-and-quality) (webcam row only), [Not automated: real media](../spec.md#not-automated-real-media). ADR 0003.
 
-**Blocked by:** 11
+Blocked by: 11
 
-**Status:** resolved
+Status: resolved
 
 - [x] The Cloudflare implementation covers every operation the media layer seam has at this point (media connection, publish, pull, forced close, relay credential), using only the application's secret, sent from the backend
 - [x] Every close is a forced close, needing nothing from the browser

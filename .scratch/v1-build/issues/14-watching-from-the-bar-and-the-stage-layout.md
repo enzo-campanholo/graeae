@@ -6,9 +6,9 @@ Spec: [The room's screen](../spec.md#the-rooms-screen). User stories 27 to 35.
 
 UI: build with the impeccable skill, following `DESIGN.md`. Layout source: `prototype/room-experience`, variant D.
 
-**Blocked by:** 11
+Blocked by: 11
 
-**Status:** resolved
+Status: resolved
 
 - [x] Clicking a member's name replaces the stage with everything that member shares
 - [x] The viewer then follows that member: a share the member starts later joins the stage by itself
