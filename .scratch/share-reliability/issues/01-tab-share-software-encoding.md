@@ -21,7 +21,7 @@ Answer with the likely cause, the candidate fix, and exactly what the Windows ev
 
 ## Answer
 
-Findings: `docs/research/tab-share-encoding.md` on the branch `research/tab-share-encoding` (commit `21412ab`), never merged; read with `git show research/tab-share-encoding:docs/research/tab-share-encoding.md`. Inferred from Chromium's source; only the Windows evidence run confirms it.
+Findings: `docs/research/tab-share-encoding.md`. Inferred from Chromium's source; only the Windows evidence run confirms it.
 
 - **The odd-size guess is wrong.** Chrome rounds every captured frame down to an even size, tab and window alike; neither Windows hardware encoder (D3D12, then Media Foundation) needs a multiple of 16, only an even size within the GPU's range. graeae's `scaleResolutionDownBy` is 1 at 1080 lines or fewer. A tab's frames are stored as a window's are, and `contentHint` never picks hardware or software.
 - **Likely cause: a tab's capture size changes during a share, a window's does not.** A tab follows its viewport (resizing, devtools, fullscreen), and under graeae's max-only constraints the tab capturer also shrinks itself in 90-line steps whenever WebRTC asks for fewer pixels, where a window keeps its size and is scaled in the renderer. Every size change resets the encoder, and a failed reset drops to OpenH264 until the next change; below 360 lines Chrome picks OpenH264 on purpose. Once in software, `maintain-framerate`'s quality scaler and WebRTC's stricter CPU limits for software push the size down further, which for a tab shrinks the capture itself: a trap, small and in software.

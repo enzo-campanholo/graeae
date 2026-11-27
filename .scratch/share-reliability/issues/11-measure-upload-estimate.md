@@ -7,7 +7,7 @@ Map: ../map.md
 
 ## Question
 
-Not a decision: the facts that the fix for Chrome's low upload estimate waits on, measured by an agent alone on `graeae-test` with `scripts/real-media/`, changing nothing in graeae's code. [Why Chrome's upload estimate sits low](02-upload-estimate-sits-low.md) has the causes and the candidate fixes; its doc on `research/upload-estimate` has the steps in full.
+Not a decision: the facts that the fix for Chrome's low upload estimate waits on, measured by an agent alone on `graeae-test` with `scripts/real-media/`, changing nothing in graeae's code. [Why Chrome's upload estimate sits low](02-upload-estimate-sits-low.md) has the causes and the candidate fixes; its doc, `docs/research/upload-estimate.md`, has the steps in full.
 
 1. Read the media server's answer (`remoteDescription.sdp`): `b=AS` or `x-google-max-bitrate` (expected: neither, so probes stop at 5 Mbps), `transport-cc` and its header extension, `goog-remb`.
 2. Sample `availableOutgoingBitrate`, `targetBitrate`, bytes sent and round trip every 200 to 500 ms through the harness's `eval`, during `content game` and `content document`, and check the research's predictions: no probe past 5 Mbps, about 1.5× what is sent while calm, falls to about 0.85× of what was sent, then about 45 kbps a second of growth.

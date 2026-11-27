@@ -9,7 +9,7 @@ Map: ../map.md
 
 Is there a codec that gives a Chromium screen share a better picture at the same 12 Mbps and 1080p60 than today's hardware H.264 baseline (`42001f`), while every watcher, Firefox included, decodes it, with one codec per share and no per-watcher fallback?
 
-Context: the reasons for baseline today are in the comment on `Codec` in `src/shared/encoding.ts`: Chrome on Windows encodes constrained baseline in software; the media server answered main or high with VP8 **on a share sent at two qualities**, and two qualities are now off, so a share sends one quality; Firefox was said not to decode main or high. Earlier research is on the branch `research/capture-quality` and in [Capture and encoding quality](../../v1/issues/02-capture-and-encoding-quality.md). The owner's machines have an RTX 5070 Ti and an RTX 5060 Ti.
+Context: the reasons for baseline today are in the comment on `Codec` in `src/shared/encoding.ts`: Chrome on Windows encodes constrained baseline in software; the media server answered main or high with VP8 **on a share sent at two qualities**, and two qualities are now off, so a share sends one quality; Firefox was said not to decode main or high. Earlier research is in `docs/research/capture-quality.md` and in [Capture and encoding quality](../../v1/issues/02-capture-and-encoding-quality.md). The owner's machines have an RTX 5070 Ti and an RTX 5060 Ti.
 
 Find, from primary sources:
 
@@ -23,7 +23,7 @@ Answer with each candidate's yes or no on every condition above, a recommendatio
 
 ## Answer
 
-Findings: `docs/research/codec-at-12-mbps.md` on the branch `research/codec-at-12-mbps` (commit `cdb9eed`), never merged; read with `git show research/codec-at-12-mbps:docs/research/codec-at-12-mbps.md`.
+Findings: `docs/research/codec-at-12-mbps.md`.
 
 - **H.264 high (`6400xx`) in hardware is the only candidate that meets every condition**, pending the Windows evidence run. Chrome on Windows encodes it in hardware (owner's quality proof on both GPUs; Chromium's Media Foundation encoder lists baseline, main and high); Cloudflare forwarded it on a share of one quality (quality proof); Firefox on Windows decodes it through its Windows decoder (Mozilla, bug 1951596, and the quality proof), so the "Firefox cannot decode main or high" basis in `src/shared/encoding.ts` is wrong; the "never main or high" rule otherwise came from two qualities, now off. Gain: modest, CABAC saving about 9 to 14% of bitrate on broadcast material, unmeasured on games and screens.
 - **AV1: no.** Chrome's hardware AV1 encoding for WebRTC (`WebRtcAV1HWEncode`) is off on Windows in Chrome 159 and on `main`, so it encodes in software. Revisit when Chrome turns it on.

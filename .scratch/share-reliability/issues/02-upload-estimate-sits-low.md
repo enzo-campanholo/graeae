@@ -22,7 +22,7 @@ Answer with the likely cause or causes, ranked, the candidate fixes, and the mea
 
 ## Answer
 
-Findings: `docs/research/upload-estimate.md` on the branch `research/upload-estimate` (commit `765cbbe`), never merged; read with `git show research/upload-estimate:docs/research/upload-estimate.md`. From WebRTC's source (branch 8127, Chrome 158); nothing measured yet.
+Findings: `docs/research/upload-estimate.md`. From WebRTC's source (branch 8127, Chrome 158); nothing measured yet.
 
 Causes, ranked:
 

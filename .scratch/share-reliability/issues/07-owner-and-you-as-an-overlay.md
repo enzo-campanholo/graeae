@@ -23,7 +23,7 @@ The other two variants:
 - **A**, a sheet in the stage's place. It hid the stage, and "You" still looked sparse at 1920.
 - **C**, a side panel with the stage shrinking beside it. At 1366 it left the stage 314 px wide, and over the list of rooms it covered that page's own gear and avatar.
 
-The prototype is on the throwaway branch `prototype/overlay`, commit `8e527fd`, which is never merged. `pnpm prototype:overlay` runs on the fakes, fills an instance, walks each variant (opening it, reloading, back, forward, closing) and puts the 52 shots and a contact sheet in `.impeccable/review/captures/overlay-prototype/`.
+The prototype was on the throwaway branch `prototype/overlay`, now deleted; its commit `8e527fd` is in `v1-build`'s history with none of its files. `pnpm prototype:overlay` runs on the fakes, fills an instance, walks each variant (opening it, reloading, back, forward, closing) and puts the 52 shots and a contact sheet in `.impeccable/review/captures/overlay-prototype/` (deleted on 2026-11-27; the command makes them again).
 
 How it behaves:
 

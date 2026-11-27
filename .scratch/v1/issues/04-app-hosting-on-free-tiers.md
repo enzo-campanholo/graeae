@@ -22,7 +22,7 @@ The answer feeds [App hosting and framework](11-app-hosting-and-framework.md).
 
 ## Answer
 
-Full findings: `docs/research/app-hosting.md` on branch `research/app-hosting` (commit `08a69c1`), read from vendor docs on 2026-11-15. Nothing was built or deployed.
+Full findings: `docs/research/app-hosting.md`, read from vendor docs on 2026-11-15. Nothing was built or deployed.
 
 - **The Cloudflare free plan fits with a lot of room.** Durable Objects are available on the free plan with SQLite storage. One Worker plus one Durable Object using WebSocket hibernation uses about 1% of the 100,000 requests a day on a 12-hour day, and about 22% in a modelled worst case of 100 messages a minute per client.
 - **Duration is the limit to watch.** Durable Object duration stays under 42% of the daily quota even if the object never hibernates during a session, but one object awake for 24 hours uses 83% and two exceed it. These rest on assumed message rates and should be measured on a prototype.

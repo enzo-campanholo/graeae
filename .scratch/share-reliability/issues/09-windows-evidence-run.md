@@ -81,7 +81,7 @@ You gather Windows facts for decisions made on another machine, which has no GPU
 
 ## Answer
 
-**Done, 2026-11-22**, by the agent on MONSTRAO, alone except for the owner's paste. Report: `docs/evidence/windows-2026-11-22.md` on the branch `evidence/windows-2026-11-22` (commit `aec2eb7`), never merged, with its readings, event logs and screenshots beside it (36 MB); read with `git show origin/evidence/windows-2026-11-22:docs/evidence/windows-2026-11-22.md`. Windows 11 Pro 26H2 (build 26300.9974), RTX 5070 Ti, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158), Firefox 160.0.1, against `graeae-test` on build `74cb885`. The hardware encoder is named `D3D12VideoEncodeAccelerator` throughout.
+**Done, 2026-11-22**, by the agent on MONSTRAO, alone except for the owner's paste. Report: `docs/evidence/windows-2026-11-22.md`. Its readings, event logs and screenshots (36 MB) were on the branch `evidence/windows-2026-11-22` and were not kept. Windows 11 Pro 26H2 (build 26300.9974), RTX 5070 Ti, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158), Firefox 160.0.1, against `graeae-test` on build `74cb885`. The hardware encoder is named `D3D12VideoEncodeAccelerator` throughout.
 
 **1. Fresh starts: a share opens small on Windows too, and only "maintain-resolution" fixes it there.** 8 starts of a 1600x900-or-larger game window per setting, a reload before each:
 

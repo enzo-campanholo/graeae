@@ -559,4 +559,4 @@ Not designed, and free for the implementer to settle without reopening a decisio
 
 - Decisions: the tickets linked from [map.md](../v1/map.md), 01 to 24.
 - ADRs: [0001 plain Svelte, not SvelteKit](../../docs/adr/0001-plain-svelte-not-sveltekit.md), [0002 one Durable Object per instance](../../docs/adr/0002-one-durable-object-per-instance.md), [0003 the backend is the only gate to the media server](../../docs/adr/0003-backend-is-the-only-gate-to-the-media-server.md).
-- Prototypes, on throwaway branches and never merged: `prototype/room-experience` (variant D), `prototype/owners-admin-surface` (variant B), `prototype/quality-proof`.
+- Prototypes, in `v1-build`'s history only with none of their files (read with `git show <commit>:<path>`): `prototype/room-experience` at `fea5445` (variant D), `prototype/owners-admin-surface` at `6dbf27d` (variant B), `prototype/quality-proof` at `89d4aa3`.

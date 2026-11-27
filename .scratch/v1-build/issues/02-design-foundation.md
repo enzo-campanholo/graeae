@@ -4,7 +4,7 @@
 
 This ticket is driven by the owner, because the direction is a matter of taste.
 
-Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md#other-pages), [Left to the build](../spec.md#left-to-the-build). Primary sources for layout: the prototype branches `prototype/room-experience` (variant D) and `prototype/owners-admin-surface` (variant B).
+Spec: [The room's screen](../spec.md#the-rooms-screen), [Other pages](../spec.md#other-pages), [Left to the build](../spec.md#left-to-the-build). Primary sources for layout: the prototypes `prototype/room-experience` (variant D, commit `fea5445`) and `prototype/owners-admin-surface` (variant B, commit `6dbf27d`), in `v1-build`'s history only.
 
 Blocked by: 01
 

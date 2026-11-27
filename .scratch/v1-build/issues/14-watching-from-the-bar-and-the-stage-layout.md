@@ -4,7 +4,7 @@
 
 Spec: [The room's screen](../spec.md#the-rooms-screen). User stories 27 to 35.
 
-UI: build with the impeccable skill, following `DESIGN.md`. Layout source: `prototype/room-experience`, variant D.
+UI: build with the impeccable skill, following `DESIGN.md`. Layout source: `prototype/room-experience` (commit `fea5445`), variant D.
 
 Blocked by: 11
 

@@ -4,7 +4,7 @@ Status: resolved
 
 Blocked by: none
 
-**What was seen:** in ticket 55's rerun on MONSTRAO (2026-11-23, `evidence/windows-2026-11-23-2`, commit `353621b`, check 7), Win Chrome made 32 tab shares in turn from one page load of `graeae-test` at `b2a396c`, with no reload. Each share was stopped before the next started. Chrome 158, Windows 11, RTX 5070 Ti, NVIDIA 621.24. The sharer's readings are in `docs/evidence/windows-2026-11-23/repeat-NN-sender.jsonl` and `repeated-chrome-stats.jsonl`:
+**What was seen:** in ticket 55's rerun on MONSTRAO (2026-11-23, `docs/evidence/windows-2026-11-23-2.md`, check 7), Win Chrome made 32 tab shares in turn from one page load of `graeae-test` at `b2a396c`, with no reload. Each share was stopped before the next started. Chrome 158, Windows 11, RTX 5070 Ti, NVIDIA 621.24. The sharer's readings are in `docs/evidence/windows-2026-11-23/repeat-NN-sender.jsonl` and `repeated-chrome-stats.jsonl`:
 - shares 1 to 12 (mids 0 to 22) went out on `D3D12VideoEncodeAccelerator`, `hardware: true`;
 - shares 13 to 32 (mids 24 to 62) went out on `OpenH264`, `hardware: false`, still negotiated as `H264 64001f`, at 1904x928 and 60 fps;
 - from share 13 on, the connection's stats still listed 12 outbound video streams with `hardware: true`, one for each stopped share.
@@ -102,4 +102,4 @@ Three runs of step 1 on `graeae-test`, from this server. Two Linux Chromium 158 
 
 **Left.** Rerun ticket 55's check 7 on MONSTRAO. Share 13 and every later share should stay on `D3D12VideoEncodeAccelerator`, with at most two `hardware: true` outbound streams in the sharer's stats.
 
-**2026-11-24: resolved on MONSTRAO.** In ticket 65's check 3 (`docs/evidence/windows-2026-11-24.md` on `evidence/windows-2026-11-24` (commit `8cfe1bf`, never merged)), on `graeae-test` at `063611c`: Win Chrome 158.0.8127.37 made 32 tab shares in turn from one page load. Every one went out on `D3D12VideoEncodeAccelerator`, with `hardware: true`, and from share 2 on there were never more than 2 outbound video streams reading `hardware: true`. Win Watcher decoded each share within 0.97 to 2.22 s (442 to 517 frames in 10 s), up to video mid 64.
+**2026-11-24: resolved on MONSTRAO.** In ticket 65's check 3 (`docs/evidence/windows-2026-11-24.md`), on `graeae-test` at `063611c`: Win Chrome 158.0.8127.37 made 32 tab shares in turn from one page load. Every one went out on `D3D12VideoEncodeAccelerator`, with `hardware: true`, and from share 2 on there were never more than 2 outbound video streams reading `hardware: true`. Win Watcher decoded each share within 0.97 to 2.22 s (442 to 517 frames in 10 s), up to video mid 64.

@@ -54,7 +54,7 @@ Not here, because only the owner can: the look on a physical panel (the light pi
 
 ## Comments
 
-**2026-11-24: done.** The report is `docs/evidence/windows-2026-11-24.md` on `evidence/windows-2026-11-24` (commit `8cfe1bf`, never merged). `graeae-test` ran `063611c` (version `f3f2f775`). Linux A was Chromium 158.0.8127.36 on NixOS 26.11, run by `scripts/real-media/linux-partner.sh`; its readings are in `.logs/linux-partner-2026-11-24/`. Every member and invite of the run has been removed or cancelled.
+**2026-11-24: done.** The report is `docs/evidence/windows-2026-11-24.md`. `graeae-test` ran `063611c` (version `f3f2f775`). Linux A was Chromium 158.0.8127.36 on NixOS 26.11, run by `scripts/real-media/linux-partner.sh`; its readings are in `.logs/linux-partner-2026-11-24/`. Every member and invite of the run has been removed or cancelled.
 
 | Check | Result |
 | --- | --- |

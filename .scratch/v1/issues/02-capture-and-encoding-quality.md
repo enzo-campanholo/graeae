@@ -22,7 +22,7 @@ The answer feeds [Media transport choice](08-media-transport-choice.md) and [Pla
 
 ## Answer
 
-Full findings: `docs/research/capture-quality.md` on branch `research/capture-quality` (commit `787fa52`). Claims come from Chrome 158 and Firefox 160 source code, W3C specs, MDN and vendor docs, read on 2026-11-15. Nothing was run on a Windows machine, so every frame-rate and CPU outcome is unverified until [Quality proof](13-quality-proof.md).
+Full findings: `docs/research/capture-quality.md`. Claims come from Chrome 158 and Firefox 160 source code, W3C specs, MDN and vendor docs, read on 2026-11-15. Nothing was run on a Windows machine, so every frame-rate and CPU outcome is unverified until [Quality proof](13-quality-proof.md).
 
 - **Chromium on Windows can reach 1080p60 if the app overrides the defaults.** Capture runs at 30fps unless the page asks for 60. Hardware H.264 encoding is on by default. Hardware AV1 encoding is off by default on Windows, and HEVC is hardware-only.
 - **Firefox on Windows can only reach it in principle.** It captures at 60fps through an older capture path, encodes every codec in software by default, and has no content hint, no scalability mode and no way to capture screen or game audio. 1080p60 from a Firefox sharer is at risk while a game runs.

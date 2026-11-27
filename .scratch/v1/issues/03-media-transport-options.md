@@ -25,7 +25,7 @@ The answer feeds [Media transport choice](08-media-transport-choice.md).
 
 ## Answer
 
-Full findings: `docs/research/media-transport.md` on branch `research/media-transport` (commit `a87ae36`), with a calculator at `docs/research/media-transport-calc.sh`. Pricing pages were read on 2026-11-15.
+Full findings: `docs/research/media-transport.md`, with a calculator at `docs/research/media-transport-calc.sh`. Pricing pages were read on 2026-11-15.
 
 Usage, where egress in GB is the sum over shares of bitrate (Mbps) times viewers, times hours, times 0.45:
 

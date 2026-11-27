@@ -22,7 +22,7 @@ The answer feeds [Getting in](10-getting-in.md).
 
 ## Answer
 
-Full findings: `docs/research/device-access.md` on branch `research/device-access` (commit `577f515`), read from primary docs on 2026-11-15.
+Full findings: `docs/research/device-access.md`, read from primary docs on 2026-11-15.
 
 - **Invite link that sets a cookie.** Silent for up to 400 days in Chrome, and the server can push the expiry out again on every visit, so a regular member never sees a prompt. Firefox's tracking protection does not touch a first-party cookie. A "delete data on close" setting or clearing the browser ends it. A second device or a cleared browser needs a new invite, so recovery while the owner is absent is the open design question. Revocation is a server-side delete that takes effect on the next request. Lowest setup burden: no third party and no domain restriction.
 - **Passkeys.** Never silent: the WebAuthn spec requires an authorization gesture, so there is always a Windows Hello-style dialog. A passkey can re-establish a session in one dialog and survives clearing the browser, but it does not replace the session cookie. Needs a WebAuthn library and an identifier tied to the domain.

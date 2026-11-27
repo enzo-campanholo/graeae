@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: resolved
-Branch: prototype/owners-admin-surface (prototype in `prototype/owners-admin-surface/`, run with `./dev.sh`; throwaway, never merged; published privately at https://claude.ai/artifact/K36bdwK6wDn1G9MYtkfWcD)
+Branch: prototype/owners-admin-surface, deleted. Its last commit, `6dbf27d`, is in `v1-build`'s history with none of its files: read them with `git show 6dbf27d:prototype/owners-admin-surface/<path>`, or check the commit out to run `./dev.sh`. Published privately at https://claude.ai/artifact/K36bdwK6wDn1G9MYtkfWcD.
 Blocked by: 12
 Map: ../map.md
 
@@ -19,13 +19,13 @@ Decide, with something concrete to react to:
 - What removal asks the owner to confirm, given that it takes effect within about 2 seconds.
 - Where a member's own screens sit: their device list, "Add a device" and changing their display name.
 
-From [Room experience](12-room-experience.md): the room is a left bar listing people (present members, then members with access who are not present) beside a stage. The prototype to build on is variant D on the branch `prototype/room-experience`.
+From [Room experience](12-room-experience.md): the room is a left bar listing people (present members, then members with access who are not present) beside a stage. The prototype to build on is variant D in `prototype/room-experience` (commit `fea5445`).
 
 From [Usage budget](14-usage-budget.md): the owner's surface also holds a usage meter (GB used, the usage budget, projected month-end), the budget and reset-day settings, and the confirm for raising the budget, which names the maximum added cost.
 
 ## Answer
 
-Settled with the user on 2026-11-16 by reacting to a clickable prototype built on the room from [Room experience](12-room-experience.md). The prototype is on the throwaway branch `prototype/owners-admin-surface` (commit `6dbf27d`, in `prototype/owners-admin-surface/`, run with `./dev.sh`) and published privately at https://claude.ai/artifact/K36bdwK6wDn1G9MYtkfWcD. The winner is its variant B, "Owner page". Variant A (row menus and popovers hanging off the bar) was the least liked: it scatters information everywhere. Variant C (a panel beside the stage) lost to B as well.
+Settled with the user on 2026-11-16 by reacting to a clickable prototype built on the room from [Room experience](12-room-experience.md). The prototype was on the throwaway branch `prototype/owners-admin-surface`, now deleted (commit `6dbf27d`, in `v1-build`'s history with none of its files, in `prototype/owners-admin-surface/`, run with `./dev.sh`) and published privately at https://claude.ai/artifact/K36bdwK6wDn1G9MYtkfWcD. The winner is its variant B, "Owner page". Variant A (row menus and popovers hanging off the bar) was the least liked: it scatters information everywhere. Variant C (a panel beside the stage) lost to B as well.
 
 **Where it lives**
 

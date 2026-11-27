@@ -22,7 +22,7 @@ The answer feeds the map's Securing the media layer.
 
 ## Answer
 
-Full findings: `docs/research/media-server-access.md` on branch `research/media-server-access` (commit `7e38672`), read from Cloudflare's docs, its OpenAPI spec and RFC 8656 on 2026-11-16. Nothing was measured live.
+Full findings: `docs/research/media-server-access.md`, read from Cloudflare's docs, its OpenAPI spec and RFC 8656 on 2026-11-16. Nothing was measured live.
 
 - **Credential.** The only media server credential is the application's secret, sent as a bearer token by the backend. There are no per-member or per-track tokens. The browser never needs the secret; it only does WebRTC with SDP the backend hands it.
 - **Backend gating.** Every publish and pull can pass through graeae. Only the Worker and its Durable Object call the API (`sessions/new`, `tracks/new`, `renegotiate`, `tracks/update`, `tracks/close`), and every call needs the secret. Cloudflare's own video-room example uses the same Worker-to-Durable-Object design.

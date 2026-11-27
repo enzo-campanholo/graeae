@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: resolved
-Branch: prototype/room-experience (prototype in `prototype/room-experience/`, run with `./dev.sh`; throwaway, never merged)
+Branch: prototype/room-experience, deleted. Its last commit, `fea5445`, is in `v1-build`'s history with none of its files: read them with `git show fea5445:prototype/room-experience/<path>`, or check the commit out to run `./dev.sh`.
 Blocked by: 06
 Map: ../map.md
 
@@ -30,7 +30,7 @@ The room model comes from [People and rooms](06-people-and-rooms.md): a member w
 
 ## Answer
 
-Settled with the user on 2026-11-16 by reacting to a clickable prototype with fake streams. The prototype is on the throwaway branch `prototype/room-experience` (commit `fea5445`, in `prototype/room-experience/`, run with `./dev.sh`) and published privately at https://claude.ai/artifact/YEKYWZ1RnWx2irzUXzm8dQ. The winner is its variant D, "People sidebar". Variant B (a wall of posters) was rejected; A (a separate list of shares) and C (a stage with a bottom dock) lost to D, which took A's grid and C's idea that people are the unit.
+Settled with the user on 2026-11-16 by reacting to a clickable prototype with fake streams. The prototype was on the throwaway branch `prototype/room-experience`, now deleted (commit `fea5445`, in `v1-build`'s history with none of its files, in `prototype/room-experience/`, run with `./dev.sh`) and published privately at https://claude.ai/artifact/YEKYWZ1RnWx2irzUXzm8dQ. The winner is its variant D, "People sidebar". Variant B (a wall of posters) was rejected; A (a separate list of shares) and C (a stage with a bottom dock) lost to D, which took A's grid and C's idea that people are the unit.
 
 **The room**
 

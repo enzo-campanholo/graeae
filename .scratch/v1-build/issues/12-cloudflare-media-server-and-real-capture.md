@@ -2,7 +2,7 @@
 
 **What to build:** The real halves behind the two fakes: the media layer's Cloudflare implementation and the media client's real capture and connection. With real secrets, a webcam share from one browser plays on another browser's stage through Cloudflare's media server, with the relay offered.
 
-Nothing here is automated against Cloudflare. Port from what was proven: the prototype on the branch `prototype/quality-proof` is the only code that has run against the real media server and relay, and `docs/research/media-server-access.md` on the branch `research/media-server-access` describes the API. Neither branch is merged; read them with `git show <branch>:<path>`.
+Nothing here is automated against Cloudflare. Port from what was proven: the prototype `prototype/quality-proof` (commit `89d4aa3`) is the only code that has run against the real media server and relay, and `docs/research/media-server-access.md` describes the API. The prototype's files are in `v1-build`'s history only: read them with `git show 89d4aa3:prototype/quality-proof/<path>`.
 
 Spec: [Media connections and records](../spec.md#media-connections-and-records), [Relay](../spec.md#relay), [Encoding and quality](../spec.md#encoding-and-quality) (webcam row only), [Not automated: real media](../spec.md#not-automated-real-media). ADR 0003.
 

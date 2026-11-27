@@ -132,7 +132,7 @@ Both browsers encoding and decoding 1080p60 in software on one machine with no G
 
 Not checked here: hardware high, which this server lacks. It is ticket 55's, which already has both lines. Afterwards Probe S, Probe W and Probe F were removed in People, and their browser profiles and invite codes deleted. The other members were not touched. The desktop on `:98` was stopped.
 
-**Failed the final Windows check (ticket 55, 2026-11-23).** The report is `docs/evidence/windows-2026-11-23.md` on `evidence/windows-2026-11-23`. MONSTRAO: Windows 11 build 26300, RTX 5070 Ti, NVIDIA driver 621.24, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158.0.8127.36). `graeae-test` was on `eca6adf-dirty`, the same front end as `98f62aa`.
+**Failed the final Windows check (ticket 55, 2026-11-23).** The report is `docs/evidence/windows-2026-11-23.md`. MONSTRAO: Windows 11 build 26300, RTX 5070 Ti, NVIDIA driver 621.24, Chrome 158.0.8127.37, Helium 0.22.2.1 (Chromium 158.0.8127.36). `graeae-test` was on `eca6adf-dirty`, the same front end as `98f62aa`.
 
 - **High is never chosen.** All 24 fresh shares sent `H264 42001f`: 8 window and 4 tab shares from Chrome, and the same from Helium. Each was encoded by `D3D12VideoEncodeAccelerator`, in hardware. So did the 5-minute watched share.
 - **Why: `hardwareQuery` leaves out the packetization mode.** It asks `encodingInfo` for `video/H264; profile-level-id=64001f`, the query this ticket wrote (`src/app/lib/media/encodings.ts:38`). Both browsers answer `supported: true, smooth: true, powerEfficient: false`. With `; packetization-mode=1` appended, both answer `powerEfficient: true`. That holds for `64001f`, `64002a` and `640033`, and also for baseline `42001f`. The agent varied the query in fresh profiles, at the same 1920x1080, 60 fps and 12 Mbps. Without the mode, Chrome on Windows seems to judge the query against mode 0, which its hardware encoder does not take. The readings are in `chrome-encoding-diagnostics.json` and `helium-encoding-diagnostics.json` beside the report.
@@ -195,7 +195,7 @@ Hardware high is still unchecked: this server has no GPU. Ticket 55's rerun chec
 
 ### 2026-11-23: checked on MONSTRAO, and closed
 
-Ticket 55's rerun checked this on Windows 11 with an RTX 5070 Ti (`evidence/windows-2026-11-23-2`, commit `353621b`), on `graeae-test` at `b2a396c`, with no override.
+Ticket 55's rerun checked this on Windows 11 with an RTX 5070 Ti (`docs/evidence/windows-2026-11-23-2.md`), on `graeae-test` at `b2a396c`, with no override.
 - `encodingInfo` for `64001f` with `packetization-mode=1` reads power-efficient in Chrome 158 and Helium 0.22.2.1. Both list high only as `640033`.
 - All 12 fresh window and tab starts sent `H264 64001f` in hardware (`D3D12VideoEncodeAccelerator`), at full size, from the first frame through 25 s. The offer carries level `1f`.
 - Over a 5-minute high share, the Chrome and Firefox watchers on Windows each decoded at 59.9 fps in hardware, with no freezes or drops. A webcam still sends `42001f`.

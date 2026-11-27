@@ -27,7 +27,7 @@ The answer feeds [Screen audio offer](07-screen-audio-offer.md) and [Platform pr
 
 ## Answer
 
-Full findings: `docs/research/audio-capture.md` on branch `research/audio-capture` (commit `3835009`), read on 2026-11-15. Nothing was tested on a real machine: "works" means the shipped source code says so. Section 7 of the findings file lists the quick tests that would settle each unverified point.
+Full findings: `docs/research/audio-capture.md`, read on 2026-11-15. Nothing was tested on a real machine: "works" means the shipped source code says so. Section 7 of the findings file lists the quick tests that would settle each unverified point.
 
 | Wish | Windows Chromium | Windows Firefox |
 |---|---|---|
