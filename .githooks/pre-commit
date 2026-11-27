@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Typechecks and lints before a commit that touches code. Commits of tickets, docs and
-# other Markdown alone skip it. `pnpm prepare` (run by `pnpm install`) points git here.
+# Checks the staged tickets' Status and Blocked by lines (scripts/check-tickets.sh), then
+# typechecks and lints before a commit that touches code. Commits of tickets, docs and
+# other Markdown alone skip the typecheck. `pnpm prepare` (run by `pnpm install`) points git here.
 set -euo pipefail
 
-code=$(git diff --cached --name-only --diff-filter=ACMR | grep -v -E '^(\.scratch|docs)/|\.md$' || true)
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+# Word splitting is safe: ticket paths have no spaces, and check-tickets.sh skips the rest.
+# shellcheck disable=SC2086
+bash scripts/check-tickets.sh $staged
+
+code=$(printf '%s\n' "$staged" | grep -v -E '^(\.scratch|docs)/|\.md$' || true)
 [ -z "$code" ] && exit 0
 
 check='pnpm typecheck && pnpm lint'

@@ -114,7 +114,10 @@ function listen<Message>(socket: WebSocket): Omit<Tab<Message>, "id"> {
       const message = arrived.shift();
       if (message) return Promise.resolve(message);
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`no message within ${WAIT_MS}ms`)), WAIT_MS);
+        const timer = setTimeout(() => {
+          const last = all.length > 0 ? `the last ones were: ${JSON.stringify(all.slice(-3))}` : "none arrived";
+          reject(new Error(`no message within ${WAIT_MS}ms; ${last}`));
+        }, WAIT_MS);
         waiting.push((message) => {
           clearTimeout(timer);
           resolve(message);

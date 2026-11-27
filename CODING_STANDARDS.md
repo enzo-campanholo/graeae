@@ -3,6 +3,8 @@
 What a review checks that no tool does. Typecheck and lint run before every commit, and
 `pnpm test` before every push (`.githooks/`).
 
+Read a change with `bash scripts/review-diff.sh <base> <dir>`: its `--stat`, then one patch per file in `<dir>`, with `.scratch/` left out.
+
 ## The real media client
 
 A change to how `src/app/lib/media/browser.ts` negotiates is read against
@@ -16,3 +18,13 @@ A change to how `src/app/lib/media/browser.ts` negotiates is read against
 - A change to `docs/media-server.md` or to the stand-in
   (`test/loopback/page/media-server.ts`) is read against the other: each behaviour's
   note on whether the stand-in plays it is still true.
+
+## Tests and docs
+
+- A Seam 1 test asserts the fields it is about (`toMatchObject`, `expect.objectContaining`), so a new
+  field in the room state breaks only the tests about that field.
+- Journeys share one instance: a journey's members have names no other journey in `test/browser`
+  uses.
+- A changed value (a constant, a duration, a name) leaves none of its old literal behind in code,
+  tests, comments or docs: grep for the old one.
+- An ADR or spec change that brings in a domain term adds it to `GLOSSARY.md`.

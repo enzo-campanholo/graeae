@@ -47,6 +47,10 @@
 //                        back to the browser as offered, for a browser that lists no high
 //   --browser chromium|firefox  the browser (default chromium); firefox is the one at
 //                        GRAEAE_FIREFOX, driven over WebDriver BiDi, for watching
+//   --done <file>        written with the exit code when it exits, however it ends: wait for
+//                        it instead of matching processes
+//
+// SIGINT and SIGTERM (a `kill`) quit as `quit` does, closing the browser first.
 //
 // Commands, one a line (a "quoted name" may hold spaces):
 //   share screen|webcam          press Share screen (and the first-time notice) or Share webcam
@@ -125,8 +129,12 @@ const { values: options } = parseArgs({
     "fake-h264": { type: "string" },
     "fake-h264-as": { type: "string" },
     browser: { type: "string", default: "chromium" },
+    done: { type: "string" },
   },
 });
+
+const done = options.done;
+if (done) process.on("exit", (code) => writeFileSync(done, `${code}\n`));
 
 if (options["url-file"]) options.url = readFileSync(options["url-file"], "utf8").trim();
 if (!options.url) {
@@ -183,6 +191,7 @@ input.on("line", (line) => {
 });
 input.on("close", () => void queue.then(quit));
 process.on("SIGINT", () => void quit());
+process.on("SIGTERM", () => void quit());
 
 /** `tab`, with what its console says of captures and errors printed. */
 function listen(tab: Page): Page {
